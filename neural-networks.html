@@ -27,8 +27,18 @@ canvas.sq { width: 100%; aspect-ratio: 1; display: block; border-radius: 6px; ba
 .fbtn canvas { width: 36px; height: 36px; image-rendering: pixelated; border-radius: 3px; }
 .kernel.k3 { grid-template-columns: repeat(3, auto); }
 .kernel.k3 input { width: 4.4em; }
-.pbar { display: grid; grid-template-columns: 1.2em 1fr 3.6em; gap: 6px; align-items: center; font: 0.8rem var(--mono); }
-.pbar i { display: block; height: 10px; border-radius: 3px; background: var(--accent); }
+.pbars { display: grid; gap: 3px; max-width: 340px; }
+.pbar { display: grid; grid-template-columns: 1.4em minmax(0, 1fr) 3em; gap: 6px; align-items: center; font: 0.8rem var(--mono); }
+.pbar > span:last-child { text-align: right; }
+.pbar .pt { height: 10px; border-radius: 3px; background: color-mix(in srgb, var(--line) 55%, transparent); overflow: hidden; }
+.pbar i { display: block; height: 100%; border-radius: 3px; background: var(--accent); }
+.padwrap { position: relative; width: 224px; height: 224px; }
+#padbox { position: absolute; inset: 2px; width: calc(100% - 4px); height: calc(100% - 4px); pointer-events: none; }
+.dread { font: 1.4rem var(--mono); letter-spacing: 0.15em; margin: 0 0 8px; }
+.dthumbs { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 6px; }
+.dth { display: grid; justify-items: center; gap: 2px; padding: 3px; border: 2px solid var(--c); border-radius: 6px; background: transparent; color: inherit; font: 0.75rem var(--mono); cursor: pointer; }
+.dth.sel { box-shadow: 0 0 0 2px var(--c); }
+.dth canvas { width: 56px; height: 56px; image-rendering: pixelated; background: #000; border-radius: 3px; }
 .pbar.top i { background: #16a34a; }
 .padrow { display: grid; grid-template-columns: auto 1fr; gap: 20px; align-items: start; }
 @media (max-width: 760px) { .padrow { grid-template-columns: 1fr; } }
@@ -140,28 +150,31 @@ progress { width: 220px; accent-color: var(--accent); }
   </section>
 
   <section class="stage" id="secDig" aria-labelledby="h3">
-    <div class="stage-head"><span class="num">03</span><div><h2 id="h3">Draw a digit</h2><p>A small network learns to read digits, and you can test it. It trains in this page on digits rendered from system fonts with random rotation, scale, thickness and noise. It has never seen handwriting, so a drawn digit is a harder test than the held-out score suggests.</p></div></div>
+    <div class="stage-head"><span class="num">03</span><div><h2 id="h3">Draw a digit</h2><p>A small network learns to read digits, and you can test it. It trains in this page on synthetic digits: pen-drawn skeletons and system fonts, with random rotation, slant, scale, thickness and noise. It has never seen real handwriting, so a drawn digit is a harder test than the held-out score suggests. Several digits are split apart first, then read one by one.</p></div></div>
     <div class="controls">
       <progress id="dProg" max="100" value="0"></progress><span class="note" id="dStatus">Preparing…</span>
       <button type="button" class="btn" id="dRetrain" hidden>Train again</button>
     </div>
     <div class="padrow">
       <div style="display:grid;gap:8px;justify-items:start">
-        <canvas id="pad" width="224" height="224" aria-label="Drawing pad. Draw a digit with the mouse or finger."></canvas>
-        <div class="calcrow"><button type="button" class="btn" id="padClear">Clear</button><canvas id="seen" width="14" height="14" style="width:56px;height:56px;image-rendering:pixelated;border-radius:4px;background:#000"></canvas><span class="note">What the network sees: 14×14, cropped and centered.</span></div>
+        <div class="padwrap"><canvas id="pad" width="224" height="224" aria-label="Drawing pad. Draw one or more digits with the mouse or finger."></canvas><canvas id="padbox" width="224" height="224" aria-hidden="true"></canvas></div>
+        <div class="calcrow"><button type="button" class="btn" id="padClear">Clear</button><span class="note">Draw one digit, or several side by side with a gap.</span></div>
       </div>
-      <div style="display:grid;gap:12px">
-        <div class="math"><h3>Prediction</h3><div id="dBars" style="display:grid;gap:3px"></div><p class="note" id="dPred">Draw a digit on the pad.</p></div>
+      <div style="display:grid;gap:12px;min-width:0">
+        <div class="math"><h3>What the network reads</h3><p class="dread" id="dRead">Draw one or more digits on the pad.</p><div class="dthumbs" id="dThumbs"></div><p class="note">Each digit is cropped, scaled and centered to 14×14 (these thumbnails), then classified on its own. Click a digit's box on the pad or its thumbnail to see its probabilities. The least confident digit is selected by default, since that is the one worth checking.</p></div>
+        <div class="math"><h3>Prediction</h3><div id="dBars" class="pbars"></div><p class="note" id="dPred"></p></div>
         <div class="stats" id="dStats"></div>
       </div>
     </div>
     <div>
-      <p class="note" style="margin-bottom:6px">Held-out synthetic digits (green border: correct, red: wrong). Click one to see the network's answer.</p>
+      <p class="note" style="margin-bottom:6px">Held-out synthetic digits, three per class 0 to 9 (green border: correct, red: wrong; wrong ones are shown first). Click one to see the network's answer.</p>
       <div class="testgrid" id="testgrid"></div>
     </div>
     <div class="math"><h3>The network</h3>
       <p>196 pixels \(\to\) 48 ReLU neurons \(\to\) 10 outputs, with softmax and cross-entropy loss:</p><div class="eqd">\[ p_k = \frac{e^{z_k}}{\sum_j e^{z_j}}, \qquad \text{loss} = -\ln p_{\text{true}} \]</div>
-      <p>The score is measured on 500 synthetic digits that the network never trained on. The training and held-out digits come from the same generator, so the score is optimistic for real handwriting. Draw one digit large and centered. Digits 1 and 7, or 4 and 9, are the usual confusions.</p></div>
+      <p>The score is measured on 500 synthetic digits that the network never trained on. The training and held-out digits come from the same generator, so the score is optimistic for real handwriting. Digits 1 and 7, or 4 and 9, are the usual confusions.</p>
+      <p><b>Several digits.</b> Threshold the pad, \(I > \tau\), then label connected components as in the Binary Images lecture. Components whose x-ranges overlap by more than half the narrower one are merged, so a digit drawn in several strokes stays whole, and specks are dropped. The groups are sorted left to right and each is read separately. Digits that touch fuse into one component and are read as one, so leave a gap.</p>
+      <p><b>Preprocessing.</b> Training images and pad drawings go through the same steps: crop to the ink bounding box, scale so the longest side is 11 of 14 pixels, average over the source area each output pixel covers (anti-aliased, not point sampling), and shift so the center of mass \(\bar x = \sum I\,x \,/\, \sum I\) (likewise \(\bar y\)) sits at the middle.</p></div>
   </section>
 </main>
 <footer class="wrap site"></footer>
@@ -474,24 +487,86 @@ function trainFilters() {
 /* =====================================================================
    03 DIGITS
    ===================================================================== */
-const DS = 28, DN = 14;
+const DS = 56, DN = 14, DFILL = 11, DT = 0.27, BRUSH = 16;
 const FONTS = ["sans-serif", "serif", "monospace", "Georgia", "Arial", "Courier New", "Verdana", "Times New Roman", "Trebuchet MS"];
 const dcv = document.createElement("canvas"); dcv.width = dcv.height = DS; const dctx = dcv.getContext("2d", { willReadFrequently: true });
-const ncv = document.createElement("canvas"); ncv.width = ncv.height = DN; const nctx = ncv.getContext("2d", { willReadFrequently: true });
-function normalize(srcCanvas, noise, r) {
-  const s = srcCanvas.width, sx = srcCanvas.getContext("2d", { willReadFrequently: true }), d = sx.getImageData(0, 0, s, s).data; let x0 = s, y0 = s, x1 = -1, y1 = -1;
-  for (let y = 0; y < s; y++) for (let x = 0; x < s; x++) if (d[4 * (y * s + x)] > 70) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
-  nctx.fillStyle = "#000"; nctx.fillRect(0, 0, DN, DN); if (x1 < 0) return null;
-  const bw = x1 - x0 + 1, bh = y1 - y0 + 1, k = 11 / Math.max(bw, bh), w = bw * k, h = bh * k; nctx.imageSmoothingEnabled = true; nctx.drawImage(srcCanvas, x0, y0, bw, bh, (DN - w) / 2, (DN - h) / 2, w, h);
-  const o = nctx.getImageData(0, 0, DN, DN).data, v = new Float64Array(DN * DN); for (let i = 0; i < v.length; i++) { v[i] = o[4 * i] / 255; if (noise) v[i] = Math.max(0, Math.min(1, v[i] + noise * gauss(r))); } return v;
+/* One normalize() for training images and for the pad. g is a gray image in [0,1] (W x H).
+   Crop to the ink bounding box, scale (aspect kept) so the longest side is DFILL of DN pixels,
+   area-average resample (each output pixel is the mean over the source box it covers),
+   center by center of mass, then scale so the brightest pixel is 1. */
+function normalize(g, W, H, noise, r) {
+  let x0 = W, y0 = H, x1 = -1, y1 = -1;
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (g[y * W + x] > DT) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+  if (x1 < 0) return null;
+  let m = 0, mx = 0, my = 0; for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) { const q = g[y * W + x]; m += q; mx += q * (x + 0.5); my += q * (y + 0.5); }
+  mx /= m; my /= m;
+  const k = DFILL / Math.max(x1 - x0 + 1, y1 - y0 + 1), v = new Float64Array(DN * DN), h = DN / 2; let top = 0;
+  for (let oy = 0; oy < DN; oy++) for (let ox = 0; ox < DN; ox++) {
+    const sx0 = (ox - h) / k + mx, sx1 = (ox + 1 - h) / k + mx, sy0 = (oy - h) / k + my, sy1 = (oy + 1 - h) / k + my; let s = 0;
+    for (let iy = Math.max(0, Math.floor(sy0)); iy < Math.min(H, Math.ceil(sy1)); iy++) { const wy = Math.min(iy + 1, sy1) - Math.max(iy, sy0);
+      for (let ix = Math.max(0, Math.floor(sx0)); ix < Math.min(W, Math.ceil(sx1)); ix++) s += g[iy * W + ix] * (Math.min(ix + 1, sx1) - Math.max(ix, sx0)) * wy; }
+    const q = s / ((sx1 - sx0) * (sy1 - sy0)); v[oy * DN + ox] = q; if (q > top) top = q;
+  }
+  for (let i = 0; i < v.length; i++) { v[i] /= top; if (noise) v[i] = Math.max(0, Math.min(1, v[i] + noise * gauss(r))); }
+  return v;
+}
+/* Handwriting-like training digits: each digit is a skeleton (cubic curves in a 10x16 box) drawn with a round-capped pen. */
+const SK = [
+  [["E", 5, 8, 4.4, 7.4]],
+  [["M", 2.5, 4], ["L", 5, 1], ["L", 5, 15]],
+  [["M", 1, 4.5], ["C", 1, 0, 9, 0, 9, 4.5], ["C", 9, 8, 3, 11, 1, 15], ["L", 9.5, 15]],
+  [["M", 1.5, 2], ["C", 4, 0, 9, 1, 8.5, 4.5], ["C", 8.5, 7, 5, 8, 4, 8], ["C", 5, 8, 9.5, 8.5, 9, 11.5], ["C", 8.5, 15.5, 3, 16, 1, 13.5]],
+  [["M", 7.5, 15], ["L", 7.5, 1], ["L", 1, 11], ["L", 10, 11]],
+  [["M", 8.5, 1], ["L", 2.5, 1], ["L", 2, 7.5], ["C", 4, 6, 9.5, 6.5, 9, 11], ["C", 8.5, 16, 3, 16, 1, 13.5]],
+  [["M", 8, 1.5], ["C", 4, 2, 1.5, 6, 1.5, 10.5], ["C", 1.5, 16, 9.5, 16, 9, 10.5], ["C", 8.5, 7, 3, 6.5, 1.5, 10.5]],
+  [["M", 1, 1.5], ["L", 9, 1.5], ["L", 4, 15]],
+  [["M", 5, 8], ["C", 0, 6, 1.5, 1, 5, 1], ["C", 8.5, 1, 9.5, 6, 5, 8], ["C", 0.5, 10, 0, 15.5, 5, 15.5], ["C", 10, 15.5, 9.5, 10, 5, 8]],
+  [["M", 8.5, 5.5], ["C", 8.5, 0.5, 1.5, 0.5, 1.5, 5.5], ["C", 1.5, 10, 8.5, 10, 8.5, 5.5], ["C", 8.5, 10, 7, 14, 3, 15]]
+];
+function strokeSkeleton(c, d, r) {
+  const j = () => gauss(r) * 0.3; c.beginPath();
+  for (const op of SK[d]) {
+    if (op[0] === "E") c.ellipse(op[1] + j(), op[2] + j(), op[3] + j(), op[4] + j(), 0, 0, 7);
+    else { const a = op.slice(1).map(q => q + j()); if (op[0] === "M") c.moveTo(a[0], a[1]); else if (op[0] === "L") c.lineTo(a[0], a[1]); else c.bezierCurveTo(...a); }
+  }
+  if (d === 1 && r() < 0.2) { c.moveTo(2.5, 15); c.lineTo(7.5, 15); }
+  c.stroke();
 }
 function renderDigit(d, r) {
-  dctx.fillStyle = "#000"; dctx.fillRect(0, 0, DS, DS); dctx.save(); dctx.translate(DS / 2 + (r() - 0.5) * 4, DS / 2 + (r() - 0.5) * 4); dctx.rotate((r() - 0.5) * 0.6); dctx.scale(0.8 + r() * 0.4, 0.85 + r() * 0.35);
-  dctx.font = `${r() < 0.4 ? "bold " : ""}${r() < 0.2 ? "italic " : ""}${19 + Math.floor(r() * 5)}px ${FONTS[Math.floor(r() * FONTS.length)]}`; dctx.textAlign = "center"; dctx.textBaseline = "middle"; dctx.fillStyle = "#fff";
-  dctx.fillText(String(d), 0, 1); if (r() < 0.4) { dctx.strokeStyle = "#fff"; dctx.lineWidth = 0.6 + r() * 1.2; dctx.strokeText(String(d), 0, 1); } dctx.restore();
-  return normalize(dcv, 0.03 + r() * 0.1, r);
+  dctx.fillStyle = "#000"; dctx.fillRect(0, 0, DS, DS); dctx.save(); dctx.translate(DS / 2 + (r() - 0.5) * 8, DS / 2 + (r() - 0.5) * 8); dctx.rotate((r() - 0.5) * 0.5);
+  if (r() < 0.55) {
+    const s = DS * (0.55 + r() * 0.2) / 16; dctx.transform(1, 0, (r() - 0.5) * 0.5, 1, 0, 0); dctx.scale(s * (0.6 + r() * 0.9), s); dctx.translate(-5, -8);
+    dctx.strokeStyle = "#fff"; dctx.lineWidth = 1.2 + r() * 1.2; dctx.lineCap = dctx.lineJoin = "round"; strokeSkeleton(dctx, d, r);
+  } else {
+    dctx.scale(0.8 + r() * 0.4, 0.85 + r() * 0.35);
+    dctx.font = `${r() < 0.4 ? "bold " : ""}${r() < 0.2 ? "italic " : ""}${38 + Math.floor(r() * 10)}px ${FONTS[Math.floor(r() * FONTS.length)]}`; dctx.textAlign = "center"; dctx.textBaseline = "middle"; dctx.fillStyle = "#fff";
+    dctx.fillText(String(d), 0, 2); if (r() < 0.5) { dctx.strokeStyle = "#fff"; dctx.lineJoin = "round"; dctx.lineWidth = 1.2 + r() * 2.4; dctx.strokeText(String(d), 0, 2); }
+  }
+  dctx.restore();
+  const px = dctx.getImageData(0, 0, DS, DS).data, g = new Float32Array(DS * DS); for (let i = 0; i < g.length; i++) g[i] = px[4 * i] / 255;
+  return normalize(g, DS, DS, 0.03 + r() * 0.1, r);
 }
-const DG = { tr: null, te: null, net: null, epoch: 0, step: 0, phase: "idle", r: null, testBars: [], teLabels: [], sampleSel: -1 };
+/* Segmentation: threshold, connected components (8-neighbour), drop specks, merge components whose x-ranges overlap, sort left to right. */
+function segment(g, W, H) {
+  const lab = new Int32Array(W * H), st = new Int32Array(W * H); let comps = [];
+  for (let s = 0; s < W * H; s++) {
+    if (g[s] <= DT || lab[s]) continue; const id = comps.length + 1, c = { id, area: 0, x0: W, x1: -1, y0: H, y1: -1, ids: [id] }; let sp = 0; st[sp++] = s; lab[s] = id;
+    while (sp) { const p = st[--sp], px = p % W, py = (p - px) / W; c.area++; if (px < c.x0) c.x0 = px; if (px > c.x1) c.x1 = px; if (py < c.y0) c.y0 = py; if (py > c.y1) c.y1 = py;
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) { const nx = px + dx, ny = py + dy; if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue; const n = ny * W + nx; if (g[n] > DT && !lab[n]) { lab[n] = id; st[sp++] = n; } } }
+    comps.push(c);
+  }
+  const dim = c => Math.max(c.x1 - c.x0, c.y1 - c.y0) + 1, big = Math.max(0, ...comps.map(dim));
+  comps = comps.filter(c => c.area >= 60 && dim(c) >= 0.1 * big);
+  for (let merged = true; merged;) { merged = false;
+    for (let a = 0; a < comps.length && !merged; a++) for (let b = a + 1; b < comps.length && !merged; b++) {
+      const A = comps[a], B = comps[b], ov = Math.min(A.x1, B.x1) - Math.max(A.x0, B.x0) + 1;
+      if (ov > 0.5 * Math.min(A.x1 - A.x0 + 1, B.x1 - B.x0 + 1)) { A.x0 = Math.min(A.x0, B.x0); A.x1 = Math.max(A.x1, B.x1); A.y0 = Math.min(A.y0, B.y0); A.y1 = Math.max(A.y1, B.y1); A.area += B.area; A.ids.push(...B.ids); comps.splice(b, 1); merged = true; } } }
+  comps.sort((a, b) => a.x0 + a.x1 - b.x0 - b.x1);
+  return comps.map(c => { const w = c.x1 - c.x0 + 1, h = c.y1 - c.y0 + 1, crop = new Float32Array(w * h), ids = new Set(c.ids);
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { const p = (c.y0 + y) * W + c.x0 + x; if (ids.has(lab[p])) crop[y * w + x] = g[p]; }
+    return { box: [c.x0, c.y0, c.x1 + 1, c.y1 + 1], v: normalize(crop, w, h, 0) }; });
+}
+const DG = { tr: null, te: null, net: null, epoch: 0, step: 0, phase: "idle", r: null, read: null };
 function dStart() {
   DG.r = rng(2024 + (Math.random() * 1e5 | 0)); DG.tr = { X: [], Y: [] }; DG.te = { X: [], Y: [] }; DG.phase = "gen"; DG.net = new Net([DN * DN, 48, 10], "relu", "softmax", 3); DG.epoch = 0; DG.step = 0; $("dRetrain").hidden = true; DG.order = null;
 }
@@ -517,27 +592,54 @@ function dLoop() {
 }
 function dFinish(te) {
   const tr = DG.net.evaluate(DG.tr.X.slice(0, 500), DG.tr.Y.slice(0, 500)); $("dProg").value = 100; $("dRetrain").hidden = false;
-  $("dStatus").textContent = "Trained. Draw a digit or click a held-out digit.";
+  $("dStatus").textContent = "Trained. Draw digits or click a held-out digit.";
   $("dStats").innerHTML = `<span class="chip">Training digits <b>${DTR}</b></span><span class="chip">Held-out digits <b>${DTE}</b></span><span class="chip">Train accuracy <b>${fmt(100 * tr.acc, 1)}%</b></span><span class="chip">Held-out accuracy <b>${fmt(100 * te.acc, 1)}%</b></span><span class="chip">Epochs <b>${DEPOCH}</b></span>`;
-  const g = $("testgrid"); g.innerHTML = ""; for (let i = 0; i < 30; i++) { const k = i * 16 % DTE, c = document.createElement("canvas"); c.width = c.height = DN; const p = DG.net.forward(DG.te.X[k]), pred = p.indexOf(Math.max(...p)); c.className = pred === DG.te.Y[k] ? "ok" : "no"; c.title = `True ${DG.te.Y[k]}, predicted ${pred}`; const x = c.getContext("2d"), im = x.createImageData(DN, DN); DG.te.X[k].forEach((v, q) => { im.data[4 * q] = im.data[4 * q + 1] = im.data[4 * q + 2] = v * 255; im.data[4 * q + 3] = 255; }); x.putImageData(im, 0, 0); c.addEventListener("click", () => dPredict(DG.te.X[k], `Held-out digit, true label ${DG.te.Y[k]}.`)); g.append(c); }
-  dPredict(DG.te.X[0], `Held-out digit, true label ${DG.te.Y[0]}.`);
+  /* balanced sample: 3 held-out tiles per digit, wrong ones first, laid out so each column is one digit */
+  const per = Array.from({ length: 10 }, () => ({ bad: [], good: [] }));
+  DG.te.X.forEach((x, k) => { const p = DG.net.forward(x), pred = p.indexOf(Math.max(...p)); per[DG.te.Y[k]][pred === DG.te.Y[k] ? "good" : "bad"].push([k, pred]); });
+  const g = $("testgrid"); g.innerHTML = "";
+  for (let row = 0; row < 3; row++) for (let d = 0; d < 10; d++) {
+    const [k, pred] = [...per[d].bad, ...per[d].good][row], c = document.createElement("canvas"); c.width = c.height = DN; c.className = pred === d ? "ok" : "no"; c.title = `True ${d}, predicted ${pred}`;
+    const x = c.getContext("2d"), im = x.createImageData(DN, DN); DG.te.X[k].forEach((v, q) => { im.data[4 * q] = im.data[4 * q + 1] = im.data[4 * q + 2] = v * 255; im.data[4 * q + 3] = 255; }); x.putImageData(im, 0, 0);
+    c.addEventListener("click", () => dShow([{ v: DG.te.X[k] }], `Held-out digit, true label ${d}.`, false)); g.append(c);
+  }
+  dShow([{ v: DG.te.X[0] }], `Held-out digit, true label ${DG.te.Y[0]}.`, false);
 }
-function dPredict(v, msg) {
-  const sc = $("seen").getContext("2d"), im = sc.createImageData(DN, DN); if (!v) { $("dPred").textContent = msg || "Draw a digit on the pad."; return; }
-  v.forEach((q, i) => { im.data[4 * i] = im.data[4 * i + 1] = im.data[4 * i + 2] = q * 255; im.data[4 * i + 3] = 255; }); sc.putImageData(im, 0, 0);
+const DCOL = ["#e11d48", "#2563eb", "#16a34a", "#d97706", "#7c3aed", "#0891b2", "#db2777", "#65a30d"];
+/* items: [{v, box?}]. Classify each independently; show reading, thumbnails, boxes on the pad and bars for the selected digit.
+   Default selection is the least confident digit (the one most worth inspecting); with one digit that is simply that digit. */
+function dShow(items, msg, onPad, keepSel) {
+  const bx = $("padbox").getContext("2d"); bx.clearRect(0, 0, 224, 224); $("dThumbs").innerHTML = "";
+  if (!items.length) { DG.read = null; $("dRead").textContent = "Draw one or more digits on the pad."; $("dBars").innerHTML = ""; $("dPred").textContent = msg || ""; return; }
   if (DG.phase !== "done") { $("dPred").textContent = "The network is still training. Try again in a moment."; return; }
-  const p = Array.from(DG.net.forward(v)), best = p.indexOf(Math.max(...p));
-  $("dBars").innerHTML = p.map((q, k) => `<div class="pbar ${k === best ? "top" : ""}"><span>${k}</span><div><i style="width:${(q * 100).toFixed(1)}%;display:block"></i></div><span>${(q * 100).toFixed(0)}%</span></div>`).join("");
-  $("dPred").innerHTML = `<b>Predicted ${best}</b> with ${(p[best] * 100).toFixed(0)}% confidence. ${msg || ""}`;
+  items.forEach(it => { it.p = Array.from(DG.net.forward(it.v)); it.best = it.p.indexOf(Math.max(...it.p)); it.conf = it.p[it.best]; });
+  let sel = keepSel != null && keepSel < items.length ? keepSel : items.reduce((a, it, i) => it.conf < items[a].conf ? i : a, 0);
+  DG.read = { items, sel, msg, onPad };
+  $("dRead").innerHTML = (onPad ? "Read: " : "Network output: ") + items.map((it, i) => `<b style="color:${DCOL[i % 8]}">${it.best}</b>`).join(" ");
+  items.forEach((it, i) => {
+    const col = DCOL[i % 8], b = document.createElement("button"), c = document.createElement("canvas"); b.type = "button"; b.className = "dth" + (i === sel ? " sel" : ""); b.style.setProperty("--c", col);
+    c.width = c.height = DN; const x = c.getContext("2d"), im = x.createImageData(DN, DN); it.v.forEach((q, j) => { im.data[4 * j] = im.data[4 * j + 1] = im.data[4 * j + 2] = q * 255; im.data[4 * j + 3] = 255; }); x.putImageData(im, 0, 0);
+    b.append(c, Object.assign(document.createElement("span"), { textContent: `${it.best} · ${(it.conf * 100).toFixed(0)}%` })); b.title = "Show this digit's probabilities"; b.addEventListener("click", () => dShow(items, msg, onPad, i)); $("dThumbs").append(b);
+    if (onPad && it.box) { bx.strokeStyle = col; bx.lineWidth = i === sel ? 3 : 1.5; bx.strokeRect(it.box[0] - 3, it.box[1] - 3, it.box[2] - it.box[0] + 6, it.box[3] - it.box[1] + 6); bx.fillStyle = col; bx.font = "bold 14px monospace"; bx.fillText(String(it.best), it.box[0] - 3, Math.max(12, it.box[1] - 6)); }
+  });
+  const it = items[sel];
+  $("dBars").innerHTML = it.p.map((q, k) => `<div class="pbar ${k === it.best ? "top" : ""}"><span>${k}</span><div class="pt"><i style="width:${(q * 100).toFixed(1)}%"></i></div><span>${(q * 100).toFixed(0)}%</span></div>`).join("");
+  $("dPred").innerHTML = `${items.length > 1 ? `Digit ${sel + 1} of ${items.length}: ` : ""}<b>predicted ${it.best}</b> with ${(it.conf * 100).toFixed(0)}% confidence. ${msg || ""}`;
 }
 (() => {
-  const pad = $("pad"), x = pad.getContext("2d", { willReadFrequently: true }); x.fillStyle = "#000"; x.fillRect(0, 0, 224, 224); let down = false, lx = 0, ly = 0;
+  const pad = $("pad"), x = pad.getContext("2d", { willReadFrequently: true }); x.fillStyle = "#000"; x.fillRect(0, 0, 224, 224); let down = false, moved = false, sx = 0, sy = 0, lx = 0, ly = 0;
   const pos = e => { const r = pad.getBoundingClientRect(); return [(e.clientX - r.left) / r.width * 224, (e.clientY - r.top) / r.height * 224]; };
-  const upd = () => dPredict(normalize(pad, 0), "");
-  pad.addEventListener("pointerdown", e => { down = true; pad.setPointerCapture(e.pointerId); [lx, ly] = pos(e); x.fillStyle = "#fff"; x.beginPath(); x.arc(lx, ly, 8, 0, 7); x.fill(); upd(); });
-  pad.addEventListener("pointermove", e => { if (!down) return; const [px, py] = pos(e); x.strokeStyle = "#fff"; x.lineWidth = 16; x.lineCap = "round"; x.beginPath(); x.moveTo(lx, ly); x.lineTo(px, py); x.stroke(); lx = px; ly = py; upd(); });
-  pad.addEventListener("pointerup", () => { down = false; upd(); });
-  $("padClear").addEventListener("click", () => { x.fillStyle = "#000"; x.fillRect(0, 0, 224, 224); $("dBars").innerHTML = ""; dPredict(null, "Draw a digit on the pad."); $("seen").getContext("2d").clearRect(0, 0, DN, DN); });
+  const dot = (px, py) => { x.fillStyle = "#fff"; x.beginPath(); x.arc(px, py, BRUSH / 2, 0, 7); x.fill(); };
+  const read = () => { const d = x.getImageData(0, 0, 224, 224).data, g = new Float32Array(224 * 224); for (let i = 0; i < g.length; i++) g[i] = d[4 * i] / 255; dShow(segment(g, 224, 224).filter(s => s.v), "", true); };
+  pad.addEventListener("pointerdown", e => { down = true; moved = false; pad.setPointerCapture(e.pointerId); [sx, sy] = pos(e); lx = sx; ly = sy; });
+  pad.addEventListener("pointermove", e => { if (!down) return; const [px, py] = pos(e); if (!moved) { moved = true; dot(sx, sy); } x.strokeStyle = "#fff"; x.lineWidth = BRUSH; x.lineCap = "round"; x.beginPath(); x.moveTo(lx, ly); x.lineTo(px, py); x.stroke(); lx = px; ly = py; });
+  pad.addEventListener("pointerup", () => {
+    if (!down) return; down = false;
+    if (!moved) { const hit = DG.read && DG.read.onPad ? DG.read.items.findIndex(it => sx >= it.box[0] - 4 && sx <= it.box[2] + 4 && sy >= it.box[1] - 4 && sy <= it.box[3] + 4) : -1;
+      if (hit >= 0) { dShow(DG.read.items, "", true, hit); return; } dot(sx, sy); }
+    read();
+  });
+  $("padClear").addEventListener("click", () => { x.fillStyle = "#000"; x.fillRect(0, 0, 224, 224); dShow([], "", true); });
   $("dRetrain").addEventListener("click", dStart);
 })();
 
