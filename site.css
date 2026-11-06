@@ -125,8 +125,8 @@ tbody tr.sel { background: color-mix(in srgb, var(--accent) 14%, transparent); }
 .eqlist { font-family: var(--mono); font-size: 0.85rem; display: flex; flex-wrap: wrap; gap: 6px; }
 .eqlist span { border: 1px solid var(--line); border-radius: 4px; padding: 1px 7px; }
 
-footer.site { margin-top: 56px; padding-block: 22px 40px; border-top: 1px solid var(--line); color: var(--muted); font-size: 0.8rem; line-height: 1.6; display: grid; gap: 4px; }
-footer.site p { margin: 0; max-width: 90ch; }
+footer.site { width: calc(100% - 40px); max-width: 1140px; margin: 56px auto 0; padding: 22px 0 40px; border-top: 1px solid var(--line); color: var(--muted); font-size: 0.8rem; line-height: 1.6; display: grid; gap: 4px; justify-items: center; text-align: center; }
+footer.site p { margin: 0; max-width: 100ch; text-wrap: pretty; }
 footer.site a { color: inherit; text-decoration-color: var(--line); text-underline-offset: 3px; }
 footer.site a:hover { color: var(--accent); text-decoration-color: currentColor; }
 
