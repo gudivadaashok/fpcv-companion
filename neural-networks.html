@@ -31,18 +31,23 @@ canvas.sq { width: 100%; aspect-ratio: 1; display: block; border-radius: 6px; ba
 .pbar { display: grid; grid-template-columns: 1.4em minmax(0, 1fr) 3em; gap: 6px; align-items: center; font: 0.8rem var(--mono); }
 .pbar > span:last-child { text-align: right; }
 .pbar .pt { height: 10px; border-radius: 3px; background: color-mix(in srgb, var(--line) 55%, transparent); overflow: hidden; }
-.pbar i { display: block; height: 100%; border-radius: 3px; background: var(--accent); }
-.padwrap { position: relative; width: 224px; height: 224px; }
+.pbar i { display: block; height: 100%; border-radius: 3px; background: var(--muted); }
+.padwrap { position: relative; width: 100%; max-width: 340px; aspect-ratio: 1; }
 #padbox { position: absolute; inset: 2px; width: calc(100% - 4px); height: calc(100% - 4px); pointer-events: none; }
-.dread { font: 1.4rem var(--mono); letter-spacing: 0.15em; margin: 0 0 8px; }
+.dread { font: 600 1.35rem/1.3 var(--display); margin: 0 0 8px; font-variant-numeric: tabular-nums; }
+.dread .big { font-size: 2rem; margin-right: 0.35em; }
+.dread.empty { font: 1rem var(--body); color: var(--muted); }
+.dread .good { color: #1f8a4c; } .dread .bad { color: #c53030; }
+.dsrc { font-weight: 600; margin: 0 0 4px; }
 .dthumbs { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 6px; }
-.dth { display: grid; justify-items: center; gap: 2px; padding: 3px; border: 2px solid var(--c); border-radius: 6px; background: transparent; color: inherit; font: 0.75rem var(--mono); cursor: pointer; }
+.dth { display: grid; justify-items: center; gap: 2px; padding: 3px; border: 2px solid var(--c); border-radius: 6px; background: transparent; color: inherit; font: 0.78rem var(--body); font-variant-numeric: tabular-nums; cursor: pointer; }
 .dth.sel { box-shadow: 0 0 0 2px var(--c); }
+.dth.neutral { --c: var(--muted); }
 .dth canvas { width: 56px; height: 56px; image-rendering: pixelated; background: #000; border-radius: 3px; }
-.pbar.top i { background: #16a34a; }
-.padrow { display: grid; grid-template-columns: auto 1fr; gap: 20px; align-items: start; }
+.pbar.top i { background: var(--accent); }
+.padrow { display: grid; grid-template-columns: minmax(0, 340px) 1fr; gap: 20px; align-items: start; }
 @media (max-width: 760px) { .padrow { grid-template-columns: 1fr; } }
-#pad { width: 224px; height: 224px; background: #000; border-radius: 8px; cursor: crosshair; touch-action: none; border: 2px solid var(--line); }
+#pad { width: 100%; height: 100%; box-sizing: border-box; background: #000; border-radius: 8px; cursor: crosshair; touch-action: none; border: 2px solid var(--line); }
 .testgrid { display: grid; grid-template-columns: repeat(10, 1fr); gap: 4px; }
 .testgrid canvas { width: 100%; aspect-ratio: 1; image-rendering: pixelated; border: 2px solid; border-radius: 3px; cursor: pointer; background: #000; }
 .testgrid canvas.ok { border-color: #1f8a4c; } .testgrid canvas.no { border-color: #c53030; }
@@ -156,12 +161,12 @@ progress { width: 220px; accent-color: var(--accent); }
       <button type="button" class="btn" id="dRetrain" hidden>Train again</button>
     </div>
     <div class="padrow">
-      <div style="display:grid;gap:8px;justify-items:start">
+      <div style="display:grid;gap:8px;justify-items:start;min-width:0;width:100%">
         <div class="padwrap"><canvas id="pad" width="224" height="224" aria-label="Drawing pad. Draw one or more digits with the mouse or finger."></canvas><canvas id="padbox" width="224" height="224" aria-hidden="true"></canvas></div>
         <div class="calcrow"><button type="button" class="btn" id="padClear">Clear</button><span class="note">Draw one digit, or several side by side with a gap.</span></div>
       </div>
       <div style="display:grid;gap:12px;min-width:0">
-        <div class="math"><h3>What the network reads</h3><p class="dread" id="dRead">Draw one or more digits on the pad.</p><div class="dthumbs" id="dThumbs"></div><p class="note">Each digit is cropped, scaled and centered to 14×14 (these thumbnails), then classified on its own. Click a digit's box on the pad or its thumbnail to see its probabilities. The least confident digit is selected by default, since that is the one worth checking.</p></div>
+        <div class="math"><h3 id="dReadH">What the network reads</h3><p class="dread empty" id="dRead">Draw a digit on the pad, or click a held-out digit below.</p><div class="dthumbs" id="dThumbs"></div><p class="note">Each digit is cropped, scaled and centered to 14×14 (these thumbnails), then classified on its own. Click a digit's box on the pad or its thumbnail to see its probabilities. The least confident digit is selected by default, since that is the one worth checking.</p></div>
         <div class="math"><h3>Prediction</h3><div id="dBars" class="pbars"></div><p class="note" id="dPred"></p></div>
         <div class="stats" id="dStats"></div>
       </div>
@@ -601,30 +606,33 @@ function dFinish(te) {
   for (let row = 0; row < 3; row++) for (let d = 0; d < 10; d++) {
     const [k, pred] = [...per[d].bad, ...per[d].good][row], c = document.createElement("canvas"); c.width = c.height = DN; c.className = pred === d ? "ok" : "no"; c.title = `True ${d}, predicted ${pred}`;
     const x = c.getContext("2d"), im = x.createImageData(DN, DN); DG.te.X[k].forEach((v, q) => { im.data[4 * q] = im.data[4 * q + 1] = im.data[4 * q + 2] = v * 255; im.data[4 * q + 3] = 255; }); x.putImageData(im, 0, 0);
-    c.addEventListener("click", () => dShow([{ v: DG.te.X[k] }], `Held-out digit, true label ${d}.`, false)); g.append(c);
+    c.addEventListener("click", () => dShow([{ v: DG.te.X[k], truth: d }], "", false)); g.append(c);
   }
-  dShow([{ v: DG.te.X[0] }], `Held-out digit, true label ${DG.te.Y[0]}.`, false);
+  dShow([], "", true);
 }
-const DCOL = ["#e11d48", "#2563eb", "#16a34a", "#d97706", "#7c3aed", "#0891b2", "#db2777", "#65a30d"];
+const DCOL = ["#2563eb", "#d97706", "#7c3aed", "#0891b2", "#c026d3", "#8b6b00", "#4f46e5", "#0f766e"];
 /* items: [{v, box?}]. Classify each independently; show reading, thumbnails, boxes on the pad and bars for the selected digit.
    Default selection is the least confident digit (the one most worth inspecting); with one digit that is simply that digit. */
 function dShow(items, msg, onPad, keepSel) {
   const bx = $("padbox").getContext("2d"); bx.clearRect(0, 0, 224, 224); $("dThumbs").innerHTML = "";
-  if (!items.length) { DG.read = null; $("dRead").textContent = "Draw one or more digits on the pad."; $("dBars").innerHTML = ""; $("dPred").textContent = msg || ""; return; }
+  if (!items.length) { DG.read = null; $("dReadH").textContent = "What the network reads"; $("dRead").className = "dread empty"; $("dRead").textContent = "Draw a digit on the pad, or click a held-out digit below."; $("dBars").innerHTML = ""; $("dPred").textContent = msg || ""; return; }
   if (DG.phase !== "done") { $("dPred").textContent = "The network is still training. Try again in a moment."; return; }
   items.forEach(it => { it.p = Array.from(DG.net.forward(it.v)); it.best = it.p.indexOf(Math.max(...it.p)); it.conf = it.p[it.best]; });
   let sel = keepSel != null && keepSel < items.length ? keepSel : items.reduce((a, it, i) => it.conf < items[a].conf ? i : a, 0);
   DG.read = { items, sel, msg, onPad };
-  $("dRead").innerHTML = (onPad ? "Read: " : "Network output: ") + items.map((it, i) => `<b style="color:${DCOL[i % 8]}">${it.best}</b>`).join(" ");
+  const held = !onPad && items[0].truth != null, ok = held && items[0].best === items[0].truth;
+  $("dReadH").textContent = held ? `Held-out test digit \u00b7 true label ${items[0].truth}` : "Your drawing reads";
+  $("dRead").className = "dread";
+  $("dRead").innerHTML = held ? `<span class="big">${items[0].best}</span><span class="${ok ? "good" : "bad"}">Predicted ${items[0].best} (${ok ? "correct" : "wrong"})</span>` : items.map((it, i) => `<span class="big" style="color:${DCOL[i % 8]}">${it.best}</span>`).join(" ");
   items.forEach((it, i) => {
-    const col = DCOL[i % 8], b = document.createElement("button"), c = document.createElement("canvas"); b.type = "button"; b.className = "dth" + (i === sel ? " sel" : ""); b.style.setProperty("--c", col);
+    const col = DCOL[i % 8], b = document.createElement("button"), c = document.createElement("canvas"); b.type = "button"; b.className = "dth" + (i === sel ? " sel" : "") + (held ? " neutral" : ""); if (!held) b.style.setProperty("--c", col);
     c.width = c.height = DN; const x = c.getContext("2d"), im = x.createImageData(DN, DN); it.v.forEach((q, j) => { im.data[4 * j] = im.data[4 * j + 1] = im.data[4 * j + 2] = q * 255; im.data[4 * j + 3] = 255; }); x.putImageData(im, 0, 0);
     b.append(c, Object.assign(document.createElement("span"), { textContent: `${it.best} · ${(it.conf * 100).toFixed(0)}%` })); b.title = "Show this digit's probabilities"; b.addEventListener("click", () => dShow(items, msg, onPad, i)); $("dThumbs").append(b);
-    if (onPad && it.box) { bx.strokeStyle = col; bx.lineWidth = i === sel ? 3 : 1.5; bx.strokeRect(it.box[0] - 3, it.box[1] - 3, it.box[2] - it.box[0] + 6, it.box[3] - it.box[1] + 6); bx.fillStyle = col; bx.font = "bold 14px monospace"; bx.fillText(String(it.best), it.box[0] - 3, Math.max(12, it.box[1] - 6)); }
+    if (onPad && it.box) { bx.strokeStyle = col; bx.lineWidth = i === sel ? 3 : 1.5; bx.strokeRect(it.box[0] - 3, it.box[1] - 3, it.box[2] - it.box[0] + 6, it.box[3] - it.box[1] + 6); bx.fillStyle = col; bx.font = "bold 14px sans-serif"; bx.fillText(String(it.best), it.box[0] - 3, Math.max(12, it.box[1] - 6)); }
   });
   const it = items[sel];
   $("dBars").innerHTML = it.p.map((q, k) => `<div class="pbar ${k === it.best ? "top" : ""}"><span>${k}</span><div class="pt"><i style="width:${(q * 100).toFixed(1)}%"></i></div><span>${(q * 100).toFixed(0)}%</span></div>`).join("");
-  $("dPred").innerHTML = `${items.length > 1 ? `Digit ${sel + 1} of ${items.length}: ` : ""}<b>predicted ${it.best}</b> with ${(it.conf * 100).toFixed(0)}% confidence. ${msg || ""}`;
+  $("dPred").innerHTML = `${items.length > 1 ? `Digit ${sel + 1} of ${items.length}. ` : ""}<b>Predicted ${it.best}</b> with ${(it.conf * 100).toFixed(0)}% confidence.${msg ? " " + msg : ""}`;
 }
 (() => {
   const pad = $("pad"), x = pad.getContext("2d", { willReadFrequently: true }); x.fillStyle = "#000"; x.fillRect(0, 0, 224, 224); let down = false, moved = false, sx = 0, sy = 0, lx = 0, ly = 0;
