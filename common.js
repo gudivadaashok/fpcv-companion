@@ -3,20 +3,56 @@
 "use strict";
 const $ = id => document.getElementById(id);
 
-const TOPICS = [
-  ["binary-images.html", "Binary Images"],
-  ["image-processing.html", "Image Processing"],
-  ["edge-detection.html", "Edge Detection"],
-  ["photometric-stereo.html", "Photometric Stereo"],
-  ["optical-flow.html", "Optical Flow"],
+const CHAPTERS = [
+  ["Imaging", [
+    ["image-formation.html", "Image Formation", "Pinhole camera, perspective projection, vanishing points, and how lenses trade focus for light."],
+    ["image-sensing.html", "Image Sensing", "Pixels, sampling and aliasing, quantization, noise, and the Bayer color filter."],
+    ["binary-images.html", "Binary Images", "Thresholding, connected components, and each object's area, centroid, orientation and roundedness."],
+    ["image-processing.html", "Image Processing", "Point operations, convolution with editable kernels, noise filters, and Fourier filtering."],
+  ]],
+  ["Features", [
+    ["edge-detection.html", "Edge Detection", "Derivatives, gradient operators, Canny step by step, and Laplacian zero crossings."],
+    ["boundary-detection.html", "Boundary Detection", "Fitting lines and circles to edges with the Hough transform, and active contours (snakes)."],
+    ["sift-detector.html", "SIFT Detector", "Scale space, difference of Gaussians, keypoints with scale and orientation, and descriptors."],
+    ["image-stitching.html", "Image Stitching", "Matching features, RANSAC, homographies, and warping two photos into a panorama."],
+    ["face-detection.html", "Face Detection", "Haar-like features, integral images, a nearest-neighbor or SVM classifier, and a sliding window."],
+  ]],
+  ["Reconstruction I", [
+    ["radiometry-reflectance.html", "Radiometry & Reflectance", "Irradiance, BRDFs, and Lambertian, specular and rough-surface reflection models."],
+    ["photometric-stereo.html", "Photometric Stereo", "Three lights give surface normals, albedo, and then 3D shape."],
+    ["shape-from-shading.html", "Shape from Shading", "Recovering shape from a single shaded image, and the ambiguities it can't resolve."],
+    ["depth-from-defocus.html", "Depth from Defocus", "Blur grows with distance from the focal plane, so blur measures depth."],
+    ["active-illumination.html", "Active Illumination", "Structured light, binary and Gray code patterns, and triangulation."],
+  ]],
+  ["Reconstruction II", [
+    ["camera-calibration.html", "Camera Calibration", "Estimating the projection matrix from known 3D points, then the intrinsics and extrinsics."],
+    ["uncalibrated-stereo.html", "Uncalibrated Stereo", "Epipolar geometry, the fundamental matrix, rectification, and disparity from block matching."],
+    ["optical-flow.html", "Optical Flow", "Lucas–Kanade with a pyramid, and the aperture problem shown as constraint lines."],
+    ["structure-from-motion.html", "Structure from Motion", "Recovering 3D points and camera motion together with Tomasi–Kanade factorization."],
+  ]],
+  ["Perception", [
+    ["object-tracking.html", "Object Tracking", "Template tracking, mean shift, and the Kalman filter's predict and update."],
+    ["image-segmentation.html", "Image Segmentation", "K-means, mean shift, and graph-based segmentation in color and position space."],
+    ["appearance-matching.html", "Appearance Matching", "PCA eigenspaces: project images onto a few components and recognize by nearest neighbor."],
+    ["neural-networks.html", "Neural Networks", "Perceptrons, a small network trained live with backpropagation, and convolution filters."],
+  ]],
 ];
+const TOPICS = CHAPTERS.flatMap(([, items]) => items);
 
 function nav(active) {
   const h = document.querySelector("header.site");
   if (!h) return;
-  const links = TOPICS.map(([href, name]) =>
-    `<a href="${href}"${href === active ? ' class="on" aria-current="page"' : ""}>${name}</a>`).join("");
-  h.innerHTML = `<div class="wrap"><div class="brand"><a href="index.html">Vision Bench</a> <span>· an interactive companion to First Principles of Computer Vision</span></div><nav class="topics" aria-label="Topics">${links}</nav></div>`;
+  const ch = CHAPTERS.find(([, items]) => items.some(t => t[0] === active));
+  const links = ch ? ch[1].map(([href, name]) => `<a href="${href}"${href === active ? ' class="on" aria-current="page"' : ""}>${name}</a>`).join("") : "";
+  const idx = TOPICS.findIndex(t => t[0] === active);
+  const prev = idx > 0 ? TOPICS[idx - 1] : null, next = idx >= 0 && idx < TOPICS.length - 1 ? TOPICS[idx + 1] : null;
+  h.innerHTML = `<div class="wrap"><div class="brand"><a href="index.html">Vision Bench</a> <span>· an interactive companion to First Principles of Computer Vision</span></div><nav class="topics" aria-label="Topics">${ch ? `<span class="chapter">${ch[0]}</span>` : ""}${links}<a href="index.html#topics">All topics</a></nav></div>`;
+  const main = document.querySelector("main");
+  if (main && idx >= 0 && !document.querySelector(".pager")) {
+    const pg = document.createElement("nav"); pg.className = "pager"; pg.setAttribute("aria-label", "Previous and next topic");
+    pg.innerHTML = `${prev ? `<a href="${prev[0]}">← ${prev[1]}</a>` : "<span></span>"}${next ? `<a href="${next[0]}">${next[1]} →</a>` : "<span></span>"}`;
+    main.append(pg);
+  }
 }
 
 function footer() {
@@ -204,5 +240,5 @@ function arrow(ctx, x0, y0, x1, y1, color, lw = 1.5, head = 4) {
 }
 const fmt = (v, d = 1) => (Object.is(v, -0) ? 0 : v).toLocaleString(undefined, { minimumFractionDigits: d, maximumFractionDigits: d });
 
-window.VB = { $, nav, footer, rng, addNoise, cssVar, hslToRgb, hsvToRgb, seg, setSeg, segVal, SAMPLES, sampleCanvas, picker, esc, toGray, sized, show, showRGB, gaussKernel, sepConv, gaussBlur, conv2, boxSum, bilinear, fft1, fft2, imgXY, hiDPI, onTheme, arrow, fmt };
+window.VB = { $, CHAPTERS, TOPICS, nav, footer, rng, addNoise, cssVar, hslToRgb, hsvToRgb, seg, setSeg, segVal, SAMPLES, sampleCanvas, picker, esc, toGray, sized, show, showRGB, gaussKernel, sepConv, gaussBlur, conv2, boxSum, bilinear, fft1, fft2, imgXY, hiDPI, onTheme, arrow, fmt };
 })();

@@ -14,31 +14,19 @@
 <main class="wrap">
   <div class="intro">
     <h1>Vision Bench</h1>
-    <p class="lead">Interactive demos for the core ideas of computer vision. Click sample images or upload your own, move the sliders, and watch each algorithm work step by step.</p>
+    <p class="lead">Interactive demos for every topic in the lecture series, from image formation to neural networks. Click sample images or upload your own, move the sliders, and watch each algorithm work step by step.</p>
     <p>A companion to Shree Nayar's lecture series <a href="https://fpcv.cs.columbia.edu/">First Principles of Computer Vision</a>. Watch a lecture, then try the idea here. Everything runs in your browser.</p>
   </div>
-  <div class="cards">
-    <a class="card" href="binary-images.html"><canvas id="t0" aria-hidden="true"></canvas><div><span class="chap">Imaging · Binary Images</span><h2>Binary Images</h2><p>Thresholding, connected-component labeling, and each object's area, centroid, orientation and roundedness. Includes a step-by-step labeling animation.</p></div></a>
-    <a class="card" href="image-processing.html"><canvas id="t1" aria-hidden="true"></canvas><div><span class="chap">Imaging · Image Processing I &amp; II</span><h2>Image Processing</h2><p>Point operations and histogram equalization, convolution with an editable kernel, Gaussian vs median vs bilateral filtering, and Fourier filtering.</p></div></a>
-    <a class="card" href="edge-detection.html"><canvas id="t2" aria-hidden="true"></canvas><div><span class="chap">Features · Edge Detection</span><h2>Edge Detection</h2><p>Derivatives along one row, gradient operators, Canny step by step (non-maximum suppression and hysteresis), and Laplacian zero crossings.</p></div></a>
-    <a class="card" href="photometric-stereo.html"><canvas id="t3" aria-hidden="true"></canvas><div><span class="chap">Reconstruction I · Photometric Stereo</span><h2>Photometric Stereo</h2><p>Drag three lights, recover normals and albedo, see the reflectance-map curves meet in gradient space, and rotate the recovered 3D shape.</p></div></a>
-    <a class="card" href="optical-flow.html"><canvas id="t4" aria-hidden="true"></canvas><div><span class="chap">Reconstruction II · Optical Flow</span><h2>Optical Flow</h2><p>Lucas–Kanade with a coarse-to-fine pyramid, error measured against the true motion, and the aperture problem shown as constraint lines.</p></div></a>
-  </div>
+  <div id="topics"></div>
 </main>
 <footer class="wrap site"></footer>
 <script src="common.js"></script>
 <script>
 (() => {
-const { nav, footer, SAMPLES, sampleCanvas, toGray, show, showRGB, gaussBlur, conv2, hsvToRgb } = VB;
+const { nav, footer, CHAPTERS, esc } = VB;
 nav(""); footer();
-const W = 192, H = 108;
-const scene = toGray(sampleCanvas(SAMPLES.scene), 480, 360, 0, W, H).g, shapes = toGray(sampleCanvas(SAMPLES.shapes), 480, 360, 0, W, H).g;
-showRGB("t0", W, H, i => shapes[i] < 110 ? VB.hslToRgb((Math.floor((i % W) / 48) * 97 + Math.floor(i / W / 36) * 53) % 360, 65, 58) : [18, 21, 26]);
-show("t1", W, H, gaussBlur(scene, W, H, 2.2));
-const s = gaussBlur(scene, W, H, 0.8), gx = conv2(s, W, H, [-1, 0, 1, -2, 0, 2, -1, 0, 1], 3, 3), gy = conv2(s, W, H, [-1, -2, -1, 0, 0, 0, 1, 2, 1], 3, 3);
-showRGB("t2", W, H, i => { const m = Math.min(1, Math.hypot(gx[i], gy[i]) / 120); return hsvToRgb((Math.atan2(-gy[i], gx[i]) * 57.3 + 360) % 360, 0.85, m); });
-showRGB("t3", W, H, i => { const x = i % W - W / 2, y = (i / W | 0) - H / 2, R = 46, r2 = x * x + y * y; if (r2 >= R * R) return [18, 21, 26]; const z = Math.sqrt(R * R - r2); const v = Math.max(0, (-0.45 * x - 0.5 * y + 0.74 * z) / R) * 235 + 12; return [v, v, v]; });
-showRGB("t4", W, H, i => { const x = i % W - W / 2, y = (i / W | 0) - H / 2; const u = -y * 0.05 + 0.6, v = x * 0.05; return hsvToRgb((Math.atan2(-v, u) * 57.3 + 360) % 360, Math.min(1, Math.hypot(u, v) / 5), 0.95); });
+let n = 0;
+document.getElementById("topics").innerHTML = CHAPTERS.map(([ch, items]) => `<h2 class="chapter-h">${esc(ch)}</h2><div class="cards">${items.map(([href, name, blurb]) => `<a class="card nothumb" href="${href}"><div><span class="chap">${String(++n).padStart(2, "0")} · ${esc(ch)}</span><h2>${esc(name)}</h2><p>${esc(blurb)}</p></div></a>`).join("")}</div>`).join("");
 })();
 </script>
 </body>
