@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Photometric Stereo, Interactively</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,500;8..60,600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="site.css">
+<style>
+#lights { width: 220px; height: 220px; touch-action: none; cursor: grab; border-radius: 50%; display: block; }
+#view3d { cursor: grab; touch-action: none; height: 380px; }
+.lightbox { display: grid; grid-template-columns: auto 1fr; gap: 20px; align-items: center; }
+@media (max-width: 760px) { .lightbox { grid-template-columns: 1fr; justify-items: center; } }
+</style>
+</head>
+<body>
+<header class="site"></header>
+<main class="wrap">
+  <div class="intro">
+    <h1>Photometric Stereo, Interactively</h1>
+    <p class="lead">Photograph a surface three times, each time lit from a different direction. From brightness alone, recover the direction of every surface point, its albedo, and then its 3D shape.</p>
+    <p>The surfaces below are Lambertian (matte) and rendered in your browser, so the true answer is known and you can measure the error. Follows the Radiometry and Reflectance and Photometric Stereo lectures.</p>
+  </div>
+
+  <section class="stage" aria-labelledby="h0">
+    <div class="stage-head"><span class="num">00</span><div><h2 id="h0">Choose a surface</h2><p>Or upload any image to use as a height map: brighter pixels become higher.</p></div></div>
+    <div id="pick"></div>
+    <div class="controls">
+      <div class="ctl"><label>Albedo (surface paint)</label><div class="seg" id="alb"><button type="button" data-v="uniform" aria-pressed="true">Uniform</button><button type="button" data-v="checker" aria-pressed="false">Checkerboard</button><button type="button" data-v="rings" aria-pressed="false">Rings</button></div></div>
+    </div>
+    <p class="note" id="pickNote"></p>
+  </section>
+
+  <section class="stage" aria-labelledby="h1">
+    <div class="stage-head"><span class="num">01</span><div><h2 id="h1">Three lights, three images</h2><p>Drag the three lights. The circle is the sky above the surface seen from the camera: the center is straight overhead and the rim is the horizon. Each image follows Lambert's law, <i>I</i> = ρ (<b>n</b> · <b>s</b>).</p></div></div>
+    <div class="lightbox">
+      <canvas id="lights" aria-label="Light directions. Drag a numbered dot to move that light."></canvas>
+      <div class="three">
+        <figure><canvas class="view click" id="im0"></canvas><figcaption>Lit by light 1</figcaption></figure>
+        <figure><canvas class="view click" id="im1"></canvas><figcaption>Lit by light 2</figcaption></figure>
+        <figure><canvas class="view click" id="im2"></canvas><figcaption>Lit by light 3</figcaption></figure>
+      </div>
+    </div>
+    <div class="controls">
+      <div class="ctl"><label for="noise">Camera noise</label><input type="range" id="noise" min="0" max="20" value="0"><output id="noiseO">0</output></div>
+      <button type="button" class="btn" id="spread">Spread the lights out</button>
+      <button type="button" class="btn" id="bunch">Bunch the lights together</button>
+    </div>
+    <div class="stats" id="stats"></div>
+  </section>
+
+  <section class="stage" aria-labelledby="h2">
+    <div class="stage-head"><span class="num">02</span><div><h2 id="h2">Solve each pixel</h2><p>Stack the three light directions as rows of a matrix <b>S</b>. At each pixel, the three brightness values give <b>ρn</b> = <b>S</b><sup>−1</sup> <b>I</b>. The length of that vector is the albedo ρ and its direction is the normal <b>n</b>.</p></div></div>
+    <div class="three">
+      <figure><canvas class="view" id="rAlb"></canvas><figcaption>Recovered albedo ρ</figcaption></figure>
+      <figure><canvas class="view" id="rNrm"></canvas><figcaption>Recovered normals (red = x, green = up, blue = toward camera)</figcaption></figure>
+      <figure><canvas class="view" id="rErr"></canvas><figcaption>Normal error in degrees, black = 0°, white ≥ 20°</figcaption></figure>
+    </div>
+    <div class="math"><h3>The equations</h3>
+      <p class="eq">[I₁ I₂ I₃]ᵀ = ρ S n,    S = [s₁ᵀ; s₂ᵀ; s₃ᵀ]    ⇒    ρn = S⁻¹ I,   ρ = ‖S⁻¹ I‖,   n = S⁻¹ I / ρ</p>
+      <p>This requires <b>S</b> to be invertible: the three lights must not lie in one plane through the surface point. Bunch them together and noise grows quickly. Pixels in shadow (<b>n</b> · <b>s</b> &lt; 0) break the linear model, so they show up as errors.</p></div>
+  </section>
+
+  <section class="stage" aria-labelledby="h3">
+    <div class="stage-head"><span class="num">03</span><div><h2 id="h3">One pixel in gradient space</h2><p>Click any pixel in the three images above. A surface direction can be written as the gradient (<i>p</i>, <i>q</i>) = (∂z/∂x, ∂z/∂y). One image constrains it only to a curve of directions with the same brightness. Three images give three curves that meet at one point.</p></div></div>
+    <div class="main-side">
+      <figure><canvas class="plot" id="pq" style="height:380px"></canvas><figcaption><span class="legend"><span><i style="background:#e11d48"></i>Light 1 curve</span><span><i style="background:#0284c7"></i>Light 2 curve</span><span><i style="background:#ca8a04"></i>Light 3 curve</span><span><i style="background:var(--ink)"></i>True (p, q)</span></span></figcaption></figure>
+      <div class="math" id="pqRead"></div>
+    </div>
+    <div class="math"><h3>The reflectance map</h3><p class="eq">R(p, q) = ρ (−p·sₓ − q·s_y + s_z) / √(1 + p² + q²)</p><p>Each curve is a contour R<sub>k</sub>(p, q) = I<sub>k</sub>, the set of directions that would produce the brightness observed under light <i>k</i>. Two curves can cross at two points. The third light settles which one is correct.</p></div>
+  </section>
+
+  <section class="stage" aria-labelledby="h4">
+    <div class="stage-head"><span class="num">04</span><div><h2 id="h4">From normals to shape</h2><p>The normals give the slope at each pixel. Integrating the slopes gives the height <i>z</i>(<i>x</i>, <i>y</i>). Here this uses the Frankot–Chellappa method, which finds the surface whose slopes best match in the least-squares sense. Drag to rotate.</p></div></div>
+    <div class="controls">
+      <div class="ctl"><label>Show</label><div class="seg" id="which"><button type="button" data-v="rec" aria-pressed="true">Recovered shape</button><button type="button" data-v="true" aria-pressed="false">True shape</button></div></div>
+    </div>
+    <div class="main-side">
+      <canvas class="plot" id="view3d" aria-label="3D view of the surface. Drag to rotate."></canvas>
+      <figure><canvas class="view" id="depth"></canvas><figcaption>Recovered height map (bright = high)</figcaption></figure>
+    </div>
+  </section>
+</main>
+<footer class="wrap site"></footer>
+
+<script src="common.js"></script>
+<script>
+(() => {
+"use strict";
+const { $, nav, footer, picker, toGray, show, showRGB, gaussBlur, fft2, imgXY, hiDPI, onTheme, cssVar, seg, segVal, rng, fmt } = VB;
+nav("photometric-stereo.html"); footer();
+const N = 128;
+const st = { z: null, mask: null, alb: null, n: null, L: [[-0.55, -0.45], [0.6, -0.35], [0.05, 0.62]], I: [], rn: null, ra: null, rz: null, sel: [70, 50], rot: [0.6, -0.9] };
+
+/* ---------- surfaces ---------- */
+function surf(kind) {
+  const z = new Float32Array(N * N), m = new Uint8Array(N * N); const c = N / 2;
+  for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+    const i = y * N + x, dx = x - c + 0.5, dy = y - c + 0.5, r = Math.hypot(dx, dy);
+    if (kind === "sphere") { const R = 54; if (r < R - 1) { z[i] = Math.sqrt(R * R - r * r); m[i] = 1; } }
+    else if (kind === "torus") { const a = 34, b = 20, d = r - a; if (Math.abs(d) < b - 1) { z[i] = Math.sqrt(b * b - d * d); m[i] = 1; } }
+    else if (kind === "bumps") { m[i] = 1; for (const [bx, by, A, s] of [[38, 40, 26, 13], [88, 36, 18, 10], [64, 82, 32, 16], [26, 96, -14, 9], [100, 96, 20, 11]]) z[i] += A * Math.exp(-((x - bx) ** 2 + (y - by) ** 2) / (2 * s * s)); }
+    else if (kind === "vase") { const yy = (y - 8) / (N - 16); if (yy >= 0 && yy <= 1) { const R = 22 + 16 * Math.sin(yy * Math.PI * 1.5 + 0.4) + 8 * yy; if (Math.abs(dx) < R - 1) { z[i] = Math.sqrt(R * R - dx * dx); m[i] = 1; } } }
+  }
+  return { z, m };
+}
+function normalsOf(z, m) {
+  const n = new Float32Array(N * N * 3);
+  for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+    const i = y * N + x; if (!m[i]) continue;
+    const zx = (k => (m[k] ? z[k] : z[i]))(y * N + Math.min(N - 1, x + 1)) - (k => (m[k] ? z[k] : z[i]))(y * N + Math.max(0, x - 1));
+    const zy = (k => (m[k] ? z[k] : z[i]))(Math.min(N - 1, y + 1) * N + x) - (k => (m[k] ? z[k] : z[i]))(Math.max(0, y - 1) * N + x);
+    const p = zx / 2, q = zy / 2, L = Math.hypot(p, q, 1); n[3 * i] = -p / L; n[3 * i + 1] = -q / L; n[3 * i + 2] = 1 / L;
+  }
+  return n;
+}
+function albedo(kind) { const a = new Float32Array(N * N); for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) { const i = y * N + x; a[i] = kind === "checker" ? (((x >> 4) + (y >> 4)) & 1 ? 0.9 : 0.45) : kind === "rings" ? 0.62 + 0.28 * Math.cos(Math.hypot(x - 64, y - 64) / 5) : 0.85; } return a; }
+function preview(kind) { const { z, m } = surf(kind); const n = normalsOf(z, m); const cv = document.createElement("canvas"); const s = [-0.4, -0.5, 0.77]; showRGB(cv, N, N, i => { if (!m[i]) return [28, 31, 38]; const v = Math.max(0, n[3 * i] * s[0] + n[3 * i + 1] * s[1] + n[3 * i + 2] * s[2]) * 230 + 15; return [v, v, v]; }); return cv; }
+const KINDS = [["sphere", "Sphere", "The classic test: every possible surface direction appears exactly once."], ["torus", "Torus", "Has a hole, and its inner side faces away from many lights, so shadows appear."], ["bumps", "Bumps", "Hills and one dip on a flat plane. The dip at the lower left is easy to mistake for a hill in a single image."], ["vase", "Vase", "A surface of revolution with a changing profile."]];
+const samples = KINDS.map(([k, name, note]) => ({ key: k, name, canvas: preview(k), note: `<b>${name}:</b> ${note}` }));
+
+function setSurface(kind, src, sw, sh) {
+  if (kind) { const s = surf(kind); st.z = s.z; st.mask = s.m; }
+  else { const { g } = toGray(src, sw, sh, 0, N, N); const b = gaussBlur(g, N, N, 1.5); st.z = b.map(v => v / 255 * 40); st.mask = new Uint8Array(N * N).fill(1); for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) if (x < 2 || y < 2 || x > N - 3 || y > N - 3) st.mask[y * N + x] = 0; }
+  st.n = normalsOf(st.z, st.mask); render();
+}
+
+/* ---------- lights ---------- */
+const lightVec = ([dx, dy]) => [dx, dy, Math.sqrt(Math.max(0, 1 - dx * dx - dy * dy))];
+const COLS = ["#e11d48", "#0284c7", "#ca8a04"];
+function drawLights() {
+  const cv = $("lights"); const { ctx, W } = hiDPI(cv, 220); const c = W / 2, R = W / 2 - 14;
+  ctx.clearRect(0, 0, W, W); ctx.fillStyle = cssVar("--bg"); ctx.beginPath(); ctx.arc(c, c, R, 0, 7); ctx.fill();
+  ctx.strokeStyle = cssVar("--line"); ctx.lineWidth = 1; for (const f of [1, Math.cos(Math.PI / 6), Math.cos(Math.PI / 3)]) { ctx.beginPath(); ctx.arc(c, c, R * f, 0, 7); ctx.stroke(); }
+  ctx.beginPath(); ctx.moveTo(c - R, c); ctx.lineTo(c + R, c); ctx.moveTo(c, c - R); ctx.lineTo(c, c + R); ctx.stroke();
+  ctx.fillStyle = cssVar("--muted"); ctx.font = "10px " + (cssVar("--mono") || "monospace"); ctx.textAlign = "center"; ctx.fillText("overhead", c, c + 14); ctx.fillText("horizon", c, c - R - 3); ctx.textAlign = "start";
+  st.L.forEach(([x, y], k) => { ctx.beginPath(); ctx.arc(c + x * R, c + y * R, 11, 0, 7); ctx.fillStyle = COLS[k]; ctx.fill(); ctx.fillStyle = "#fff"; ctx.font = "600 12px " + (cssVar("--body") || "sans-serif"); ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText(k + 1, c + x * R, c + y * R + 0.5); ctx.textAlign = "start"; ctx.textBaseline = "alphabetic"; });
+}
+(() => {
+  const cv = $("lights"); let drag = -1;
+  const pos = e => { const r = cv.getBoundingClientRect(); const R = r.width / 2 - 14; return [(e.clientX - r.left - r.width / 2) / R, (e.clientY - r.top - r.height / 2) / R]; };
+  cv.addEventListener("pointerdown", e => { const [x, y] = pos(e); let best = 0.25; drag = -1; st.L.forEach(([lx, ly], k) => { const d = Math.hypot(lx - x, ly - y); if (d < best) { best = d; drag = k; } }); if (drag >= 0) { cv.setPointerCapture(e.pointerId); cv.style.cursor = "grabbing"; } });
+  cv.addEventListener("pointermove", e => { if (drag < 0) return; let [x, y] = pos(e); const r = Math.hypot(x, y); if (r > 0.96) { x *= 0.96 / r; y *= 0.96 / r; } st.L[drag] = [x, y]; schedule(); });
+  cv.addEventListener("pointerup", () => { drag = -1; cv.style.cursor = "grab"; });
+})();
+$("spread").addEventListener("click", () => { st.L = [[-0.55, -0.45], [0.6, -0.35], [0.05, 0.62]]; render(); });
+$("bunch").addEventListener("click", () => { st.L = [[-0.08, -0.12], [0.1, -0.1], [0.0, 0.06]]; render(); });
+let raf = 0; const schedule = () => { if (!raf) raf = requestAnimationFrame(() => { raf = 0; render(); }); };
+
+/* ---------- render + solve ---------- */
+function inv3(M) { const [a, b, c, d, e, f, g, h, i] = M; const A = e * i - f * h, B = -(d * i - f * g), C = d * h - e * g; const det = a * A + b * B + c * C; if (Math.abs(det) < 1e-9) return [null, det]; return [[A / det, -(b * i - c * h) / det, (b * f - c * e) / det, B / det, (a * i - c * g) / det, -(a * f - c * d) / det, C / det, -(a * h - b * g) / det, (a * e - b * d) / det], det]; }
+function render() {
+  const sig = +$("noise").value; $("noiseO").value = sig; st.alb = albedo(segVal("alb"));
+  const S = st.L.map(lightVec); const R = rng(7); const { n, mask, alb } = st;
+  st.I = S.map(s => { const I = new Float32Array(N * N); for (let i = 0; i < I.length; i++) { if (!mask[i]) continue; let v = alb[i] * Math.max(0, n[3 * i] * s[0] + n[3 * i + 1] * s[1] + n[3 * i + 2] * s[2]) * 255; if (sig) { const u = Math.max(1e-9, R()), w = R(); v += sig * Math.sqrt(-2 * Math.log(u)) * Math.cos(6.2832 * w); } I[i] = Math.max(0, Math.min(255, v)); } return I; });
+  st.I.forEach((I, k) => show("im" + k, N, N, I));
+  const [Si, det] = inv3(S.flat()); const rn = new Float32Array(N * N * 3), ra = new Float32Array(N * N), err = new Float32Array(N * N); let es = 0, ec = 0, shadow = 0;
+  for (let i = 0; i < N * N; i++) {
+    if (!mask[i] || !Si) continue; const I0 = st.I[0][i] / 255, I1 = st.I[1][i] / 255, I2 = st.I[2][i] / 255; if (!I0 || !I1 || !I2) shadow++;
+    const gx = Si[0] * I0 + Si[1] * I1 + Si[2] * I2, gy = Si[3] * I0 + Si[4] * I1 + Si[5] * I2, gz = Si[6] * I0 + Si[7] * I1 + Si[8] * I2; const r = Math.hypot(gx, gy, gz) || 1e-9;
+    ra[i] = r; rn[3 * i] = gx / r; rn[3 * i + 1] = gy / r; rn[3 * i + 2] = gz / r;
+    const d = Math.max(-1, Math.min(1, rn[3 * i] * n[3 * i] + rn[3 * i + 1] * n[3 * i + 1] + rn[3 * i + 2] * n[3 * i + 2])); err[i] = Math.acos(d) * 180 / Math.PI; es += err[i]; ec++;
+  }
+  st.rn = rn; st.ra = ra;
+  showRGB("rAlb", N, N, i => mask[i] ? Array(3).fill(Math.min(255, ra[i] * 255)) : [28, 31, 38]);
+  showRGB("rNrm", N, N, i => mask[i] ? [(rn[3 * i] + 1) * 127.5, (-rn[3 * i + 1] + 1) * 127.5, (rn[3 * i + 2] + 1) * 127.5] : [28, 31, 38]);
+  showRGB("rErr", N, N, i => mask[i] ? Array(3).fill(Math.min(255, err[i] / 20 * 255)) : [28, 31, 38]);
+  const ad = Math.abs(det); const tag = ad > 0.25 ? '<span class="tag good">well spread</span>' : ad > 0.06 ? '<span class="tag warn">close together</span>' : '<span class="tag bad">nearly coplanar</span>';
+  $("stats").innerHTML = `<span class="chip">Light spread |det S| <b>${fmt(ad, 3)}</b></span> ${tag}<span class="chip">Mean normal error <b>${ec ? fmt(es / ec, 2) : "–"}°</b></span><span class="chip">Pixels in shadow in some image <b>${(100 * shadow / Math.max(1, mask.reduce((a, b) => a + b, 0))).toFixed(1)}%</b></span>`;
+  drawLights(); integrate(); drawPQ(); draw3d();
+}
+$("noise").addEventListener("input", schedule); seg("alb", render);
+
+/* ---------- integrate (Frankot–Chellappa) ---------- */
+function integrate() {
+  const re = new Float64Array(N * N), im = new Float64Array(N * N), qr = new Float64Array(N * N), qi = new Float64Array(N * N); const { rn, mask } = st;
+  for (let i = 0; i < N * N; i++) { if (!mask[i]) continue; const nz = Math.max(0.15, rn[3 * i + 2]); re[i] = Math.max(-6, Math.min(6, -rn[3 * i] / nz)); qr[i] = Math.max(-6, Math.min(6, -rn[3 * i + 1] / nz)); }
+  fft2(re, im, N, false); fft2(qr, qi, N, false);
+  const zr = new Float64Array(N * N), zi = new Float64Array(N * N);
+  for (let v = 0; v < N; v++) for (let u = 0; u < N; u++) { const i = v * N + u; const wx = 2 * Math.PI * (u < N / 2 ? u : u - N) / N, wy = 2 * Math.PI * (v < N / 2 ? v : v - N) / N; const d = wx * wx + wy * wy; if (!d) continue;
+    // Z = (-j wx P - j wy Q) / d
+    zr[i] = (wx * im[i] + wy * qi[i]) / d; zi[i] = (-wx * re[i] - wy * qr[i]) / d; }
+  fft2(zr, zi, N, true);
+  let lo = Infinity; for (let i = 0; i < N * N; i++) if (mask[i]) lo = Math.min(lo, zr[i]);
+  const z = new Float32Array(N * N); for (let i = 0; i < N * N; i++) z[i] = mask[i] ? zr[i] - lo : 0; st.rz = z;
+  let hi = 1; for (const v of z) hi = Math.max(hi, v); showRGB("depth", N, N, i => mask[i] ? Array(3).fill(30 + z[i] / hi * 225) : [28, 31, 38]);
+}
+
+/* ---------- gradient space ---------- */
+function drawPQ() {
+  const cv = $("pq"); const { ctx, W, H } = hiDPI(cv, 380); ctx.clearRect(0, 0, W, H);
+  const S = st.L.map(lightVec); const [x, y] = st.sel; const i = y * N + x; const E = 2.5; const sz = Math.min(W, H) - 30, ox = (W - sz) / 2, oy = 15;
+  const P = p => ox + (p + E) / (2 * E) * sz, Q = q => oy + (q + E) / (2 * E) * sz;
+  ctx.fillStyle = cssVar("--surface"); ctx.fillRect(ox, oy, sz, sz); ctx.strokeStyle = cssVar("--line"); ctx.strokeRect(ox, oy, sz, sz);
+  ctx.beginPath(); ctx.moveTo(P(0), oy); ctx.lineTo(P(0), oy + sz); ctx.moveTo(ox, Q(0)); ctx.lineTo(ox + sz, Q(0)); ctx.stroke();
+  ctx.fillStyle = cssVar("--muted"); ctx.font = "11px " + (cssVar("--mono") || "monospace"); ctx.fillText("p →", ox + sz - 28, Q(0) - 5); ctx.fillText("q ↓", P(0) + 5, oy + sz - 6); ctx.fillText("−2.5", ox + 2, Q(0) + 13); ctx.fillText("2.5", ox + sz - 22, Q(0) + 13);
+  const pq = st.mask[i] ? [-st.n[3 * i] / st.n[3 * i + 2], -st.n[3 * i + 1] / st.n[3 * i + 2]] : null;
+  const rho = st.mask[i] ? st.alb[i] : 1; const G = 220; const step = sz / G;
+  S.forEach((s, k) => {
+    const tgt = st.I[k][i] / 255 / rho; const f = new Float32Array((G + 1) * (G + 1));
+    for (let b = 0; b <= G; b++) for (let a = 0; a <= G; a++) { const p = -E + a / G * 2 * E, q = -E + b / G * 2 * E; f[b * (G + 1) + a] = Math.max(0, -p * s[0] - q * s[1] + s[2]) / Math.hypot(1, p, q) - tgt; }
+    ctx.fillStyle = COLS[k];
+    for (let b = 0; b < G; b++) for (let a = 0; a < G; a++) { const v = f[b * (G + 1) + a]; if ((v > 0) !== (f[b * (G + 1) + a + 1] > 0) || (v > 0) !== (f[(b + 1) * (G + 1) + a] > 0)) ctx.fillRect(ox + a * step - 0.6, oy + b * step - 0.6, 2.2, 2.2); }
+  });
+  if (pq && Math.abs(pq[0]) <= E && Math.abs(pq[1]) <= E) { ctx.beginPath(); ctx.arc(P(pq[0]), Q(pq[1]), 6, 0, 7); ctx.strokeStyle = cssVar("--ink"); ctx.lineWidth = 2.5; ctx.stroke(); }
+  const vals = st.I.map(I => Math.round(I[i]));
+  $("pqRead").innerHTML = `<h3>Pixel (${x}, ${y})</h3>` + (st.mask[i] ? `<p class="mono">I₁ = ${vals[0]}, I₂ = ${vals[1]}, I₃ = ${vals[2]}</p><p class="mono">true (p, q) = (${fmt(pq[0], 2)}, ${fmt(pq[1], 2)})</p><p class="mono">recovered ρ = ${fmt(st.ra[i], 2)} (true ${fmt(st.alb[i], 2)})</p><p class="note">The curves are drawn using the true albedo at this pixel. ${vals.some(v => v === 0) ? "<b>This pixel is in shadow under one light</b>, so that light's curve is a whole region rather than a line." : "All three curves pass through the ringed point."} If (p, q) lies outside ±2.5, the point is off the chart.</p>` : `<p class="note">This pixel is background. Click a point on the surface.</p>`);
+  st.I.forEach((I, k) => { const ctx2 = show("im" + k, N, N, I); ctx2.strokeStyle = "#ff3b30"; ctx2.lineWidth = 1; ctx2.strokeRect(x - 3.5, y - 3.5, 7, 7); });
+}
+[0, 1, 2].forEach(k => $("im" + k).addEventListener("click", e => { st.sel = imgXY(e, e.currentTarget, N, N); drawPQ(); }));
+
+/* ---------- 3D view ---------- */
+function draw3d() {
+  const cv = $("view3d"); const { ctx, W, H } = hiDPI(cv, 380); ctx.clearRect(0, 0, W, H);
+  const z = segVal("which") === "true" ? st.z.map((v, i) => st.mask[i] ? v : 0) : st.rz; const { mask, alb } = st;
+  let zmean = 0, cnt = 0; for (let i = 0; i < N * N; i++) if (mask[i]) { zmean += z[i]; cnt++; } zmean /= Math.max(1, cnt);
+  const [yaw, pitch] = st.rot; const cy = Math.cos(yaw), sy = Math.sin(yaw), cp = Math.cos(pitch), sp = Math.sin(pitch); const sc = Math.min(W, H) / (N * 1.25);
+  const step = 2, G = N / step; const V = new Float32Array((G + 1) * (G + 1) * 3);
+  for (let b = 0; b <= G; b++) for (let a = 0; a <= G; a++) { const x = Math.min(N - 1, a * step), y = Math.min(N - 1, b * step); const i = y * N + x; let X = x - N / 2, Y = y - N / 2, Z = (mask[i] ? z[i] : 0) - zmean;
+    const x1 = X * cy - Y * sy, y1 = X * sy + Y * cy; const y2 = y1 * cp - Z * sp, z2 = y1 * sp + Z * cp; const k = 3 * (b * (G + 1) + a); V[k] = x1; V[k + 1] = y2; V[k + 2] = z2; }
+  const quads = [];
+  for (let b = 0; b < G; b++) for (let a = 0; a < G; a++) { const i = Math.min(N - 1, b * step + 1) * N + Math.min(N - 1, a * step + 1); if (!mask[i]) continue; const ids = [b * (G + 1) + a, b * (G + 1) + a + 1, (b + 1) * (G + 1) + a + 1, (b + 1) * (G + 1) + a]; let d = 0; for (const t of ids) d += V[3 * t + 2]; quads.push([d, ids, alb[i]]); }
+  quads.sort((p, q) => q[0] - p[0]);
+  const L = [-0.35, -0.55, -0.76]; const ln = Math.hypot(...L);
+  for (const [, ids, al] of quads) {
+    const p = ids.map(t => [V[3 * t], V[3 * t + 1], V[3 * t + 2]]);
+    const ux = p[2][0] - p[0][0], uy = p[2][1] - p[0][1], uz = p[2][2] - p[0][2], vx = p[3][0] - p[1][0], vy = p[3][1] - p[1][1], vz = p[3][2] - p[1][2];
+    let nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx; const nl = Math.hypot(nx, ny, nz) || 1;
+    const sh = Math.abs(nx * L[0] + ny * L[1] + nz * L[2]) / nl / ln; const v = Math.round((0.15 + 0.85 * sh) * 235 * (0.35 + 0.65 * al));
+    ctx.fillStyle = `rgb(${v},${v},${Math.min(255, v + 10)})`; ctx.strokeStyle = ctx.fillStyle; ctx.lineWidth = 0.6;
+    ctx.beginPath(); p.forEach(([x, y], j) => j ? ctx.lineTo(W / 2 + x * sc, H / 2 + y * sc) : ctx.moveTo(W / 2 + x * sc, H / 2 + y * sc)); ctx.closePath(); ctx.fill(); ctx.stroke();
+  }
+}
+(() => { const cv = $("view3d"); let last = null; cv.addEventListener("pointerdown", e => { last = [e.clientX, e.clientY]; cv.setPointerCapture(e.pointerId); cv.style.cursor = "grabbing"; }); cv.addEventListener("pointermove", e => { if (!last) return; st.rot[0] += (e.clientX - last[0]) * 0.01; st.rot[1] = Math.max(-1.5, Math.min(0, st.rot[1] + (e.clientY - last[1]) * 0.01)); last = [e.clientX, e.clientY]; draw3d(); }); cv.addEventListener("pointerup", () => { last = null; cv.style.cursor = "grab"; }); })();
+seg("which", draw3d);
+
+/* ---------- start ---------- */
+const p = picker({ el: "pick", samples, noteEl: "pickNote", onImage: (src, sw, sh, info) => {
+  if (info.sample) setSurface(info.sample.key); else { setSurface(null, src, sw, sh); $("pickNote").innerHTML = `<b>${VB.esc(info.name)}</b> is used as a height map, smoothed slightly, with white 40 pixels above black.`; }
+} });
+onTheme(() => { if (st.I.length) { drawLights(); drawPQ(); draw3d(); } });
+p.pick(samples[0]);
+})();
+</script>
+</body>
+</html>

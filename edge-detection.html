@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Edge Detection, Interactively</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,500;8..60,600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="site.css">
+</head>
+<body>
+<header class="site"></header>
+<main class="wrap">
+  <div class="intro">
+    <h1>Edge Detection, Interactively</h1>
+    <p class="lead">An edge is a place where brightness changes quickly. Find edges with derivatives, then thin and link them with the Canny detector.</p>
+    <p>Pick a sample or use your own photo. Follows the Edge Detection lectures.</p>
+  </div>
+
+  <section class="stage" aria-labelledby="h0">
+    <div class="stage-head"><span class="num">00</span><div><h2 id="h0">Choose an image</h2><p>Color images are converted to grayscale.</p></div></div>
+    <div id="pick"></div>
+    <p class="note" id="pickNote"></p>
+  </section>
+
+  <section class="stage" aria-labelledby="h1">
+    <div class="stage-head"><span class="num">01</span><div><h2 id="h1">Edges in one row</h2><p>Click the image to choose a row. Along that row, an edge is a peak in the first derivative and a zero crossing in the second derivative. Smoothing first (σ) suppresses peaks caused by noise.</p></div></div>
+    <div class="main-side">
+      <figure><canvas class="view click" id="rowImg"></canvas><figcaption id="rowCap">Click to choose a row</figcaption></figure>
+      <figure><canvas class="plot" id="rowPlot" style="height:330px"></canvas><figcaption><span class="legend"><span><i style="background:var(--ink)"></i>I(x), smoothed</span><span><i style="background:var(--accent)"></i>dI/dx</span><span><i style="background:#c2410c"></i>d²I/dx²</span><span><i style="background:#16a34a"></i>edge found</span></span></figcaption></figure>
+    </div>
+    <div class="controls">
+      <div class="ctl"><label for="rSig">Smoothing σ</label><input type="range" id="rSig" min="0" max="6" step="0.1" value="1.5"><output id="rSigO">1.5</output></div>
+      <div class="ctl"><label for="rThr">Min. slope for an edge</label><input type="range" id="rThr" min="1" max="60" value="8"><output id="rThrO">8</output></div>
+    </div>
+  </section>
+
+  <section class="stage" aria-labelledby="h2">
+    <div class="stage-head"><span class="num">02</span><div><h2 id="h2">The gradient</h2><p>In 2D the derivative is a vector, ∇I = (∂I/∂x, ∂I/∂y). Its length is the edge strength, and it points across the edge toward the brighter side. Click the strength image to see the vector at that pixel.</p></div></div>
+    <div class="controls">
+      <div class="ctl"><label>Operator</label><div class="seg" id="op"><button type="button" data-v="roberts" aria-pressed="false">Roberts</button><button type="button" data-v="prewitt" aria-pressed="false">Prewitt</button><button type="button" data-v="sobel" aria-pressed="true">Sobel</button></div></div>
+      <div class="ctl"><label for="gSig">Smooth first σ</label><input type="range" id="gSig" min="0" max="4" step="0.1" value="1"><output id="gSigO">1.0</output></div>
+    </div>
+    <div class="four">
+      <figure><canvas class="view" id="gx"></canvas><figcaption>∂I/∂x (gray = 0)</figcaption></figure>
+      <figure><canvas class="view" id="gy"></canvas><figcaption>∂I/∂y (gray = 0)</figcaption></figure>
+      <figure><canvas class="view click" id="gm"></canvas><figcaption>Strength ‖∇I‖. Click a pixel.</figcaption></figure>
+      <figure><canvas class="view" id="go"></canvas><figcaption>Direction: hue = angle, brightness = strength</figcaption></figure>
+    </div>
+    <div class="two">
+      <div class="math"><h3>Kernels</h3><div id="opK" class="eq"></div></div>
+      <div class="math"><h3>At the selected pixel</h3><div id="gRead"></div></div>
+    </div>
+  </section>
+
+  <section class="stage" aria-labelledby="h3">
+    <div class="stage-head"><span class="num">03</span><div><h2 id="h3">Canny, step by step</h2><p>Gradient strength gives thick, broken edges. Canny thins them to one pixel by keeping only local maxima across the edge, then links them using two thresholds.</p></div></div>
+    <div class="controls">
+      <div class="ctl"><label for="cSig">σ</label><input type="range" id="cSig" min="0.5" max="4" step="0.1" value="1.4"><output id="cSigO">1.4</output></div>
+      <div class="ctl"><label for="cLo">Low threshold</label><input type="range" id="cLo" min="1" max="60" value="8"><output id="cLoO">8%</output></div>
+      <div class="ctl"><label for="cHi">High threshold</label><input type="range" id="cHi" min="2" max="80" value="20"><output id="cHiO">20%</output></div>
+    </div>
+    <div class="four">
+      <figure><canvas class="view" id="c1"></canvas><figcaption>1. Smooth, then gradient strength</figcaption></figure>
+      <figure><canvas class="view" id="c2"></canvas><figcaption>2. Non-maximum suppression: keep a pixel only if it is stronger than both neighbors along the gradient</figcaption></figure>
+      <figure><canvas class="view" id="c3"></canvas><figcaption>3. Double threshold: <b style="color:#e5e7eb">strong</b>, <b style="color:#f59e0b">weak</b>, rest dropped</figcaption></figure>
+      <figure><canvas class="view" id="c4"></canvas><figcaption>4. Hysteresis: keep weak pixels only if they connect to a strong one</figcaption></figure>
+    </div>
+    <div class="stats" id="cStats"></div>
+  </section>
+
+  <section class="stage" aria-labelledby="h4">
+    <div class="stage-head"><span class="num">04</span><div><h2 id="h4">Laplacian of Gaussian</h2><p>The Laplacian ∇²I = ∂²I/∂x² + ∂²I/∂y² is the 2D second derivative. It does not depend on direction, and edges are where it crosses zero. Larger σ finds only coarse edges.</p></div></div>
+    <div class="controls">
+      <div class="ctl"><label for="lSig">σ</label><input type="range" id="lSig" min="1" max="6" step="0.1" value="2"><output id="lSigO">2.0</output></div>
+      <div class="ctl"><label for="lThr">Min. crossing strength</label><input type="range" id="lThr" min="0" max="40" value="6"><output id="lThrO">6%</output></div>
+    </div>
+    <div class="two">
+      <figure><canvas class="view" id="l1"></canvas><figcaption>∇²(G<sub>σ</sub> ∗ I): gray = 0, dark = negative, bright = positive</figcaption></figure>
+      <figure><canvas class="view" id="l2"></canvas><figcaption>Zero crossings</figcaption></figure>
+    </div>
+  </section>
+</main>
+<footer class="wrap site"></footer>
+
+<script src="common.js"></script>
+<script>
+(() => {
+"use strict";
+const { $, nav, footer, SAMPLES, picker, toGray, show, showRGB, gaussBlur, conv2, imgXY, hiDPI, onTheme, cssVar, seg, segVal, hsvToRgb, arrow, fmt } = VB;
+nav("edge-detection.html"); footer();
+const st = { w: 0, h: 0, g: null, row: 0, sel: null };
+
+/* ---------- 01 row ---------- */
+function runRow() {
+  const { w, h, g } = st; const s = +$("rSig").value, thr = +$("rThr").value; $("rSigO").value = s.toFixed(1); $("rThrO").value = thr;
+  const ctx = show("rowImg", w, h, g); ctx.fillStyle = "rgba(31,86,209,.9)"; ctx.fillRect(0, st.row - 0.5, w, 1.5);
+  $("rowCap").textContent = `Row y = ${st.row}. Click to choose another row.`;
+  let r = new Float32Array(w); for (let x = 0; x < w; x++) r[x] = g[st.row * w + x];
+  if (s > 0.01) { const k = VB.gaussKernel(s), R = (k.length - 1) / 2; const t = new Float32Array(w); for (let x = 0; x < w; x++) { let a = 0; for (let i = -R; i <= R; i++) a += r[Math.min(w - 1, Math.max(0, x + i))] * k[i + R]; t[x] = a; } r = t; }
+  const d1 = new Float32Array(w), d2 = new Float32Array(w);
+  for (let x = 1; x < w - 1; x++) { d1[x] = (r[x + 1] - r[x - 1]) / 2; d2[x] = r[x + 1] - 2 * r[x] + r[x - 1]; }
+  const edges = []; for (let x = 2; x < w - 2; x++) { const a = Math.abs(d1[x]); if (a >= thr && a >= Math.abs(d1[x - 1]) && a > Math.abs(d1[x + 1])) edges.push(x); }
+  const cv = $("rowPlot"); const { ctx: c, W, H } = hiDPI(cv, 330); c.clearRect(0, 0, W, H);
+  const band = (H - 20) / 3, p = 8; const ink = cssVar("--ink"), mut = cssVar("--muted"), line = cssVar("--line");
+  const plot = (arr, i, col, sym, label) => {
+    const top = 6 + i * (band + 4); let lo = Infinity, hi = -Infinity; for (const v of arr) { lo = Math.min(lo, v); hi = Math.max(hi, v); }
+    if (sym) { const m = Math.max(Math.abs(lo), Math.abs(hi), 1); lo = -m; hi = m; } else { lo = 0; hi = 255; }
+    const Y = v => top + band - (v - lo) / (hi - lo) * band; const X = x => p + x / (w - 1) * (W - 2 * p);
+    c.strokeStyle = line; c.lineWidth = 1; c.strokeRect(p, top, W - 2 * p, band);
+    if (sym) { c.setLineDash([3, 3]); c.beginPath(); c.moveTo(p, Y(0)); c.lineTo(W - p, Y(0)); c.stroke(); c.setLineDash([]); }
+    c.strokeStyle = "#16a34a"; c.globalAlpha = 0.7; for (const x of edges) { c.beginPath(); c.moveTo(X(x), top); c.lineTo(X(x), top + band); c.stroke(); } c.globalAlpha = 1;
+    c.strokeStyle = col; c.lineWidth = 1.6; c.beginPath(); for (let x = 0; x < w; x++) x ? c.lineTo(X(x), Y(arr[x])) : c.moveTo(X(x), Y(arr[x])); c.stroke();
+    c.fillStyle = mut; c.font = "11px " + (cssVar("--mono") || "monospace"); c.fillText(label, p + 6, top + 13);
+  };
+  plot(r, 0, ink, false, "I(x)"); plot(d1, 1, cssVar("--accent"), true, "dI/dx"); plot(d2, 2, "#c2410c", true, "d²I/dx²");
+}
+$("rowImg").addEventListener("click", e => { st.row = Math.max(0, Math.min(st.h - 1, imgXY(e, e.currentTarget, st.w, st.h)[1])); runRow(); });
+["rSig", "rThr"].forEach(id => $(id).addEventListener("input", runRow));
+
+/* ---------- 02 gradient ---------- */
+const OPS = {
+  roberts: { x: [0, 0, 0, 0, 1, 0, 0, 0, -1], y: [0, 0, 0, 0, 0, 1, 0, -1, 0], txt: "Roberts (2×2, diagonal differences)<br>[ 1  0 ]    [ 0  1 ]<br>[ 0 −1 ]    [−1  0 ]<br>These measure change along the two diagonals, so ∂x and ∂y are rotated by 45°." },
+  prewitt: { x: [-1, 0, 1, -1, 0, 1, -1, 0, 1], y: [-1, -1, -1, 0, 0, 0, 1, 1, 1], txt: "Prewitt ∂x          ∂y<br>[−1 0 1]      [−1 −1 −1]<br>[−1 0 1]      [ 0  0  0]<br>[−1 0 1]      [ 1  1  1]" },
+  sobel: { x: [-1, 0, 1, -2, 0, 2, -1, 0, 1], y: [-1, -2, -1, 0, 0, 0, 1, 2, 1], txt: "Sobel ∂x            ∂y<br>[−1 0 1]      [−1 −2 −1]<br>[−2 0 2]      [ 0  0  0]<br>[−1 0 1]      [ 1  2  1]<br>Weights the center row more, which adds a little smoothing." },
+};
+const gr = { gx: null, gy: null, m: null };
+function gradient(a, w, h, op) { const o = OPS[op]; return [conv2(a, w, h, o.x, 3, 3), conv2(a, w, h, o.y, 3, 3)]; }
+function runGrad() {
+  const { w, h, g } = st; const op = segVal("op"), s = +$("gSig").value; $("gSigO").value = s.toFixed(1);
+  const sm = gaussBlur(g, w, h, s); const [gx, gy] = gradient(sm, w, h, op); const m = new Float32Array(w * h); let mx = 1;
+  for (let i = 0; i < m.length; i++) { m[i] = Math.hypot(gx[i], gy[i]); mx = Math.max(mx, m[i]); }
+  Object.assign(gr, { gx, gy, m, mx });
+  show("gx", w, h, gx, "signed"); show("gy", w, h, gy, "signed");
+  showRGB("go", w, h, i => hsvToRgb(((Math.atan2(-gy[i], gx[i]) * 180 / Math.PI) + 360) % 360, 0.9, Math.min(1, Math.sqrt(m[i] / mx) * 1.3)));
+  $("opK").innerHTML = OPS[op].txt; drawSel();
+}
+function drawSel() {
+  const { w, h } = st; const ctx = show("gm", w, h, gr.m, "abs"); if (!st.sel) { $("gRead").innerHTML = '<p class="note">Click the strength image.</p>'; return; }
+  const [x, y] = st.sel; const i = y * w + x; const gx = gr.gx[i], gy = gr.gy[i], m = gr.m[i];
+  const L = 6 + 30 * Math.min(1, m / gr.mx * 2); const ux = m > 1e-6 ? gx / m : 0, uy = m > 1e-6 ? gy / m : 0;
+  ctx.beginPath(); ctx.arc(x, y, 3, 0, 7); ctx.fillStyle = "#ff3b30"; ctx.fill();
+  arrow(ctx, x, y, x + ux * L, y + uy * L, "#ff3b30", 2, 7);
+  const ang = Math.atan2(-gy, gx) * 180 / Math.PI;
+  $("gRead").innerHTML = `<dl class="detail" style="display:grid;grid-template-columns:auto 1fr;gap:3px 12px;margin:0"><dt>Pixel</dt><dd class="mono">(${x}, ${y})</dd><dt>∂I/∂x</dt><dd class="mono">${fmt(gx, 1)}</dd><dt>∂I/∂y</dt><dd class="mono">${fmt(gy, 1)}</dd><dt>‖∇I‖</dt><dd class="mono">√(∂x² + ∂y²) = ${fmt(m, 1)}</dd><dt>Direction θ</dt><dd class="mono">atan2(−∂y, ∂x) = ${fmt(ang, 1)}°</dd></dl><p class="note">The red arrow points toward brighter pixels. The edge itself runs perpendicular to it. θ is measured counter-clockwise with y pointing up.</p>`;
+}
+seg("op", runGrad); $("gSig").addEventListener("input", runGrad);
+$("gm").addEventListener("click", e => { st.sel = imgXY(e, e.currentTarget, st.w, st.h); drawSel(); });
+
+/* ---------- 03 canny ---------- */
+function runCanny() {
+  const { w, h, g } = st; const s = +$("cSig").value; let lo = +$("cLo").value, hi = +$("cHi").value;
+  if (lo >= hi) { lo = hi - 1; $("cLo").value = lo; }
+  $("cSigO").value = s.toFixed(1); $("cLoO").value = lo + "%"; $("cHiO").value = hi + "%";
+  const sm = gaussBlur(g, w, h, s); const [gx, gy] = gradient(sm, w, h, "sobel"); const m = new Float32Array(w * h); let mx = 1;
+  for (let i = 0; i < m.length; i++) { m[i] = Math.hypot(gx[i], gy[i]); mx = Math.max(mx, m[i]); }
+  const nms = new Float32Array(w * h);
+  for (let y = 1; y < h - 1; y++) for (let x = 1; x < w - 1; x++) {
+    const i = y * w + x; let a = Math.atan2(gy[i], gx[i]) * 180 / Math.PI; if (a < 0) a += 180;
+    let o; if (a < 22.5 || a >= 157.5) o = 1; else if (a < 67.5) o = w + 1; else if (a < 112.5) o = w; else o = w - 1;
+    if (m[i] >= m[i + o] && m[i] >= m[i - o]) nms[i] = m[i];
+  }
+  const H = hi / 100 * mx, Lw = lo / 100 * mx; const cls = new Uint8Array(w * h); // 2 strong, 1 weak
+  for (let i = 0; i < cls.length; i++) cls[i] = nms[i] >= H ? 2 : nms[i] >= Lw ? 1 : 0;
+  const fin = new Uint8Array(w * h); const stack = []; for (let i = 0; i < cls.length; i++) if (cls[i] === 2) { fin[i] = 1; stack.push(i); }
+  while (stack.length) { const i = stack.pop(); const x = i % w, y = (i / w) | 0; for (let j = -1; j <= 1; j++) for (let k = -1; k <= 1; k++) { const xx = x + k, yy = y + j; if (xx < 0 || yy < 0 || xx >= w || yy >= h) continue; const n = yy * w + xx; if (!fin[n] && cls[n] === 1) { fin[n] = 1; stack.push(n); } } }
+  show("c1", w, h, m, "abs"); show("c2", w, h, nms, "abs");
+  showRGB("c3", w, h, i => cls[i] === 2 ? [229, 231, 235] : cls[i] === 1 ? [245, 158, 11] : [12, 14, 18]);
+  showRGB("c4", w, h, i => fin[i] ? (cls[i] === 2 ? [255, 255, 255] : [245, 158, 11]) : [12, 14, 18]);
+  let nS = 0, nW = 0, nK = 0; for (let i = 0; i < cls.length; i++) { if (cls[i] === 2) nS++; else if (cls[i] === 1) { nW++; if (fin[i]) nK++; } }
+  $("cStats").innerHTML = `<span class="chip">Strong pixels <b>${nS.toLocaleString()}</b></span><span class="chip">Weak pixels <b>${nW.toLocaleString()}</b></span><span class="chip">Weak kept by hysteresis <b>${nK.toLocaleString()}</b></span><span class="chip">Final edge pixels <b>${(nS + nK).toLocaleString()}</b></span>`;
+}
+["cSig", "cLo", "cHi"].forEach(id => $(id).addEventListener("input", runCanny));
+
+/* ---------- 04 LoG ---------- */
+function runLoG() {
+  const { w, h, g } = st; const s = +$("lSig").value, t = +$("lThr").value; $("lSigO").value = s.toFixed(1); $("lThrO").value = t + "%";
+  const sm = gaussBlur(g, w, h, s); const L = conv2(sm, w, h, [0, 1, 0, 1, -4, 1, 0, 1, 0], 3, 3); let mx = 1; for (const v of L) mx = Math.max(mx, Math.abs(v));
+  const thr = t / 100 * mx * 2; const z = new Uint8Array(w * h);
+  for (let y = 0; y < h - 1; y++) for (let x = 0; x < w - 1; x++) { const i = y * w + x, a = L[i]; for (const n of [i + 1, i + w]) { const b = L[n]; if ((a < 0) !== (b < 0) && Math.abs(a - b) >= thr) { z[Math.abs(a) < Math.abs(b) ? i : n] = 1; } } }
+  show("l1", w, h, L, "signed"); showRGB("l2", w, h, i => z[i] ? [255, 255, 255] : [12, 14, 18]);
+}
+["lSig", "lThr"].forEach(id => $(id).addEventListener("input", runLoG));
+
+/* ---------- load ---------- */
+function load(src, sw, sh) {
+  Object.assign(st, toGray(src, sw, sh, 400)); st.row = Math.round(st.h * 0.62); st.sel = null;
+  runRow(); runGrad(); runCanny(); runLoG();
+  let best = 0; for (let i = 0; i < gr.m.length; i++) if (gr.m[i] > gr.m[best]) best = i; st.sel = [best % st.w, (best / st.w) | 0]; drawSel();
+}
+const samples = [
+  Object.assign({}, SAMPLES.scene, { note: "<b>Scene:</b> the row through the fence crosses many sharp edges. Raise σ and watch small peaks disappear." }),
+  Object.assign({}, SAMPLES.shapes, { note: "<b>Shapes:</b> clean edges in every direction. Check the direction image: each side of a shape gets its own color." }),
+  Object.assign({}, SAMPLES.text, { note: "<b>Text:</b> fine strokes need a small σ. With a large σ, letters blur together." }),
+  Object.assign({}, SAMPLES.blobs, { note: "<b>Blobs:</b> many edges of different strengths, good for tuning Canny's two thresholds." }),
+];
+const p = picker({ el: "pick", samples, noteEl: "pickNote", onImage: load });
+onTheme(() => st.g && runRow());
+p.pick(samples[0]);
+})();
+</script>
+</body>
+</html>

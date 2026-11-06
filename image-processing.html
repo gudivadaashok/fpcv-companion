@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Image Processing, Interactively</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,500;8..60,600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="site.css">
+</head>
+<body>
+<header class="site"></header>
+<main class="wrap">
+  <div class="intro">
+    <h1>Image Processing, Interactively</h1>
+    <p class="lead">Change pixel values one at a time, slide a kernel across the image, remove noise, and filter in the frequency domain.</p>
+    <p>Pick a sample or use your own photo. Follows the Image Processing I and II lectures.</p>
+  </div>
+
+  <section class="stage" aria-labelledby="h0">
+    <div class="stage-head"><span class="num">00</span><div><h2 id="h0">Choose an image</h2><p>Color images are converted to grayscale. The same image is used in every section below.</p></div></div>
+    <div id="pick"></div>
+    <p class="note" id="pickNote"></p>
+  </section>
+
+  <section class="stage" aria-labelledby="h1">
+    <div class="stage-head"><span class="num">01</span><div><h2 id="h1">Point processing</h2><p>Each output pixel depends only on the input pixel at the same place: <i>g</i>(<i>x</i>, <i>y</i>) = <i>f</i>(<i>I</i>(<i>x</i>, <i>y</i>)). The curve below shows the mapping <i>f</i>, from input brightness to output brightness.</p></div></div>
+    <div class="two">
+      <figure><canvas class="view" id="ppIn"></canvas><figcaption>Input <i>I</i></figcaption></figure>
+      <figure><canvas class="view" id="ppOut"></canvas><figcaption>Output <i>g</i> = <i>f</i>(<i>I</i>)</figcaption></figure>
+    </div>
+    <div class="two">
+      <figure><canvas class="plot" id="ppCurve" style="height:200px"></canvas><figcaption>Transfer function <i>f</i>: input brightness (x-axis) to output brightness (y-axis)</figcaption></figure>
+      <figure><canvas class="plot" id="ppHist" style="height:200px"></canvas><figcaption><span class="legend"><span><i style="background:var(--muted)"></i>Input histogram</span><span><i style="background:var(--accent)"></i>Output histogram</span></span></figcaption></figure>
+    </div>
+    <div class="controls">
+      <div class="ctl"><label for="ppB">Brightness</label><input type="range" id="ppB" min="-120" max="120" value="0"><output id="ppBo">0</output></div>
+      <div class="ctl"><label for="ppC">Contrast</label><input type="range" id="ppC" min="0.2" max="3" step="0.05" value="1"><output id="ppCo">1.00</output></div>
+      <div class="ctl"><label for="ppG">Gamma γ</label><input type="range" id="ppG" min="0.25" max="3" step="0.05" value="1"><output id="ppGo">1.00</output></div>
+      <div class="ctl"><label for="ppEq">Histogram equalization</label><input type="checkbox" id="ppEq"></div>
+      <div class="ctl"><label for="ppInv">Invert</label><input type="checkbox" id="ppInv"></div>
+      <button type="button" class="btn" id="ppReset">Reset</button>
+    </div>
+    <div class="math"><h3>The mapping</h3><p class="eq" id="ppEqn"></p><p>Equalization uses the cumulative histogram as <i>f</i>, which spreads the brightness levels so each is used about equally. The output histogram becomes roughly flat.</p></div>
+  </section>
+
+  <section class="stage" aria-labelledby="h2">
+    <div class="stage-head"><span class="num">02</span><div><h2 id="h2">Convolution with a kernel</h2><p>A linear shift-invariant system is fully described by its kernel <i>h</i>. Each output pixel is a weighted sum of the input pixels around it. Click any pixel in the output to see the exact sum.</p></div></div>
+    <div class="controls">
+      <div class="ctl"><label for="kSel">Kernel</label>
+        <select id="kSel"><option value="box">Box (average) 3×3</option><option value="gauss" selected>Gaussian</option><option value="sharpen">Sharpen</option><option value="lap">Laplacian (edges)</option><option value="sobelx">Sobel x (vertical edges)</option><option value="emboss">Emboss</option><option value="id">Identity</option><option value="custom">Custom 3×3</option></select></div>
+      <div class="ctl" id="sigWrap"><label for="kSig">σ</label><input type="range" id="kSig" min="0.5" max="6" step="0.1" value="2"><output id="kSigO">2.0</output></div>
+    </div>
+    <div class="main-side">
+      <div class="two">
+        <figure><canvas class="view" id="cvIn"></canvas><figcaption>Input <i>f</i></figcaption></figure>
+        <figure><canvas class="view click" id="cvOut"></canvas><figcaption id="cvCap">Output <i>g</i> = <i>f</i> ∗ <i>h</i>. Click a pixel.</figcaption></figure>
+      </div>
+      <div class="math">
+        <h3>Kernel <i>h</i></h3>
+        <div id="kView"></div>
+        <p class="note" id="kNote"></p>
+        <div id="calc"></div>
+      </div>
+    </div>
+    <div class="math"><h3>The sum</h3><p class="eq">g(i, j) = Σ<sub>m</sub> Σ<sub>n</sub> f(m, n) · h(i − m, j − n)</p><p>Kernels whose weights sum to 1 (box, Gaussian) keep the overall brightness. Kernels whose weights sum to 0 (Laplacian, Sobel) respond only to change, so their output is shown with gray as 0, darker as negative and brighter as positive.</p></div>
+  </section>
+
+  <section class="stage" aria-labelledby="h3">
+    <div class="stage-head"><span class="num">03</span><div><h2 id="h3">Removing noise</h2><p>Add noise, then compare three filters. PSNR measures how close each result is to the clean image. Higher is better.</p></div></div>
+    <div class="controls">
+      <div class="ctl"><label>Noise</label><div class="seg" id="nType"><button type="button" data-v="sp" aria-pressed="true">Salt &amp; pepper</button><button type="button" data-v="gauss" aria-pressed="false">Gaussian</button></div></div>
+      <div class="ctl"><label for="nAmt">Amount</label><input type="range" id="nAmt" min="0" max="40" value="10"><output id="nAmtO">10%</output></div>
+      <div class="ctl"><label>Window</label><div class="seg" id="nWin"><button type="button" data-v="3" aria-pressed="false">3×3</button><button type="button" data-v="5" aria-pressed="true">5×5</button><button type="button" data-v="7" aria-pressed="false">7×7</button></div></div>
+      <div class="ctl"><label for="nSr">Bilateral σ<sub>r</sub></label><input type="range" id="nSr" min="5" max="120" value="40"><output id="nSrO">40</output></div>
+    </div>
+    <div class="four">
+      <figure><canvas class="view" id="nNoisy"></canvas><figcaption>Noisy <span class="metric" id="mNoisy"></span></figcaption></figure>
+      <figure><canvas class="view" id="nGauss"></canvas><figcaption>Gaussian smoothing <span class="metric" id="mGauss"></span></figcaption></figure>
+      <figure><canvas class="view" id="nMed"></canvas><figcaption>Median filter <span class="metric" id="mMed"></span></figcaption></figure>
+      <figure><canvas class="view" id="nBil"></canvas><figcaption>Bilateral filter <span class="metric" id="mBil"></span></figcaption></figure>
+    </div>
+    <div class="math"><h3>Why they differ</h3><p><b>Gaussian</b> averages everything in the window, so it spreads noise around and blurs edges. <b>Median</b> takes the middle value of the window, which discards extreme outliers. That makes it the best choice for salt and pepper noise. <b>Bilateral</b> averages only neighbors with similar brightness (within about σ<sub>r</sub>), so it smooths flat regions while keeping edges sharp.</p></div>
+  </section>
+
+  <section class="stage" aria-labelledby="h4">
+    <div class="stage-head"><span class="num">04</span><div><h2 id="h4">Filtering in the frequency domain</h2><p>The Fourier transform writes an image as a sum of sinusoids. Low frequencies (center of the spectrum) hold smooth shading, and high frequencies (outside) hold edges and fine detail. Multiplying the spectrum by a mask is the same as convolving the image.</p></div></div>
+    <div class="controls">
+      <div class="ctl"><label>Keep</label><div class="seg" id="fPass"><button type="button" data-v="low" aria-pressed="true">Low frequencies</button><button type="button" data-v="high" aria-pressed="false">High frequencies</button></div></div>
+      <div class="ctl"><label>Mask edge</label><div class="seg" id="fShape"><button type="button" data-v="ideal" aria-pressed="true">Sharp (ideal)</button><button type="button" data-v="gauss" aria-pressed="false">Smooth (Gaussian)</button></div></div>
+      <div class="ctl"><label for="fR">Cutoff radius</label><input type="range" id="fR" min="2" max="120" value="20"><output id="fRO">20</output></div>
+    </div>
+    <div class="three">
+      <figure><canvas class="view" id="fIn"></canvas><figcaption>Image, 256×256</figcaption></figure>
+      <figure><canvas class="view" id="fSpec"></canvas><figcaption>log |F(u, v)| with the mask. Dimmed = removed.</figcaption></figure>
+      <figure><canvas class="view" id="fOut"></canvas><figcaption>Inverse transform of the masked spectrum</figcaption></figure>
+    </div>
+    <div class="math"><h3>Things to notice</h3><p>A sharp low-pass mask causes ripples (ringing) next to edges, because its convolution kernel in the image domain is a sinc function with many side lobes. A smooth Gaussian mask avoids this, because a Gaussian transforms into another Gaussian. A high-pass mask keeps only edges and texture.</p></div>
+  </section>
+</main>
+<footer class="wrap site"></footer>
+
+<script src="common.js"></script>
+<script>
+(() => {
+"use strict";
+const { $, nav, footer, SAMPLES, picker, toGray, show, gaussKernel, sepConv, conv2, fft2, imgXY, hiDPI, onTheme, cssVar, seg, segVal, rng, fmt } = VB;
+nav("image-processing.html"); footer();
+const st = { w: 0, h: 0, g: null, src: null };
+
+/* ---------- 01 point processing ---------- */
+function lut() {
+  const B = +$("ppB").value, C = +$("ppC").value, G = +$("ppG").value, eq = $("ppEq").checked, inv = $("ppInv").checked;
+  const L = new Float32Array(256); let cdf = null;
+  if (eq) { const hist = new Float64Array(256); for (const v of st.g) hist[Math.round(v)]++; cdf = new Float64Array(256); let s = 0; for (let i = 0; i < 256; i++) { s += hist[i]; cdf[i] = s / st.g.length; } }
+  for (let i = 0; i < 256; i++) {
+    let v = eq ? cdf[i] * 255 : i;
+    v = (v - 128) * C + 128 + B; v = Math.max(0, Math.min(255, v));
+    v = 255 * Math.pow(v / 255, G); if (inv) v = 255 - v; L[i] = v;
+  }
+  return { L, B, C, G, eq, inv };
+}
+function runPP() {
+  const { L, B, C, G, eq, inv } = lut(); const out = new Float32Array(st.g.length);
+  for (let i = 0; i < out.length; i++) out[i] = L[Math.round(st.g[i])];
+  show("ppIn", st.w, st.h, st.g); show("ppOut", st.w, st.h, out);
+  $("ppBo").value = B; $("ppCo").value = C.toFixed(2); $("ppGo").value = G.toFixed(2);
+  const base = eq ? "255·CDF(I)" : "I"; let e = `g = ${inv ? "255 − " : ""}255 · ( clamp(${C.toFixed(2)}·(${base} − 128) + 128 ${B < 0 ? "− " + (-B) : "+ " + B}) / 255 )^${G.toFixed(2)}`;
+  $("ppEqn").textContent = e;
+  drawCurve(L); drawHists(st.g, out);
+}
+function drawCurve(L) {
+  const cv = $("ppCurve"); const { ctx, W, H } = hiDPI(cv, 200); const p = 10, s = Math.min(W, H) - 2 * p, ox = (W - s) / 2;
+  ctx.clearRect(0, 0, W, H); ctx.strokeStyle = cssVar("--line"); ctx.lineWidth = 1; ctx.strokeRect(ox, p, s, s);
+  ctx.setLineDash([3, 3]); ctx.beginPath(); ctx.moveTo(ox, p + s); ctx.lineTo(ox + s, p); ctx.stroke(); ctx.setLineDash([]);
+  ctx.strokeStyle = cssVar("--accent"); ctx.lineWidth = 2.2; ctx.beginPath();
+  for (let i = 0; i < 256; i++) { const x = ox + i / 255 * s, y = p + s - L[i] / 255 * s; i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); } ctx.stroke();
+}
+function drawHists(a, b) {
+  const cv = $("ppHist"); const { ctx, W, H } = hiDPI(cv, 200); ctx.clearRect(0, 0, W, H);
+  const hist = arr => { const h = new Float64Array(256); for (const v of arr) h[Math.max(0, Math.min(255, Math.round(v)))]++; return h; };
+  const ha = hist(a), hb = hist(b); let m = 1; for (let i = 0; i < 256; i++) m = Math.max(m, ha[i], hb[i]); const lm = Math.log(1 + m);
+  const p = 10, bw = (W - 2 * p) / 256;
+  const draw = (h, col, alpha) => { ctx.fillStyle = col; ctx.globalAlpha = alpha; for (let i = 0; i < 256; i++) { const hh = Math.log(1 + h[i]) / lm * (H - 2 * p); ctx.fillRect(p + i * bw, H - p - hh, Math.max(1, bw), hh); } };
+  draw(ha, cssVar("--muted"), 0.45); draw(hb, cssVar("--accent"), 0.7); ctx.globalAlpha = 1;
+}
+["ppB", "ppC", "ppG", "ppEq", "ppInv"].forEach(id => $(id).addEventListener("input", runPP));
+$("ppReset").addEventListener("click", () => { $("ppB").value = 0; $("ppC").value = 1; $("ppG").value = 1; $("ppEq").checked = false; $("ppInv").checked = false; runPP(); });
+
+/* ---------- 02 convolution ---------- */
+const K3 = { box: [1, 1, 1, 1, 1, 1, 1, 1, 1].map(v => v / 9), sharpen: [0, -1, 0, -1, 5, -1, 0, -1, 0], lap: [0, 1, 0, 1, -4, 1, 0, 1, 0], sobelx: [-1, 0, 1, -2, 0, 2, -1, 0, 1], emboss: [-2, -1, 0, -1, 1, 1, 0, 1, 2], id: [0, 0, 0, 0, 1, 0, 0, 0, 0] };
+let custom = [0, -1, 0, -1, 5, -1, 0, -1, 0];
+const ck = { K: null, n: 3, out: null, mode: "clamp", sel: null };
+function kernel() {
+  const t = $("kSel").value; $("sigWrap").style.display = t === "gauss" ? "" : "none";
+  if (t === "gauss") { const s = +$("kSig").value; $("kSigO").value = s.toFixed(1); const k1 = gaussKernel(s); const n = k1.length; const K = new Float32Array(n * n); for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) K[j * n + i] = k1[j] * k1[i]; return { K, n, k1 }; }
+  return { K: Float32Array.from(t === "custom" ? custom : K3[t]), n: 3 };
+}
+function runConv() {
+  const k = kernel(); ck.K = k.K; ck.n = k.n;
+  ck.out = k.k1 ? sepConv(st.g, st.w, st.h, k.k1, k.k1) : conv2(st.g, st.w, st.h, k.K, 3, 3);
+  const sum = k.K.reduce((a, b) => a + b, 0); ck.mode = Math.abs(sum) < 1e-6 ? "signed" : "clamp";
+  show("cvIn", st.w, st.h, st.g); show("cvOut", st.w, st.h, ck.out, ck.mode);
+  $("cvCap").innerHTML = `Output <i>g</i> = <i>f</i> ∗ <i>h</i>${ck.mode === "signed" ? " (gray = 0)" : ""}. Click a pixel.`;
+  renderKernel(k, sum); renderCalc();
+}
+function renderKernel(k, sum) {
+  const el = $("kView"); const t = $("kSel").value;
+  if (k.n === 3) {
+    el.innerHTML = `<div class="kernel" style="grid-template-columns:repeat(3,auto)">${[...k.K].map((v, i) => `<input id="k${i}" aria-label="Kernel weight ${i + 1}" value="${+v.toFixed(3)}">`).join("")}</div>`;
+    el.querySelectorAll("input").forEach((inp, i) => inp.addEventListener("change", () => { const cur = [...kernel().K]; cur[i] = parseFloat(inp.value) || 0; custom = cur; $("kSel").value = "custom"; runConv(); }));
+    $("kNote").textContent = `Weights sum to ${fmt(sum, 2)}. Edit any weight to make your own kernel.`;
+  } else {
+    const n = k.n, max = k.K[((n - 1) / 2) * n + (n - 1) / 2]; const cell = n > 25 ? 6 : n > 15 ? 9 : 14;
+    el.innerHTML = `<div class="kgrid" style="grid-template-columns:repeat(${n},${cell}px)">${[...k.K].map(v => `<span style="min-width:0;background:color-mix(in srgb, var(--accent) ${Math.round(v / max * 100)}%, var(--bg))"></span>`).join("")}</div>`;
+    $("kNote").textContent = `${n}×${n} window (radius 3σ). Weights sum to 1. The Gaussian is separable, so it runs as a 1D blur along rows and then along columns.`;
+  }
+}
+function renderCalc() {
+  const el = $("calc"); if (!ck.sel) { el.innerHTML = `<p class="note">Click a pixel in the output to see how it was computed.</p>`; return; }
+  const [x, y] = ck.sel; const { w, h, g } = st; const r = (ck.n - 1) / 2; const v = ck.out[y * w + x];
+  if (ck.n !== 3) { el.innerHTML = `<p class="note">Pixel (${x}, ${y}): weighted sum of ${ck.n * ck.n} neighbors = <b class="mono">${fmt(v, 1)}</b> (input was ${fmt(g[y * w + x], 0)}). Pick a 3×3 kernel to see every term.</p>`; return; }
+  const px = (i, j) => g[Math.min(h - 1, Math.max(0, y + j)) * w + Math.min(w - 1, Math.max(0, x + i))];
+  let rows = "", terms = [];
+  for (let j = -1; j <= 1; j++) { rows += "<tr>"; for (let i = -1; i <= 1; i++) { const a = px(i, j), k = ck.K[(j + 1) * 3 + (i + 1)]; rows += `<td>${Math.round(a)} × ${+k.toFixed(3)}</td>`; terms.push(a * k); } rows += "</tr>"; }
+  el.innerHTML = `<p class="note">Pixel (${x}, ${y}): input value × weight for each of the 9 neighbors</p><div style="overflow-x:auto"><table class="calc">${rows}</table></div><p class="note">Sum = <b class="mono">${fmt(terms.reduce((a, b) => a + b, 0), 1)}</b>${ck.mode === "clamp" ? ", clamped to 0–255 for display" : ""}</p>`;
+  const ctx = $("cvOut").getContext("2d"); show("cvOut", w, h, ck.out, ck.mode); ctx.strokeStyle = "#ff3b30"; ctx.lineWidth = 1; ctx.strokeRect(x - r - 0.5, y - r - 0.5, ck.n + 1, ck.n + 1);
+}
+$("kSel").addEventListener("change", runConv); $("kSig").addEventListener("input", runConv);
+$("cvOut").addEventListener("click", e => { ck.sel = imgXY(e, e.currentTarget, st.w, st.h); renderCalc(); });
+
+/* ---------- 03 noise ---------- */
+function median(a, w, h, r) {
+  const o = new Float32Array(w * h); const n = (2 * r + 1) ** 2; const buf = new Float32Array(n);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { let k = 0; for (let j = -r; j <= r; j++) { const yy = Math.min(h - 1, Math.max(0, y + j)); for (let i = -r; i <= r; i++) buf[k++] = a[yy * w + Math.min(w - 1, Math.max(0, x + i))]; } buf.sort(); o[y * w + x] = buf[n >> 1]; }
+  return o;
+}
+function bilateral(a, w, h, r, ss, sr) {
+  const o = new Float32Array(w * h); const sw = []; for (let j = -r; j <= r; j++) for (let i = -r; i <= r; i++) sw.push(Math.exp(-(i * i + j * j) / (2 * ss * ss)));
+  const rl = new Float32Array(256); for (let d = 0; d < 256; d++) rl[d] = Math.exp(-d * d / (2 * sr * sr));
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { const c = a[y * w + x]; let s = 0, ws = 0, k = 0; for (let j = -r; j <= r; j++) { const yy = Math.min(h - 1, Math.max(0, y + j)); for (let i = -r; i <= r; i++, k++) { const v = a[yy * w + Math.min(w - 1, Math.max(0, x + i))]; const wt = sw[k] * rl[Math.min(255, Math.round(Math.abs(v - c)))]; s += v * wt; ws += wt; } } o[y * w + x] = s / ws; }
+  return o;
+}
+const psnr = (a, b) => { let m = 0; for (let i = 0; i < a.length; i++) { const d = Math.max(0, Math.min(255, a[i])) - b[i]; m += d * d; } m /= a.length; return 10 * Math.log10(255 * 255 / Math.max(m, 1e-9)); };
+let nTimer = 0;
+function runNoise() {
+  const type = segVal("nType"), amt = +$("nAmt").value, r = (+segVal("nWin") - 1) / 2, sr = +$("nSr").value; $("nAmtO").value = amt + (type === "sp" ? "%" : " σ"); $("nSrO").value = sr;
+  const { w, h, g } = st; const R = rng(99); const noisy = new Float32Array(g.length);
+  for (let i = 0; i < g.length; i++) { if (type === "sp") { const p = R(); noisy[i] = p < amt / 200 ? 0 : p < amt / 100 ? 255 : g[i]; } else { const u = Math.max(1e-9, R()), v = R(); noisy[i] = Math.max(0, Math.min(255, g[i] + amt * Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v))); } }
+  const ga = VB.gaussBlur(noisy, w, h, (2 * r + 1) / 3), me = median(noisy, w, h, r), bi = bilateral(noisy, w, h, r, (2 * r + 1) / 3, sr);
+  const out = [["nNoisy", "mNoisy", noisy], ["nGauss", "mGauss", ga], ["nMed", "mMed", me], ["nBil", "mBil", bi]];
+  const scores = out.map(o => psnr(o[2], g)); const best = Math.max(...scores.slice(1));
+  out.forEach(([cv, m, a], i) => { show(cv, w, h, a); $(m).innerHTML = `PSNR <b>${fmt(scores[i], 1)} dB</b>${i && scores[i] === best ? ' <span class="tag good">best</span>' : ""}`; });
+}
+const schedNoise = () => { clearTimeout(nTimer); nTimer = setTimeout(runNoise, 60); };
+seg("nType", v => { $("nAmt").max = v === "sp" ? 40 : 60; schedNoise(); }); seg("nWin", schedNoise);
+$("nAmt").addEventListener("input", schedNoise); $("nSr").addEventListener("input", schedNoise);
+
+/* ---------- 04 fourier ---------- */
+const N = 256; const ft = { g: null, re: null, im: null, mag: null };
+function prepFourier() {
+  const { g } = toGray(st.src, st.sw, st.sh, 0, N, N); ft.g = g;
+  const re = new Float64Array(N * N), im = new Float64Array(N * N); for (let i = 0; i < re.length; i++) re[i] = g[i];
+  fft2(re, im, N, false); ft.re = re; ft.im = im;
+  const mag = new Float32Array(N * N); for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) { const s = ((y + N / 2) % N) * N + (x + N / 2) % N; mag[y * N + x] = Math.log(1 + Math.hypot(re[s], im[s])); } ft.mag = mag;
+  show("fIn", N, N, g); runFourier();
+}
+function runFourier() {
+  const R = +$("fR").value, high = segVal("fPass") === "high", ideal = segVal("fShape") === "ideal"; $("fRO").value = R;
+  const re = Float64Array.from(ft.re), im = Float64Array.from(ft.im); const M = new Float32Array(N * N);
+  for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) { const u = x - N / 2, v = y - N / 2, d = Math.hypot(u, v); let m = ideal ? (d <= R ? 1 : 0) : Math.exp(-d * d / (2 * R * R)); if (high) m = 1 - m; M[y * N + x] = m; }
+  for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) { const m = M[((y + N / 2) % N) * N + (x + N / 2) % N]; re[y * N + x] *= m; im[y * N + x] *= m; }
+  fft2(re, im, N, true);
+  const out = new Float32Array(N * N); for (let i = 0; i < out.length; i++) out[i] = re[i];
+  show("fOut", N, N, out, high ? "auto" : "clamp");
+  let mx = 0; for (const v of ft.mag) mx = Math.max(mx, v);
+  VB.showRGB("fSpec", N, N, i => { const v = ft.mag[i] / mx * 255, m = M[i]; return [v * (0.25 + 0.75 * m), v * (0.25 + 0.75 * m), Math.min(255, v * (0.25 + 0.75 * m) + (1 - m) * 40)]; });
+}
+seg("fPass", runFourier); seg("fShape", runFourier); $("fR").addEventListener("input", runFourier);
+
+/* ---------- load ---------- */
+function load(src, sw, sh) {
+  Object.assign(st, toGray(src, sw, sh, 320), { src, sw, sh }); ck.sel = [Math.round(st.w / 2), Math.round(st.h / 2)];
+  runPP(); runConv(); runNoise(); prepFourier();
+}
+const samples = [
+  Object.assign({}, SAMPLES.scene, { note: "<b>Scene:</b> try equalization to bring out the dark ground, and a high-pass filter to keep only the fence and roof edges." }),
+  Object.assign({}, SAMPLES.text, { note: "<b>Text:</b> the low-pass filter shows how small letters vanish first, because they are made of high frequencies." }),
+  Object.assign({}, SAMPLES.bricks, { note: "<b>Bricks:</b> a repeating pattern shows up as bright, regularly spaced dots in the Fourier spectrum." }),
+  Object.assign({}, SAMPLES.shapes, { note: "<b>Shapes:</b> compare how the median and bilateral filters keep the shape edges sharp." }),
+];
+const p = picker({ el: "pick", samples, noteEl: "pickNote", onImage: load });
+onTheme(() => st.g && runPP());
+p.pick(samples[0]);
+})();
+</script>
+</body>
+</html>
