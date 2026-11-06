@@ -75,16 +75,46 @@ On every push to `main`, GitHub Actions runs the check, then deploys the site to
 
 ## Contributing
 
-Issues and pull requests are welcome, whether it's a bug, an unclear explanation, or a demo that could teach an idea better.
+Contributions are welcome. You don't need to write code to help.
 
-To add or change a page:
-1. Copy the structure of an existing page. [optical-flow.html](optical-flow.html) is a good reference.
-2. Reuse the `VB` helpers rather than re-implementing them.
-3. Make sure the page's entry in `CHAPTERS` in `common.js` matches its file name.
-4. Run `STRICT=1 node scripts/check.mjs`.
-5. Try the page in light and dark mode, and at phone width.
+### Report a problem or suggest an idea
 
-Keep notation and terminology consistent with the lectures.
+[Open an issue](https://github.com/gudivadaashok/fpcv-companion/issues/new) if:
+- a demo is broken or gives a wrong result
+- an explanation is unclear or doesn't match the lecture
+- you have an idea for a demo that would teach a concept better
+
+Include the page name, what you did, and what you expected. A screenshot helps.
+
+### Fix or improve an existing page
+
+Each lecture is one file, such as `optical-flow.html`. Its HTML, styles and code are all in that file.
+
+1. Fork the repo and create a branch.
+2. Start a local server from the repo root: `python3 -m http.server 8000`.
+3. Open `http://localhost:8000/<page>.html`, then edit the file and reload to see your change.
+4. Run the checks before you open a pull request (see [Before you open a pull request](#before-you-open-a-pull-request)).
+
+### Add a new page
+
+1. **Copy a page as a template.** [optical-flow.html](optical-flow.html) is a good starting point. Rename the copy to your topic, for example `my-topic.html`.
+2. **Register it.** Add a line to the `CHAPTERS` list near the top of `common.js`, in the chapter where it belongs:
+   ```js
+   ["my-topic.html", "My Topic", "One sentence describing what the page shows."],
+   ```
+   This adds the page to the home page, the nav bar and the previous/next links.
+3. **Point the page at itself.** In your page's script, change `nav("optical-flow.html")` to `nav("my-topic.html")`.
+4. **Build the demo in numbered stages.** Each `<section class="stage">` teaches one idea, and each stage builds on the one before. Write the math in the stage's text, using the lecture's notation.
+5. **Reuse shared code.** `common.js` already provides image loading (`picker`), grayscale (`toGray`), blur (`gaussBlur`), convolution (`conv2`), drawing to a canvas (`show`) and more. Look there before writing your own.
+
+### Before you open a pull request
+
+- Run `STRICT=1 node scripts/check.mjs`. It must print `ok`.
+- Check that the browser console shows no errors.
+- Check the page in light and dark mode, and at phone width (about 375 px).
+- Keep the site dependency-free. If you think a library or build step is needed, open an issue to discuss it first.
+
+Then open a pull request describing what you changed and why.
 
 ## Credits
 
