@@ -7,10 +7,10 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,500;8..60,600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="vendor/katex/katex.min.css">
 <link rel="stylesheet" href="site.css">
+<script src="vendor/katex/katex.min.js"></script>
 <style>
-  .eq { white-space: pre; }
-  .eq b { color: var(--accent); font-weight: 500; }
   canvas.drag { cursor: grab; touch-action: none; }
   canvas.drag:active { cursor: grabbing; }
   canvas.accum { width: 100%; height: 340px; display: block; background: var(--stage); border-radius: 6px; image-rendering: pixelated; cursor: crosshair; }
@@ -36,7 +36,7 @@
   <section class="stage" aria-labelledby="h1">
     <div class="stage-head"><span class="num">01</span><div><h2 id="h1">Edge map</h2><p>Every method below starts from a binary edge image. This one uses a simple Canny detector: smooth, take the Sobel gradient, thin it, then link it with two thresholds (low = 40% of high).</p></div></div>
     <div class="controls">
-      <div class="ctl"><label for="eS">Smoothing σ</label><input type="range" id="eS" min="0.6" max="3" step="0.1" value="1.2"><output id="eSO"></output></div>
+      <div class="ctl"><label for="eS">Smoothing \(\sigma\)</label><input type="range" id="eS" min="0.6" max="3" step="0.1" value="1.2"><output id="eSO"></output></div>
       <div class="ctl"><label for="eT">High threshold</label><input type="range" id="eT" min="5" max="60" step="1" value="20"><output id="eTO"></output></div>
     </div>
     <div class="two">
@@ -46,24 +46,24 @@
   </section>
 
   <section class="stage" aria-labelledby="h2">
-    <div class="stage-head"><span class="num">02</span><div><h2 id="h2">Hough transform for lines</h2><p>A line is x·cos θ + y·sin θ = ρ. One edge pixel (x, y) fits every line whose (ρ, θ) satisfies that equation, which is a sinusoid in (ρ, θ) space. Each edge pixel adds one vote along its sinusoid. Pixels on a common line have sinusoids that cross at one cell, so that cell collects many votes. Click an edge pixel to see its sinusoid. Click the accumulator to select a line.</p></div></div>
+    <div class="stage-head"><span class="num">02</span><div><h2 id="h2">Hough transform for lines</h2><p>A line is \(x\cos\theta + y\sin\theta = \rho\). One edge pixel \((x, y)\) fits every line whose \((\rho, \theta)\) satisfies that equation, which is a sinusoid in \((\rho, \theta)\) space. Each edge pixel adds one vote along its sinusoid. Pixels on a common line have sinusoids that cross at one cell, so that cell collects many votes. Click an edge pixel to see its sinusoid. Click the accumulator to select a line.</p></div></div>
     <div class="controls">
       <div class="ctl"><label for="hT">Vote threshold</label><input type="range" id="hT" min="10" max="100" step="1" value="25"><output id="hTO"></output></div>
       <div class="ctl"><label for="hN">Max lines (top N)</label><input type="range" id="hN" min="1" max="15" step="1" value="8"><output id="hNO"></output></div>
     </div>
     <div class="three">
       <figure><canvas class="view click" id="hEdge"></canvas><figcaption>Edge pixels. Click one to draw its sinusoid.</figcaption></figure>
-      <figure><canvas class="accum" id="hAcc"></canvas><figcaption>Accumulator. θ runs 0° to 179° left to right, ρ runs −D to +D top to bottom (D = image diagonal). Brighter = more votes. Boxes mark peaks. Click to select.</figcaption></figure>
+      <figure><canvas class="accum" id="hAcc"></canvas><figcaption>Accumulator. \(\theta\) runs \(0^\circ\) to \(179^\circ\) left to right, \(\rho\) runs \(-D\) to \(+D\) top to bottom (\(D\) = image diagonal). Brighter = more votes. Boxes mark peaks. Click to select.</figcaption></figure>
       <figure><canvas class="view" id="hRes"></canvas><figcaption>Detected lines (blue). The selected line is red, and the edge pixels on it are yellow.</figcaption></figure>
     </div>
     <div class="two">
       <div class="math"><h3>Selected line</h3><div id="hRead"></div></div>
-      <div class="tablebox list"><table><thead><tr><th>#</th><th>θ</th><th>ρ</th><th>Votes</th></tr></thead><tbody id="hTab"></tbody></table></div>
+      <div class="tablebox list"><table><thead><tr><th>#</th><th>\(\theta\)</th><th>\(\rho\)</th><th>Votes</th></tr></thead><tbody id="hTab"></tbody></table></div>
     </div>
   </section>
 
   <section class="stage" aria-labelledby="h3">
-    <div class="stage-head"><span class="num">03</span><div><h2 id="h3">Hough transform for circles</h2><p>A circle with center (a, b) and radius r satisfies (x − a)² + (y − b)² = r². For a known radius, each edge pixel votes for every center that lies a distance r from it, which is a circle of its own. Votes pile up at the true center. With an unknown radius, repeat for many radii. Votes are scaled by the circumference, so a score of 1 means the whole circle is covered by edge pixels.</p></div></div>
+    <div class="stage-head"><span class="num">03</span><div><h2 id="h3">Hough transform for circles</h2><p>A circle with center \((a, b)\) and radius \(r\) satisfies \((x - a)^2 + (y - b)^2 = r^2\). For a known radius, each edge pixel votes for every center that lies a distance r from it, which is a circle of its own. Votes pile up at the true center. With an unknown radius, repeat for many radii. Votes are scaled by the circumference, so a score of 1 means the whole circle is covered by edge pixels.</p></div></div>
     <div class="controls">
       <div class="ctl"><label>Search</label><div class="seg" id="cMode"><button type="button" data-v="one" aria-pressed="true">One radius</button><button type="button" data-v="all" aria-pressed="false">All radii (8 to 70 px)</button></div></div>
       <div class="ctl" id="cRctl"><label for="cR">Radius r</label><input type="range" id="cR" min="8" max="70" step="1" value="34"><output id="cRO"></output></div>
@@ -75,17 +75,17 @@
     </div>
     <div class="two">
       <div class="math"><h3>Selected circle</h3><div id="cRead"></div></div>
-      <div class="note">Simplification: every edge pixel votes in all directions, so a few false centers appear where circles and straight edges cross. Real implementations also use the gradient direction to vote for only two centers per pixel. Votes in a 3 × 3 neighborhood are pooled so small rounding errors do not split a peak. Circle coverage is counted exactly: edge pixels within 1 px of the circle, divided by 2πr.</div>
+      <div class="note">Simplification: every edge pixel votes in all directions, so a few false centers appear where circles and straight edges cross. Real implementations also use the gradient direction to vote for only two centers per pixel. Votes in a 3 × 3 neighborhood are pooled so small rounding errors do not split a peak. Circle coverage is counted exactly: edge pixels within 1 px of the circle, divided by \(2\pi r\).</div>
     </div>
   </section>
 
   <section class="stage" aria-labelledby="h4">
-    <div class="stage-head"><span class="num">04</span><div><h2 id="h4">Active contour (snake)</h2><p>A snake is a closed curve of points. Each iteration moves every point to the best spot in its 5 × 5 neighborhood. The best spot minimizes E = α·E<sub>cont</sub> + β·E<sub>curv</sub> − γ·‖∇I‖. E<sub>cont</sub> keeps points evenly spaced, E<sub>curv</sub> keeps the curve smooth, and the last term pulls points toward strong edges. Drag the dashed circle to move it, or drag its ring to resize it. Dragging restarts the snake.</p></div></div>
+    <div class="stage-head"><span class="num">04</span><div><h2 id="h4">Active contour (snake)</h2><p>A snake is a closed curve of points. Each iteration moves every point to the best spot in its 5 × 5 neighborhood. The best spot minimizes \(E = \alpha E_{\text{cont}} + \beta E_{\text{curv}} - \gamma \|\nabla I\|\). \(E_{\text{cont}}\) keeps points evenly spaced, \(E_{\text{curv}}\) keeps the curve smooth, and the last term pulls points toward strong edges. Drag the dashed circle to move it, or drag its ring to resize it. Dragging restarts the snake.</p></div></div>
     <div class="controls">
       <div class="ctl"><label for="sA">α (spacing)</label><input type="range" id="sA" min="0" max="3" step="0.05" value="0.6"><output id="sAO"></output></div>
       <div class="ctl"><label for="sB">β (smoothness)</label><input type="range" id="sB" min="0" max="3" step="0.05" value="0.8"><output id="sBO"></output></div>
       <div class="ctl"><label for="sG">γ (edge pull)</label><input type="range" id="sG" min="0" max="4" step="0.05" value="1.6"><output id="sGO"></output></div>
-      <div class="ctl"><label for="sS">Edge blur σ</label><input type="range" id="sS" min="1" max="8" step="0.5" value="3"><output id="sSO"></output></div>
+      <div class="ctl"><label for="sS">Edge blur \(\sigma\)</label><input type="range" id="sS" min="1" max="8" step="0.5" value="3"><output id="sSO"></output></div>
     </div>
     <div class="controls">
       <button class="btn primary" type="button" id="sRun">Pause</button>
@@ -95,7 +95,7 @@
     <div class="main-side">
       <figure><canvas class="view drag" id="sImg"></canvas><figcaption>Dashed: initial circle (drag to move or resize). Yellow: the snake, with its 48 points.</figcaption></figure>
       <div style="display:grid;gap:12px">
-        <figure><canvas class="view" id="sForce"></canvas><figcaption>Edge force ‖∇(G<sub>σ</sub> ∗ I)‖. Bright pixels attract the snake. Larger σ reaches farther but is less precise.</figcaption></figure>
+        <figure><canvas class="view" id="sForce"></canvas><figcaption>Edge force \(\|\nabla(G_\sigma \ast I)\|\). Bright pixels attract the snake. Larger \(\sigma\) reaches farther but is less precise.</figcaption></figure>
         <figure><canvas class="plot" id="sPlot" style="height:120px"></canvas><figcaption><span class="legend"><span><i style="background:var(--accent)"></i>mean edge force under points</span><span><i style="background:#c2410c"></i>points moved</span></span></figcaption></figure>
       </div>
     </div>
@@ -109,7 +109,7 @@
 <script>
 (() => {
 "use strict";
-const { $, nav, footer, SAMPLES, picker, toGray, show, showRGB, gaussBlur, conv2, boxSum, imgXY, hiDPI, onTheme, cssVar, seg, segVal, fmt, addNoise } = VB;
+const { $, nav, footer, SAMPLES, picker, toGray, show, showRGB, gaussBlur, conv2, boxSum, imgXY, hiDPI, onTheme, cssVar, seg, segVal, fmt, addNoise, tex, mathRows } = VB;
 nav("boundary-detection.html"); footer();
 const deb = (fn, ms = 50) => { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; };
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
@@ -209,14 +209,17 @@ function lineView() {
 function readLine(sup) {
   const s = HL.sel, D = st.hl.D; if (!s) { $("hRead").innerHTML = "<p class='note'>No peak above the threshold. Lower it.</p>"; return; }
   const th = s.t, rho = s.r - D, c = CS[th], sn = SN[th];
-  let slope = ""; if (Math.abs(sn) > 0.05) slope = `y = (ρ − x·cos θ) / sin θ = ${fmt(-c / sn, 3)}·x + ${fmt(rho / sn, 1)}`; else slope = `vertical line, x = ${fmt(rho / c, 1)}`;
-  let pt = ""; if (HL.pt) { const [x, y] = HL.pt; pt = `<p class="note" style="margin-top:6px">Clicked pixel (${x}, ${y}) votes along ρ = ${x}·cos θ + ${y}·sin θ. At θ = ${th}° that gives ρ = ${fmt(x * c + y * sn, 1)}${Math.abs(x * c + y * sn - rho) <= 1 ? ", so it lies on this line" : ", so it is not on this line"}.</p>`; }
-  $("hRead").innerHTML = `<div class="eq">cell  θ = <b>${th}°</b>,  ρ = <b>${rho} px</b>
-votes in the cell = <b>${s.v}</b>   (${fmt(s.v / st.hl.max * 100, 0)}% of the strongest cell)
-line:  x·cos(${th}°) + y·sin(${th}°) = ${rho}
-       ${fmt(c, 3)}·x + ${fmt(sn, 3)}·y = ${rho}
-${slope}
-edge pixels within 1 px of the line: <b>${sup}</b></div>${pt}`;
+  let slope = ""; if (Math.abs(sn) > 0.05) slope = `y = \\frac{\\rho - x\\cos\\theta}{\\sin\\theta} = ${fmt(-c / sn, 3)}\\,x + ${fmt(rho / sn, 1)}`; else slope = `x = ${fmt(rho / c, 1)}`;
+  let pt = ""; if (HL.pt) { const [x, y] = HL.pt; pt = `<p class="note" style="margin-top:6px">Clicked pixel (${x}, ${y}) votes along ${tex(`\\rho = ${x}\\cos\\theta + ${y}\\sin\\theta`)}. At ${tex(`\\theta = ${th}^\\circ`)} that gives ${tex(`\\rho = ${fmt(x * c + y * sn, 1)}`)}${Math.abs(x * c + y * sn - rho) <= 1 ? ", so it lies on this line" : ", so it is not on this line"}.</p>`; }
+  $("hRead").innerHTML = `<div id="hGrid"></div>${pt}`;
+  mathRows($("hGrid"), [
+    { label: "Cell", tex: `\\theta = ${th}^\\circ,\\; \\rho`, value: `${rho}\\,\\text{px}` },
+    { label: "Votes in the cell", tex: `\\text{votes}`, value: `${s.v}\\;(${fmt(s.v / st.hl.max * 100, 0)}\\%\\text{ of the strongest})` },
+    { label: "Line", tex: `x\\cos ${th}^\\circ + y\\sin ${th}^\\circ = ${rho}` },
+    { label: "", tex: `${fmt(c, 3)}\\,x + ${fmt(sn, 3)}\\,y = ${rho}` },
+    { label: Math.abs(sn) > 0.05 ? "Slope form" : "Vertical line", tex: slope },
+    { label: "Edge pixels within 1 px", tex: `\\text{support}`, value: `${sup}` },
+  ]);
 }
 function tableLines() {
   const D = st.hl.D, sel = HL.sel; $("hTab").innerHTML = HL.peaks.map((p, i) => `<tr data-i="${i}" class="${sel && p.t === sel.t && p.r === sel.r ? "sel" : ""}"><td>${i + 1}</td><td>${p.t}°</td><td>${p.r - D}</td><td>${p.v}<span class="bar"><i style="width:${p.v / st.hl.max * 100}%"></i></span></td></tr>`).join("") || '<tr><td colspan="4">No peaks above the threshold.</td></tr>';
@@ -274,11 +277,15 @@ function circView() {
 function readCircle() {
   const o = CI.sel; if (!o) { $("cRead").innerHTML = "<p class='note'>No circle above the threshold. Lower it, or change the radius.</p>"; return; }
   const sup = support(o.a, o.b, o.r), circ = 2 * Math.PI * o.r;
-  $("cRead").innerHTML = `<div class="eq">center (a, b) = <b>(${o.a}, ${o.b})</b>,  radius r = <b>${o.r} px</b>
-circle: (x − ${o.a})² + (y − ${o.b})² = ${o.r}² = ${o.r * o.r}
-circumference 2πr = ${fmt(circ, 1)} px
-edge pixels within 1 px of the circle = <b>${sup}</b>
-covered = ${sup} / ${fmt(circ, 1)} = <b>${fmt(Math.min(1, sup / circ) * 100, 0)}%</b></div>`;
+  $("cRead").innerHTML = `<div id="cGrid"></div>`;
+  mathRows($("cGrid"), [
+    { label: "Center", tex: `(a, b)`, value: `(${o.a}, ${o.b})` },
+    { label: "Radius", tex: `r`, value: `${o.r}\\,\\text{px}` },
+    { label: "Circle", tex: `(x - ${o.a})^2 + (y - ${o.b})^2 = ${o.r}^2`, value: `${o.r * o.r}` },
+    { label: "Circumference", tex: `2\\pi r`, value: `${fmt(circ, 1)}\\,\\text{px}` },
+    { label: "Edge pixels within 1 px", tex: `\\text{support}`, value: `${sup}` },
+    { label: "Covered", tex: `\\frac{${sup}}{${fmt(circ, 1)}}`, value: `${fmt(Math.min(1, sup / circ) * 100, 0)}\\%` },
+  ]);
 }
 $("cAcc").addEventListener("click", e => {
   const [x, y] = imgXY(e, e.currentTarget, st.w, st.h), d = st.circ, w = st.w; let b = null, bv = -1;
@@ -332,10 +339,11 @@ function snakeDraw() {
   c.strokeStyle = K.acc; c.lineWidth = 2; c.beginPath(); sn.mean.forEach((v, i) => { const yy = H - 8 - v / mxe * (H - 16); i ? c.lineTo(X(i), yy) : c.moveTo(X(i), yy); }); c.stroke();
   const mean = sn.mean.length ? sn.mean[sn.mean.length - 1] : 0, mv = sn.moved.length ? sn.moved[sn.moved.length - 1] : SN_N;
   $("sStats").innerHTML = `<span class="chip">Iteration <b>${sn.it}</b></span><span class="chip">Points moved last step <b>${mv}</b> of ${SN_N}</span><span class="chip">Mean edge force under points <b>${fmt(mean * 100, 0)}%</b></span><span class="chip">${sn.conv ? "<b>Converged: no point moved</b>" : sn.running ? "Running" : "Paused"}</span>`;
-  const L = sn.last; if (L) { const c0 = L.c; $("sMath").innerHTML = `<div class="eq">point ${L.i + 1} of ${SN_N}, mean spacing d̄ = ${fmt(L.dbar, 1)} px, chose position (${c0.px}, ${c0.py})
-E = α·E<sub>cont</sub> + β·E<sub>curv</sub> − γ·(edge force)       (each term normalized to 0..1 over the 25 candidates)
-  = ${fmt(L.al, 2)}·${fmt(c0.nc, 2)} + ${fmt(L.be, 2)}·${fmt(c0.nk, 2)} − ${fmt(L.ga, 2)}·${fmt(c0.nf, 2)}  =  <b>${fmt(c0.E, 3)}</b>
-The point moves to whichever of the 25 neighbors has the lowest E.</div>`; } else $("sMath").innerHTML = '<p class="note">Press Step once to see the energy of one update.</p>';
+  const L = sn.last; if (L) { const c0 = L.c; $("sMath").innerHTML = `<p style="margin:0">Point ${L.i + 1} of ${SN_N}, mean spacing ${tex("\\bar d")} = ${fmt(L.dbar, 1)} px, chose position (${c0.px}, ${c0.py}). Each term is normalized to 0..1 over the 25 candidates.</p><div id="sGrid"></div>`;
+    mathRows($("sGrid"), [
+      { label: "Energy", tex: `E = \\alpha E_{\\text{cont}} + \\beta E_{\\text{curv}} - \\gamma\\, E_{\\text{edge}}` },
+      { label: "With numbers", tex: `${fmt(L.al, 2)}\\cdot ${fmt(c0.nc, 2)} + ${fmt(L.be, 2)}\\cdot ${fmt(c0.nk, 2)} - ${fmt(L.ga, 2)}\\cdot ${fmt(c0.nf, 2)}`, value: fmt(c0.E, 3) },
+    ], "The point moves to whichever of the 25 neighbors has the lowest E."); } else $("sMath").innerHTML = '<p class="note">Press Step once to see the energy of one update.</p>';
   $("sRun").textContent = sn.running ? "Pause" : sn.conv ? "Run again" : "Run";
 }
 function snakeTick() { clearTimeout(sn.timer); if (!sn.running) return; snakeStep(); snakeDraw(); if (sn.conv || sn.it >= 400) { sn.running = false; snakeDraw(); return; } sn.timer = setTimeout(snakeTick, 45); }

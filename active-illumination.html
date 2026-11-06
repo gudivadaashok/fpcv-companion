@@ -7,12 +7,12 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,500;8..60,600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="vendor/katex/katex.min.css">
 <link rel="stylesheet" href="site.css">
+<script src="vendor/katex/katex.min.js"></script>
 <style>
 canvas.drag { cursor: grab; touch-action: none; }
 canvas.drag:active { cursor: grabbing; }
-.calc-lines { font: 0.84rem/1.6 var(--mono); display: grid; gap: 2px; overflow-x: auto; white-space: nowrap; }
-.calc-lines b { font-weight: 500; color: var(--accent); }
 td.hi { background: color-mix(in srgb, var(--accent) 24%, transparent); font-weight: 600; }
 .ramp { display: inline-block; width: 120px; height: 10px; border-radius: 3px; vertical-align: middle; margin: 0 6px; }
 .hatch { display: inline-block; width: 22px; height: 10px; border-radius: 2px; vertical-align: middle; margin-right: 6px; background: repeating-linear-gradient(135deg, #3c404a 0 2px, #12151a 2px 4px); }
@@ -54,7 +54,7 @@ td.hi { background: color-mix(in srgb, var(--accent) 24%, transparent); font-wei
     <div class="stage-head"><span class="num">01</span><div><h2 id="h1">Triangulation</h2><p>A ray from the projector and a ray from the camera meet at the surface. The two angles and the baseline fix the depth.</p></div></div>
     <div class="math">
       <h3>Assumed geometry</h3>
-      <p>A rectified pair: the camera is at <i>x</i> = 0 and the projector at <i>x</i> = <i>b</i>, both looking along +<i>z</i>, with the same focal length <i>f</i> = 256 px. A point (<i>x</i>, <i>z</i>) lands at camera column <i>c</i> = <i>f</i> <i>x</i>/<i>z</i> and at projector column <i>p</i> = <i>f</i> (<i>x</i> − <i>b</i>)/<i>z</i>. Their difference is the disparity <i>d</i> = <i>c</i> − <i>p</i> = <i>f</i> <i>b</i>/<i>z</i>, so <i>z</i> = <i>f</i> <i>b</i>/<i>d</i>. In terms of the angles α (at the camera) and β (at the projector) measured from the baseline: <i>z</i> = <i>b</i> / (cot α + cot β).</p>
+      <p>A rectified pair: the camera is at \(x = 0\) and the projector at \(x = b\), both looking along \(+z\), with the same focal length \(f = 256\) px. A point \((x, z)\) lands at camera column \(c = f\,x/z\) and at projector column \(p = f\,(x - b)/z\). Their difference is the disparity \(d = c - p = f\,b/z\), so \(z = f\,b/d\). In terms of the angles \(\alpha\) (at the camera) and \(\beta\) (at the projector) measured from the baseline: \(z = b\,/\,(\cot\alpha + \cot\beta)\).</p>
     </div>
     <div class="controls">
       <div class="ctl"><label for="b">Baseline b</label><input type="range" id="b" min="0.10" max="0.60" step="0.01" value="0.40"><output id="bO"></output></div>
@@ -63,8 +63,8 @@ td.hi { background: color-mix(in srgb, var(--accent) 24%, transparent); font-wei
       <div class="ctl"><label for="pcol">Stripe column p</label><input type="range" id="pcol" min="0" max="255" step="1" value="140"><output id="pcolO"></output></div>
     </div>
     <canvas class="plot drag" id="geo" tabindex="0" aria-label="Top-down diagram of camera, projector and a draggable scene point. Drag the point, or use the arrow keys, or the sliders above."></canvas>
-    <div class="math"><div class="calc-lines" id="geoCalc"></div></div>
-    <figure><canvas class="view" id="strip" width="256" height="48" aria-label="Camera view of one projected stripe"></canvas><figcaption>The camera's view of the stripe. Dim line: where it would land at infinite depth (<i>d</i> = 0). Bright line: where it lands now. A farther surface (larger <i>z</i>) gives a smaller disparity, so the stripe slides back toward the dim line; a nearer surface pushes it away.</figcaption></figure>
+    <div class="math"><div id="geoCalc"></div></div>
+    <figure><canvas class="view" id="strip" width="256" height="48" aria-label="Camera view of one projected stripe"></canvas><figcaption>The camera's view of the stripe. Dim line: where it would land at infinite depth (\(d = 0\)). Bright line: where it lands now. A farther surface (larger \(z\)) gives a smaller disparity, so the stripe slides back toward the dim line; a nearer surface pushes it away.</figcaption></figure>
     <div class="stats" id="geoStats"></div>
   </section>
 
@@ -77,12 +77,12 @@ td.hi { background: color-mix(in srgb, var(--accent) 24%, transparent); font-wei
     <div class="stats" id="oneStats"></div>
     <div class="two">
       <figure><canvas class="view" id="oneView" aria-label="Camera image with one light stripe"></canvas><figcaption>Camera image with the stripe in orange. On a flat wall facing the camera it would be straight; depth changes bend it.</figcaption></figure>
-      <figure><canvas class="plot" id="profile" aria-label="Stripe disparity and depth against image row"></canvas><figcaption><span class="legend"><span><i style="background:var(--accent)"></i>Disparity <i>d</i> (left axis, px)</span><span><i style="background:var(--muted)"></i>True depth <i>z</i> (right axis, m)</span></span> Gaps are rows where the stripe is in shadow or off the image.</figcaption></figure>
+      <figure><canvas class="plot" id="profile" aria-label="Stripe disparity and depth against image row"></canvas><figcaption><span class="legend"><span><i style="background:var(--accent)"></i>Disparity \(d\) (left axis, px)</span><span><i style="background:var(--muted)"></i>True depth \(z\) (right axis, m)</span></span> Gaps are rows where the stripe is in shadow or off the image.</figcaption></figure>
     </div>
   </section>
 
   <section class="stage" aria-labelledby="h3">
-    <div class="stage-head"><span class="num">03</span><div><h2 id="h3">Sweeping is slow</h2><p>To measure every column you need a separate image for every stripe: <i>N</i> columns, <i>N</i> images.</p></div></div>
+    <div class="stage-head"><span class="num">03</span><div><h2 id="h3">Sweeping is slow</h2><p>To measure every column you need a separate image for every stripe: \(N\) columns, \(N\) images.</p></div></div>
     <div class="controls">
       <button type="button" class="btn primary" id="swPlay">Play</button>
       <button type="button" class="btn" id="swStep">Step</button>
@@ -95,19 +95,19 @@ td.hi { background: color-mix(in srgb, var(--accent) 24%, transparent); font-wei
   </section>
 
   <section class="stage" aria-labelledby="h4">
-    <div class="stage-head"><span class="num">04</span><div><h2 id="h4">Binary code patterns</h2><p>Give every projector column a number. Project the bits of that number one image at a time, and each camera pixel reads its own column off as a bit string. Only log<sub>2</sub> <i>N</i> images are needed.</p></div></div>
+    <div class="stage-head"><span class="num">04</span><div><h2 id="h4">Binary code patterns</h2><p>Give every projector column a number. Project the bits of that number one image at a time, and each camera pixel reads its own column off as a bit string. Only \(\log_2 N\) images are needed.</p></div></div>
     <div class="controls">
       <div class="ctl"><label for="nbits">Patterns n</label><input type="range" id="nbits" min="1" max="8" step="1" value="8"><output id="nbitsO"></output></div>
       <div class="ctl"><label for="bit">View pattern k</label><input type="range" id="bit" min="1" max="8" step="1" value="8"><output id="bitO"></output></div>
     </div>
     <div class="stats" id="binStats"></div>
     <div class="three">
-      <figure><canvas class="view" id="projPat" aria-label="Projector pattern for the chosen bit"></canvas><figcaption>Projector pattern <i>k</i>: bit <i>k</i> of each column's code (most significant bit first), so there are 2<sup><i>k</i></sup> stripes</figcaption></figure>
+      <figure><canvas class="view" id="projPat" aria-label="Projector pattern for the chosen bit"></canvas><figcaption>Projector pattern \(k\): bit \(k\) of each column's code (most significant bit first), so there are \(2^{k}\) stripes</figcaption></figure>
       <figure><canvas class="view" id="camPat" aria-label="Camera image of the chosen pattern"></canvas><figcaption>What the camera sees: the pattern bent by the scene</figcaption></figure>
-      <figure><canvas class="view" id="codeAcc" aria-label="Code decoded from bits 1 to k"></canvas><figcaption>Code decoded from patterns 1 to <i>k</i>. Colour is the code value; the picture sharpens as bits accumulate.</figcaption></figure>
+      <figure><canvas class="view" id="codeAcc" aria-label="Code decoded from bits 1 to k"></canvas><figcaption>Code decoded from patterns 1 to \(k\). Colour is the code value; the picture sharpens as bits accumulate.</figcaption></figure>
     </div>
     <div class="tablebox"><table class="calc" id="binTable"></table></div>
-    <p class="note">Noise and blur are off here, so the decoded column should equal the true projector column on every pixel that was lit. With <i>n</i> &lt; 8 patterns you only learn which block of 2<sup>8−<i>n</i></sup> columns a pixel belongs to.</p>
+    <p class="note">Noise and blur are off here, so the decoded column should equal the true projector column on every pixel that was lit. With \(n &lt; 8\) patterns you only learn which block of \(2^{8-n}\) columns a pixel belongs to.</p>
   </section>
 
   <section class="stage" aria-labelledby="h5">
@@ -119,12 +119,12 @@ td.hi { background: color-mix(in srgb, var(--accent) 24%, transparent); font-wei
     </div>
     <p class="note">Uses the number of patterns chosen in stage 04. Noise adds grey-level jitter to every image. Blur defocuses the projector, which smears thin stripes; the finest binary stripe is one column wide, so it vanishes first.</p>
     <div class="two">
-      <figure><canvas class="view" id="errBin" aria-label="Binary code column error map"></canvas><figcaption>Binary: column error |decoded − true| (black = 0, bright = 16 or more, grey = no data)</figcaption><div class="stats" id="binErr"></div></figure>
+      <figure><canvas class="view" id="errBin" aria-label="Binary code column error map"></canvas><figcaption>Binary: column error \(|\text{decoded} - \text{true}|\) (black = 0, bright = 16 or more, grey = no data)</figcaption><div class="stats" id="binErr"></div></figure>
       <figure><canvas class="view" id="errGray" aria-label="Gray code column error map"></canvas><figcaption>Gray: same scale and same noise</figcaption><div class="stats" id="grayErr"></div></figure>
     </div>
     <figure><canvas class="view" id="decView" aria-label="Decoded projector column map"></canvas><figcaption id="decCap"></figcaption></figure>
     <div class="tablebox"><table class="calc" id="grayTable"></table></div>
-    <div class="math"><p>Why binary is worse: where several bits flip together, one misread bit can move the answer by up to 2<sup><i>n</i>−1</sup> columns. A Gray code has exactly one bit that differs between neighbouring columns, so there is only one place to go wrong at a stripe edge. (Reading Gray back uses a running XOR: <i>b</i><sub>0</sub> = <i>g</i><sub>0</sub>, <i>b</i><sub><i>k</i></sub> = <i>b</i><sub><i>k</i>−1</sub> ⊕ <i>g</i><sub><i>k</i></sub>.)</p></div>
+    <div class="math"><p>Why binary is worse: where several bits flip together, one misread bit can move the answer by up to \(2^{n-1}\) columns. A Gray code has exactly one bit that differs between neighbouring columns, so there is only one place to go wrong at a stripe edge. (Reading Gray back uses a running XOR: \(b_0 = g_0,\ b_k = b_{k-1} \oplus g_k\).)</p></div>
   </section>
 
   <section class="stage" aria-labelledby="h6">
@@ -144,7 +144,7 @@ td.hi { background: color-mix(in srgb, var(--accent) 24%, transparent); font-wei
     <figure><canvas class="plot" id="relief"></canvas><figcaption>Recovered surface as a point cloud (64 × 48 samples), seen from the camera at first. Drag to rotate, scroll or pinch to zoom, arrow keys rotate, 0 resets. Gaps are shadow or undecodable pixels.</figcaption></figure>
     <div class="math">
       <h3>Baseline: resolution against shadow</h3>
-      <p>A one-column error in the decoded position changes the depth by Δ<i>z</i> ≈ <i>z</i><sup>2</sup> / (<i>f</i> <i>b</i>). A larger baseline therefore gives finer depth, but it also tilts the projector's view further from the camera's, so more of the scene is hidden from one of them. Drag the baseline up and watch the depth resolution number fall while the shadow percentage grows, especially on the Steps scene.</p>
+      <p>A one-column error in the decoded position changes the depth by \(\Delta z \approx z^{2} / (f\,b)\). A larger baseline therefore gives finer depth, but it also tilts the projector's view further from the camera's, so more of the scene is hidden from one of them. Drag the baseline up and watch the depth resolution number fall while the shadow percentage grows, especially on the Steps scene.</p>
       <p>Time of flight is a different kind of active illumination: instead of triangulating, it sends out light and measures how long the pulse (or the phase of a modulated beam) takes to return, then converts that delay to distance with the speed of light. It needs no baseline, so it has no shadows from the projector, but it needs very fast timing electronics. Photometric stereo, which varies light direction rather than projecting patterns, is covered in <a href="photometric-stereo.html">Photometric Stereo</a>.</p>
     </div>
   </section>
@@ -155,7 +155,7 @@ td.hi { background: color-mix(in srgb, var(--accent) 24%, transparent); font-wei
 <script>
 (() => {
 "use strict";
-const { $, nav, footer, rng, showRGB, hiDPI, onTheme, seg, setSeg, segVal, fmt, cssVar, arrow, gaussKernel } = VB;
+const { $, nav, footer, rng, showRGB, hiDPI, onTheme, seg, setSeg, segVal, fmt, cssVar, arrow, gaussKernel, mathRows, tex } = VB;
 nav("active-illumination.html"); footer();
 
 /* ---------- constants and shared-helper fallbacks ---------- */
@@ -284,11 +284,13 @@ function r1() {
   geo(); const g = st.geo;
   $("bO").value = $("b2O").value = $("b6O").value = fmt(st.b, 2) + " m";
   $("gzO").value = fmt(g.z, 2) + " m"; $("gx").value = g.x; $("gxO").value = fmt(g.x, 2) + " m"; $("gz").value = g.z; $("pcol").value = g.pcol; $("pcolO").value = g.pcol;
-  $("geoCalc").innerHTML =
-    `<span>disparity  <b>d = c − p = f·b / z</b> = ${F} × ${fmt(g.b, 2)} / ${fmt(g.z, 2)} = <b>${fmt(g.d, 2)} px</b></span>` +
-    `<span>cot α = x / z = ${fmt(g.x, 2)} / ${fmt(g.z, 2)} = ${fmt(g.cotA, 3)}     cot β = (b − x) / z = ${fmt(g.b - g.x, 2)} / ${fmt(g.z, 2)} = ${fmt(g.cotB, 3)}</span>` +
-    `<span>depth      <b>z = b / (cot α + cot β)</b> = ${fmt(g.b, 2)} / ${fmt(g.cotA + g.cotB, 3)} = <b>${fmt(g.zAngle, 3)} m</b></span>` +
-    `<span>check      z = f·b / d = ${F} × ${fmt(g.b, 2)} / ${fmt(g.cA - g.pA, 2)} = ${fmt(g.zDisp, 3)} m</span>`;
+  mathRows($("geoCalc"), [
+    { label: "Disparity", tex: "d = c - p = \\frac{f\\,b}{z}", value: `\\frac{${F} \\times ${fmt(g.b, 2)}}{${fmt(g.z, 2)}} = ${fmt(g.d, 2)}\\,\\mathrm{px}` },
+    { label: "Camera angle", tex: "\\cot\\alpha = \\frac{x}{z}", value: `\\frac{${fmt(g.x, 2)}}{${fmt(g.z, 2)}} = ${fmt(g.cotA, 3)}` },
+    { label: "Projector angle", tex: "\\cot\\beta = \\frac{b - x}{z}", value: `\\frac{${fmt(g.b - g.x, 2)}}{${fmt(g.z, 2)}} = ${fmt(g.cotB, 3)}` },
+    { label: "Depth", tex: "z = \\frac{b}{\\cot\\alpha + \\cot\\beta}", value: `\\frac{${fmt(g.b, 2)}}{${fmt(g.cotA + g.cotB, 3)}} = ${fmt(g.zAngle, 3)}\\,\\mathrm{m}` },
+    { label: "Check", tex: "z = \\frac{f\\,b}{d}", value: `\\frac{${F} \\times ${fmt(g.b, 2)}}{${fmt(g.cA - g.pA, 2)}} = ${fmt(g.zDisp, 3)}\\,\\mathrm{m}` }
+  ]);
   chips("geoStats", [["Stripe in camera, c", fmt(g.cA, 1) + " px"], ["Stripe in projector, p", g.pA + " px"], ["Disparity d", fmt(g.d, 2) + " px"], ["Depth z", fmt(g.zAngle, 3) + " m"], ["Depth step per column", fmt(g.z * g.z / (F * g.b) * 1000, 1) + " mm"]]);
   drawStrip(); drawGeo();
 }
@@ -418,7 +420,7 @@ function r4() {
   for (let i = 0; i < N; i++) if (full.valid[i] && m.lit[i]) { ok++; if ((full.col[i] >> fs) === (m.P[i] >> fs)) right++; if (full.col[i] === m.P[i]) ex++; }
   const r = ok ? right / ok : 0;
   st.bin = { ok, right, exact: ex, fracRight: r, stripes: countStripes(pat) };
-  chips("binStats", [["Patterns", nb], ["Codes 2^" + nb, 1 << nb], ["Stripes in pattern " + j, st.bin.stripes], [nb === 8 ? "Decoded column exactly correct" : "Right code block", pct(r)]]);
+  chips("binStats", [["Patterns", nb], ["Codes " + tex("2^{" + nb + "}"), 1 << nb], ["Stripes in pattern " + j, st.bin.stripes], [nb === 8 ? "Decoded column exactly correct" : "Right code block", pct(r)]]);
   let t = `<tr><td>column</td>${Array.from({ length: nb }, (_, k) => `<td class="${k + 1 === j ? "hi" : ""}">bit ${k + 1}</td>`).join("")}</tr>`;
   for (let n = 0; n < 16; n++) { const code = bits(n >> (8 - nb), nb); t += `<tr><td>${n}</td>${[...code].map((c, k) => `<td class="${k + 1 === j ? "hi" : ""}">${c}</td>`).join("")}</tr>`; }
   $("binTable").innerHTML = t;
@@ -464,13 +466,18 @@ function r6() {
   chips("depStats", [["Median depth error", isNaN(med) ? "–" : fmt(med * 100, 2) + "%"], ["Valid pixels", fmt(nv / N * 100, 1) + "%"], ["In shadow", fmt(sh / N * 100, 1) + "%"], ["Depth step per column at 1.5 m", fmt(dz * 1000, 1) + " mm"]]);
   drawRelief();
 }
-const v3 = VB.view3d($("relief"), { height: 340, fit: 130, yaw: 0.5, pitch: 0.3, label: "3-D point cloud of the recovered depth. Drag or use the arrow keys to rotate, scroll, pinch or plus and minus to zoom, 0 to reset." });
-function drawRelief() { // x right, y = depth away from the camera, z up (image rows flip); 100 world units per metre
-  const r = st.r6; if (!r) return; const items = [];
+const v3 = VB.view3d($("relief"), { height: 340, fit: 1, yaw: 0.5, pitch: 0.3, label: "3-D point cloud of the recovered depth. Drag or use the arrow keys to rotate, scroll, pinch or plus and minus to zoom, 0 to reset." });
+function drawRelief() { // x right, y = depth away from the camera, z up (image rows flip); centred and scaled to the cloud's own extent
+  const r = st.r6; if (!r) return; const pts = [];
   for (let y = 0; y < H; y += 4) for (let x = 0; x < W; x += 4) {
     const Z = r.Zr[y * W + x]; if (isNaN(Z)) continue; const c = depthColor(Z);
-    items.push({ p: [[(x - 128) / F * Z * 100, (Z - 1.75) * 100, -(y - 96) / F * Z * 100]], r: 2.6, color: `rgb(${c[0] | 0},${c[1] | 0},${c[2] | 0})` });
+    pts.push({ p: [(x - 128) / F * Z, Z, -(y - 96) / F * Z], color: `rgb(${c[0] | 0},${c[1] | 0},${c[2] | 0})` });
   }
+  const lo = [1e9, 1e9, 1e9], hi = [-1e9, -1e9, -1e9];
+  for (const { p } of pts) for (let k = 0; k < 3; k++) { lo[k] = Math.min(lo[k], p[k]); hi[k] = Math.max(hi[k], p[k]); }
+  const mid = lo.map((v, k) => (v + hi[k]) / 2); let rad = 1e-6;
+  for (const { p } of pts) rad = Math.max(rad, Math.hypot(p[0] - mid[0], p[1] - mid[1], p[2] - mid[2]));
+  const items = pts.map(({ p, color }) => ({ p: [p.map((v, k) => (v - mid[k]) / rad * 0.92)], r: 2.6, color }));
   v3.draw({ items });
 }
 

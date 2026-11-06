@@ -7,7 +7,9 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,500;8..60,600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="vendor/katex/katex.min.css">
 <link rel="stylesheet" href="site.css">
+<script src="vendor/katex/katex.min.js"></script>
 <style>
 #view3d { height: 380px; }
 #dist3d { font: 0.76rem var(--mono); color: var(--muted); margin: 4px 0 0; }
@@ -34,7 +36,7 @@ td.hi { background: color-mix(in srgb, var(--accent) 14%, transparent); }
   </div>
 
   <section class="stage" aria-labelledby="h0">
-    <div class="stage-head"><span class="num">00</span><div><h2 id="h0">The calibration object and the true camera</h2><p>Three checkerboard planes meet at the origin. Each plane has 6 × 6 inner corners spaced 10 units apart, so 108 points with known (X, Y, Z). Set the true camera with the sliders, then drag the 3D view to rotate it. The camera uses x right, y down, z forward, and x<sub>cam</sub> = R X + t.</p></div></div>
+    <div class="stage-head"><span class="num">00</span><div><h2 id="h0">The calibration object and the true camera</h2><p>Three checkerboard planes meet at the origin. Each plane has 6 × 6 inner corners spaced 10 units apart, so 108 points with known \((X, Y, Z)\). Set the true camera with the sliders, then drag the 3D view to rotate it. The camera uses \(x\) right, \(y\) down, \(z\) forward, and \(\mathbf{x}_{cam} = R\mathbf{X} + \mathbf{t}\).</p></div></div>
     <div class="controls">
       <button type="button" class="btn" data-pre="std">Standard camera</button>
       <button type="button" class="btn" data-pre="wide">Wide angle, close</button>
@@ -45,7 +47,7 @@ td.hi { background: color-mix(in srgb, var(--accent) 14%, transparent); }
       <div><canvas class="plot" id="view3d"></canvas><p id="dist3d"></p></div>
       <div class="sliders" id="sliders"></div>
     </div>
-    <p class="note">Rotation uses R = R<sub>z</sub>(γ) R<sub>y</sub>(β) R<sub>x</sub>(α). If you move the camera so the object leaves the image, the points still project and are still used. A real camera would not see them, so keep the object in view.</p>
+    <p class="note">Rotation uses \(R = R_z(\gamma) R_y(\beta) R_x(\alpha)\). If you move the camera so the object leaves the image, the points still project and are still used. A real camera would not see them, so keep the object in view.</p>
   </section>
 
   <section class="stage" aria-labelledby="h1">
@@ -53,21 +55,21 @@ td.hi { background: color-mix(in srgb, var(--accent) 14%, transparent); }
     <div class="main-side">
       <figure><canvas class="view click" id="img1" width="480" height="360"></canvas><figcaption><span class="legend"><span><i style="background:var(--accent)"></i>Points used in the solve</span><span><i style="background:var(--muted)"></i>Points not used</span></span></figcaption></figure>
       <div style="display:grid;gap:12px">
-        <div class="ctl"><label for="noise">Pixel noise σ</label><input type="range" id="noise" min="0" max="5" step="0.1" value="0.5"><output id="noiseO">0.5</output></div>
+        <div class="ctl"><label for="noise">Pixel noise \(\sigma\)</label><input type="range" id="noise" min="0" max="5" step="0.1" value="0.5"><output id="noiseO">0.5</output></div>
         <div class="ctl"><label for="npts">Points used</label><input type="range" id="npts" min="6" max="108" step="1" value="36"><output id="nptsO">36</output></div>
         <div class="ctl"><label>Normalize coordinates</label><div class="seg" id="norm"><button type="button" data-v="1" aria-pressed="true">On</button><button type="button" data-v="0" aria-pressed="false">Off</button></div></div>
         <button type="button" class="btn" id="reseed">Draw a new noise sample</button>
-        <p class="note">Points are taken in an order that alternates between the three planes, so every subset covers all of them. Six points is the minimum, since each point gives two equations and P has 11 degrees of freedom.</p>
+        <p class="note">Points are taken in an order that alternates between the three planes, so every subset covers all of them. Six points is the minimum, since each point gives two equations and \(P\) has 11 degrees of freedom.</p>
       </div>
     </div>
   </section>
 
   <section class="stage" aria-labelledby="h2">
-    <div class="stage-head"><span class="num">02</span><div><h2 id="h2">Solve for P with the DLT</h2><p>A pixel (u, v) and its 3D point X satisfy (u, v, 1) ∝ P (X, Y, Z, 1). Cross-multiplying removes the unknown scale and gives two linear equations in the 12 entries of P for each point.</p></div></div>
+    <div class="stage-head"><span class="num">02</span><div><h2 id="h2">Solve for \(P\) with the DLT</h2><p>A pixel \((u, v)\) and its 3D point \(\mathbf{X}\) satisfy \((u, v, 1)^\top \propto P\,(X, Y, Z, 1)^\top\). Cross-multiplying removes the unknown scale and gives two linear equations in the 12 entries of \(P\) for each point.</p></div></div>
     <div class="math"><h3>Two rows of A per point</h3>
-      <p class="eq">[ X Y Z 1   0 0 0 0   −uX −uY −uZ −u ] p = 0</p>
-      <p class="eq">[ 0 0 0 0   X Y Z 1   −vX −vY −vZ −v ] p = 0</p>
-      <p>Stack all rows into A, a 2n × 12 matrix. With noise, A p = 0 has no exact solution, so we minimize ‖A p‖ subject to ‖p‖ = 1. The answer is the eigenvector of AᵀA with the smallest eigenvalue. This page finds it with a Jacobi eigenvalue iteration written in plain JavaScript. With normalization on, the 3D points and pixels are first shifted to zero mean and scaled, which keeps the numbers well conditioned. P is then mapped back.</p></div>
+      <div class="eqd">\[ \begin{bmatrix} X & Y & Z & 1 & 0 & 0 & 0 & 0 & -uX & -uY & -uZ & -u \end{bmatrix} \mathbf{p} = 0 \]
+      \[ \begin{bmatrix} 0 & 0 & 0 & 0 & X & Y & Z & 1 & -vX & -vY & -vZ & -v \end{bmatrix} \mathbf{p} = 0 \]</div>
+      <p>Stack all rows into \(A\), a \(2n \times 12\) matrix. With noise, \(A\mathbf{p} = 0\) has no exact solution, so we minimize \(\|A\mathbf{p}\|\) subject to \(\|\mathbf{p}\| = 1\). The answer is the eigenvector of \(A^\top A\) with the smallest eigenvalue. This page finds it with a Jacobi eigenvalue iteration written in plain JavaScript. With normalization on, the 3D points and pixels are first shifted to zero mean and scaled, which keeps the numbers well conditioned. \(P\) is then mapped back.</p></div>
     <div class="two">
       <div class="math" id="pMat"></div>
       <div class="math" id="dltInfo"></div>
@@ -75,10 +77,11 @@ td.hi { background: color-mix(in srgb, var(--accent) 14%, transparent); }
   </section>
 
   <section class="stage" aria-labelledby="h3">
-    <div class="stage-head"><span class="num">03</span><div><h2 id="h3">Decompose P into K, R and t</h2><p>The left 3 × 3 block of P is M = K R, an upper triangular matrix times a rotation. An RQ decomposition splits them. Then t = K⁻¹ p₄. The scale and sign of P are free, so we fix the sign by det M &gt; 0 and divide K by its bottom-right entry.</p></div></div>
+    <div class="stage-head"><span class="num">03</span><div><h2 id="h3">Decompose \(P\) into \(K\), \(R\) and \(\mathbf{t}\)</h2><p>The left \(3 \times 3\) block of \(P\) is \(M = KR\), an upper triangular matrix times a rotation. An RQ decomposition splits them. Then \(\mathbf{t} = K^{-1}\mathbf{p}_4\). The scale and sign of \(P\) are free, so we fix the sign by \(\det M &gt; 0\) and divide \(K\) by its bottom-right entry.</p></div></div>
     <div class="stats" id="decStats"></div>
     <div class="mats" id="decMats"></div>
-    <div class="math"><h3>RQ by Gram–Schmidt</h3><p class="eq">r₃ = m₃ / ‖m₃‖,   r₂ = unit(m₂ − (m₂·r₃) r₃),   r₁ = unit(m₁ − (m₁·r₃) r₃ − (m₁·r₂) r₂)</p><p class="eq">K<sub>ij</sub> = mᵢ · rⱼ  for j ≥ i,   t = K⁻¹ p₄</p><p>Here mᵢ is row i of M. This builds the rows of R from the bottom up, which is why the result is upper triangular. Try noise 3 with only 8 points: the rotation survives, but the focal length and the translation along the optical axis drift together.</p></div>
+    <div class="math"><h3>RQ by Gram–Schmidt</h3><div class="eqd">\[ \mathbf{r}_3 = \frac{\mathbf{m}_3}{\|\mathbf{m}_3\|}, \quad \mathbf{r}_2 = \operatorname{unit}\big(\mathbf{m}_2 - (\mathbf{m}_2\cdot\mathbf{r}_3)\,\mathbf{r}_3\big), \quad \mathbf{r}_1 = \operatorname{unit}\big(\mathbf{m}_1 - (\mathbf{m}_1\cdot\mathbf{r}_3)\,\mathbf{r}_3 - (\mathbf{m}_1\cdot\mathbf{r}_2)\,\mathbf{r}_2\big) \]
+      \[ K_{ij} = \mathbf{m}_i \cdot \mathbf{r}_j \ \text{ for } j \ge i, \qquad \mathbf{t} = K^{-1}\mathbf{p}_4 \]</div><p>Here \(\mathbf{m}_i\) is row \(i\) of \(M\). This builds the rows of R from the bottom up, which is why the result is upper triangular. Try noise 3 with only 8 points: the rotation survives, but the focal length and the translation along the optical axis drift together.</p></div>
   </section>
 
   <section class="stage" aria-labelledby="h4">
@@ -99,7 +102,7 @@ td.hi { background: color-mix(in srgb, var(--accent) 14%, transparent); }
 <script>
 (() => {
 "use strict";
-const { $, nav, footer, hiDPI, onTheme, cssVar, seg, segVal, rng, fmt, imgXY, esc } = VB;
+const { $, nav, footer, hiDPI, onTheme, cssVar, seg, segVal, rng, fmt, imgXY, esc, mathify } = VB;
 nav("camera-calibration.html"); footer();
 
 /*CORE*/
@@ -184,16 +187,16 @@ const PLANE_COL = [["#dfe6f5", "#3a4a78"], ["#f5e4dc", "#7a4a3a"], ["#e0f0e0", "
 
 /* ---------- parameters ---------- */
 const PARAMS = [
-  { k: "f", l: "focal length f (px)", min: 200, max: 2200, step: 10, d: "px" }, { k: "cx", l: "principal point cx", min: 120, max: 360, step: 1 }, { k: "cy", l: "principal point cy", min: 90, max: 270, step: 1 },
-  { k: "a", l: "rotation α about x (°)", min: -180, max: 180, step: 1 }, { k: "b", l: "rotation β about y (°)", min: -89, max: 89, step: 1 }, { k: "g", l: "rotation γ about z (°)", min: -180, max: 180, step: 1 },
-  { k: "tx", l: "translation tx", min: -600, max: 600, step: 1 }, { k: "ty", l: "translation ty", min: -600, max: 600, step: 1 }, { k: "tz", l: "translation tz", min: 10, max: 1500, step: 1 },
+  { k: "f", l: "focal length \\(f\\) (px)", min: 200, max: 2200, step: 10, d: "px" }, { k: "cx", l: "principal point \\(c_x\\)", min: 120, max: 360, step: 1 }, { k: "cy", l: "principal point \\(c_y\\)", min: 90, max: 270, step: 1 },
+  { k: "a", l: "rotation \\(\\alpha\\) about \\(x\\) (°)", min: -180, max: 180, step: 1 }, { k: "b", l: "rotation \\(\\beta\\) about \\(y\\) (°)", min: -89, max: 89, step: 1 }, { k: "g", l: "rotation \\(\\gamma\\) about \\(z\\) (°)", min: -180, max: 180, step: 1 },
+  { k: "tx", l: "translation \\(t_x\\)", min: -600, max: 600, step: 1 }, { k: "ty", l: "translation \\(t_y\\)", min: -600, max: 600, step: 1 }, { k: "tz", l: "translation \\(t_z\\)", min: 10, max: 1500, step: 1 },
 ];
 const st = { prm: {}, seed: 1, sel: 0, res: null };
 (() => {
   const box = $("sliders"); let h = "";
   const groups = { f: "Intrinsics", a: "Rotation", tx: "Translation" };
   for (const p of PARAMS) { if (groups[p.k]) h += `<div class="sl-h">${groups[p.k]}</div>`; h += `<div class="sl"><label for="s_${p.k}">${p.l}</label><input type="range" id="s_${p.k}" min="${p.min}" max="${p.max}" step="${p.step}"><output id="o_${p.k}"></output></div>`; }
-  box.innerHTML = h;
+  box.innerHTML = h; mathify(box);
   for (const p of PARAMS) $("s_" + p.k).addEventListener("input", e => { st.prm[p.k] = +e.target.value; $("o_" + p.k).value = e.target.value; schedule(); });
 })();
 function setPrm(o) { for (const p of PARAMS) { st.prm[p.k] = Math.round(o[p.k] / p.step) * p.step; $("s_" + p.k).value = st.prm[p.k]; $("o_" + p.k).value = st.prm[p.k]; } }
@@ -255,7 +258,7 @@ function drawImg2() {
 }
 // World for view3d: (x, -y, z) about the object centre, so the first view matches the old hand-rolled one (yaw -0.75, elevation 0.55).
 const CTR = [30, 30, 30], w3 = X => [X[0] - CTR[0], CTR[1] - X[1], X[2] - CTR[2]];
-const v3 = VB.view3d($("view3d"), { height: 380, fit: 175, yaw: -0.75, pitch: 0.55, label: "3D view of the calibration object and the camera. Drag or use the arrow keys to rotate, scroll, pinch or plus and minus to zoom, 0 to reset." });
+const v3 = VB.view3d($("view3d"), { height: 380, fit: 175, yaw: -0.75, pitch: 0.55, onChange: () => { if (st.res) draw3d(); }, label: "3D view of the calibration object and the camera. Drag or use the arrow keys to rotate, scroll, pinch or plus and minus to zoom, 0 to reset." });
 function fit3d() { const r = st.res, d = Math.min(Math.hypot(...sub(scale(matVec(T3(r.R), r.t), -1), CTR)), 330); v3.setView({ zoom: 175 / ((d * 1.15 + 60) / 1.9) }); }
 function draw3d() {
   const r = st.res, C = scale(matVec(T3(r.R), r.t), -1), items = [];
@@ -268,7 +271,8 @@ function draw3d() {
   const cc = w3(C), cs = [[0, 0], [W, 0], [W, H], [0, H]].map(corner);
   items.push({ p: cs, fill: "rgba(31,86,209,.15)", stroke: "--ink", w: 1.5 });
   cs.forEach(q => items.push({ p: [cc, q], color: "--ink", w: 1.5 }));
-  items.push({ p: [cc, w3([0, 0, 0])], color: "--muted", w: 1, dash: [5, 4] }, { p: [cc], r: 4, color: "--ink" }, { p: [cc], text: "camera", color: "--ink", font: "12px sans-serif" });
+  const yw = v3.view.yaw, lab = cc.map((v, i) => v + [Math.cos(yw), -Math.sin(yw), 0][i] * 95); // label sits to the right of the object so it never covers it
+  items.push({ p: [cc, w3([0, 0, 0])], color: "--muted", w: 1, dash: [5, 4] }, { p: [cc], r: 4, color: "--ink" }, { p: [lab], color: "--muted", w: 1 }, { p: [lab], text: "camera", color: "--ink", font: "12px sans-serif" });
   $("dist3d").textContent = "distance to origin " + f2(Math.hypot(...C), 0);
   v3.draw({ items });
 }
@@ -278,9 +282,9 @@ function matTable(M, d = 3, cls = "") { return `<table class="calc ${cls}">${M.m
 function scaledP(P) { const s = Math.hypot(P[2][0], P[2][1], P[2][2]) * (det3(P.map(r => r.slice(0, 3))) < 0 ? -1 : 1); return P.map(r => r.map(v => v / s)); }
 function panels() {
   const r = st.res, Pt = scaledP(r.P), Pe = scaledP(r.fit.P);
-  $("pMat").innerHTML = `<h3>P, estimated and true</h3><div class="mats"><div><h4>Estimated</h4>${matTable(Pe, 3)}</div><div><h4>True</h4>${matTable(Pt, 3)}</div></div><p class="note">Both are scaled so the bottom-left 1 × 3 block has unit length. P is only defined up to scale, so only this ratio matters.</p>`;
+  $("pMat").innerHTML = `<h3>\\(P\\), estimated and true</h3><div class="mats"><div><h4>Estimated</h4>${matTable(Pe, 3)}</div><div><h4>True</h4>${matTable(Pt, 3)}</div></div><p class="note">Both are scaled so the bottom-left \\(1 \\times 3\\) block has unit length. \\(P\\) is only defined up to scale, so only this ratio matters.</p>`;
   const rel = Math.max(...Pe.flat().map((v, i) => Math.abs(v - Pt.flat()[i])));
-  $("dltInfo").innerHTML = `<h3>The linear system</h3><p class="mono">A is ${r.fit.nRows} × 12 (${r.n} points × 2 rows)</p><p class="mono">smallest eigenvalue of AᵀA = ${r.fit.minEig.toExponential(2)}</p><p class="mono">Jacobi sweeps to converge = ${r.fit.sweeps}</p><p class="mono">largest entry difference from true P = ${rel.toExponential(2)}</p><p class="note">With zero noise the smallest eigenvalue is essentially zero, so A p = 0 holds exactly. Noise lifts it, and it grows with the noise.</p>`;
+  $("dltInfo").innerHTML = `<h3>The linear system</h3><p class="mono">\\(A\\) is ${r.fit.nRows} × 12 (${r.n} points × 2 rows)</p><p class="mono">smallest eigenvalue of \\(A^\\top A\\) = ${r.fit.minEig.toExponential(2)}</p><p class="mono">Jacobi sweeps to converge = ${r.fit.sweeps}</p><p class="mono">largest entry difference from true \\(P\\) = ${rel.toExponential(2)}</p><p class="note">With zero noise the smallest eigenvalue is essentially zero, so \\(A\\mathbf{p} = 0\\) holds exactly. Noise lifts it, and it grows with the noise.</p>`;
   const K = r.dec.K, Kt = r.K, Re = r.dec.R, te = r.dec.t;
   const row = (nm, a, b) => `<tr><td>${nm}</td><td>${f2(b, 2)}</td><td>${f2(a, 2)}</td><td class="hi">${f2(a - b, 2)}</td></tr>`;
   const ra = rotAngle(Re, r.R), dt = Math.hypot(te[0] - r.t[0], te[1] - r.t[1], te[2] - r.t[2]);
@@ -300,18 +304,18 @@ function ptInfo() {
   const pv = used ? r.fit.pn : null;
   const line = (rw, k) => `<div>${rw.map(v => (v < 0 ? "" : " ") + f2(v, 2).padStart(7)).join(" ")}${pv ? `  · p = ${(rw.reduce((s, v, j) => s + v * pv[j], 0)).toExponential(1)}` : ""}</div>`;
   $("ptInfo").innerHTML = `<h3>Point #${i + 1} on plane ${["Z = 0", "Y = 0", "X = 0"][o.plane]}</h3>
-    <dl><dt>3D (X, Y, Z)</dt><dd>(${o.X.map(v => f2(v, 0)).join(", ")})</dd><dt>Observed (u, v)</dt><dd>(${f2(ob[0], 2)}, ${f2(ob[1], 2)})</dd><dt>True projection</dt><dd>(${f2(r.truth[i][0], 2)}, ${f2(r.truth[i][1], 2)})</dd><dt>Reprojected (û, v̂)</dt><dd>(${f2(rp[0], 2)}, ${f2(rp[1], 2)})</dd><dt>Error</dt><dd>${f2(r.err[i], 3)} px</dd><dt>In the solve</dt><dd>${used ? "yes" : "no"}</dd></dl>
+    <dl><dt>3D \\((X, Y, Z)\\)</dt><dd>(${o.X.map(v => f2(v, 0)).join(", ")})</dd><dt>Observed \\((u, v)\\)</dt><dd>(${f2(ob[0], 2)}, ${f2(ob[1], 2)})</dd><dt>True projection</dt><dd>(${f2(r.truth[i][0], 2)}, ${f2(r.truth[i][1], 2)})</dd><dt>Reprojected \\((\\hat u, \\hat v)\\)</dt><dd>(${f2(rp[0], 2)}, ${f2(rp[1], 2)})</dd><dt>Error</dt><dd>${f2(r.err[i], 3)} px</dd><dt>In the solve</dt><dd>${used ? "yes" : "no"}</dd></dl>
     <p class="note" style="margin-top:6px">The two rows of A for this point${used && r.norm ? " (in normalized coordinates, as the solver saw them)" : used ? "" : " (it was not used, so these are what it would add)"}:</p>
     <div class="arows">${rows.map(line).join("")}</div>
-    <p class="note">${used ? "The number after p = is the row times the solution vector. It is the algebraic residual, and the solver tries to keep all of these small." : "Rows use raw coordinates."} Reprojection û = (P₁·X̃) / (P₃·X̃) divides by depth w = ${f2(rp[2], 1)}.</p>`;
+    <p class="note">${used ? "The number after \\(\\mathbf{p}\\)\\(=\\) is the row times the solution vector. It is the algebraic residual, and the solver tries to keep all of these small." : "Rows use raw coordinates."} Reprojection \\(\\hat u = (\\mathbf{P}_1\\cdot\\tilde{\\mathbf{X}}) / (\\mathbf{P}_3\\cdot\\tilde{\\mathbf{X}})\\) divides by depth \\(w\\) = ${f2(rp[2], 1)}.</p>`;
 }
-function render() { drawImg1(); drawImg2(); draw3d(); panels(); }
+function render() { drawImg1(); drawImg2(); draw3d(); panels(); mathify($("pMat")); mathify($("dltInfo")); mathify($("ptInfo")); }
 
 /* ---------- events ---------- */
 ["img1", "img2"].forEach(id => $(id).addEventListener("click", e => { const [x, y] = imgXY(e, e.currentTarget, W, H); const r = st.res; let best = 28, bi = -1; r.obs.forEach((q, i) => { const d = Math.hypot(q[0] - x, q[1] - y); if (d < best) { best = d; bi = i; } }); if (bi >= 0) { st.sel = bi; render(); } }));
 $("noise").addEventListener("input", schedule); $("npts").addEventListener("input", schedule); seg("norm", compute);
 $("reseed").addEventListener("click", () => { st.seed++; compute(); }); $("mag") && seg("mag", () => { drawImg2(); });
-onTheme(() => { if (st.res) { drawImg1(); drawImg2(); panels(); } });
+onTheme(() => { if (st.res) { drawImg1(); drawImg2(); panels(); mathify($("pMat")); mathify($("dltInfo")); mathify($("ptInfo")); } });
 preset("std"); fit3d();
 window.__cal = { st, compute };
 })();

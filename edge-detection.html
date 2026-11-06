@@ -7,7 +7,9 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,500;8..60,600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="vendor/katex/katex.min.css">
 <link rel="stylesheet" href="site.css">
+<script src="vendor/katex/katex.min.js"></script>
 </head>
 <body>
 <header class="site"></header>
@@ -25,31 +27,31 @@
   </section>
 
   <section class="stage" aria-labelledby="h1">
-    <div class="stage-head"><span class="num">01</span><div><h2 id="h1">Edges in one row</h2><p>Click the image to choose a row. Along that row, an edge is a peak in the first derivative and a zero crossing in the second derivative. Smoothing first (σ) suppresses peaks caused by noise.</p></div></div>
+    <div class="stage-head"><span class="num">01</span><div><h2 id="h1">Edges in one row</h2><p>Click the image to choose a row. Along that row, an edge is a peak in the first derivative and a zero crossing in the second derivative. Smoothing first (\(\sigma\)) suppresses peaks caused by noise.</p></div></div>
     <div class="main-side">
       <figure><canvas class="view click" id="rowImg"></canvas><figcaption id="rowCap">Click to choose a row</figcaption></figure>
-      <figure><canvas class="plot" id="rowPlot" style="height:330px"></canvas><figcaption><span class="legend"><span><i style="background:var(--ink)"></i>I(x), smoothed</span><span><i style="background:var(--accent)"></i>dI/dx</span><span><i style="background:#c2410c"></i>d²I/dx²</span><span><i style="background:#16a34a"></i>edge found</span></span></figcaption></figure>
+      <figure><canvas class="plot" id="rowPlot" style="height:330px"></canvas><figcaption><span class="legend"><span><i style="background:var(--ink)"></i>\(I(x)\), smoothed</span><span><i style="background:var(--accent)"></i>\(\mathrm{d}I/\mathrm{d}x\)</span><span><i style="background:#c2410c"></i>\(\mathrm{d}^2I/\mathrm{d}x^2\)</span><span><i style="background:#16a34a"></i>edge found</span></span></figcaption></figure>
     </div>
     <div class="controls">
-      <div class="ctl"><label for="rSig">Smoothing σ</label><input type="range" id="rSig" min="0" max="6" step="0.1" value="1.5"><output id="rSigO">1.5</output></div>
+      <div class="ctl"><label for="rSig">Smoothing \(\sigma\)</label><input type="range" id="rSig" min="0" max="6" step="0.1" value="1.5"><output id="rSigO">1.5</output></div>
       <div class="ctl"><label for="rThr">Min. slope for an edge</label><input type="range" id="rThr" min="1" max="60" value="8"><output id="rThrO">8</output></div>
     </div>
   </section>
 
   <section class="stage" aria-labelledby="h2">
-    <div class="stage-head"><span class="num">02</span><div><h2 id="h2">The gradient</h2><p>In 2D the derivative is a vector, ∇I = (∂I/∂x, ∂I/∂y). Its length is the edge strength, and it points across the edge toward the brighter side. Click the strength image to see the vector at that pixel.</p></div></div>
+    <div class="stage-head"><span class="num">02</span><div><h2 id="h2">The gradient</h2><p>In 2D the derivative is a vector, \(\nabla I = (\partial I/\partial x,\, \partial I/\partial y)\). Its length is the edge strength, and it points across the edge toward the brighter side. Click the strength image to see the vector at that pixel.</p></div></div>
     <div class="controls">
       <div class="ctl"><label>Operator</label><div class="seg" id="op"><button type="button" data-v="roberts" aria-pressed="false">Roberts</button><button type="button" data-v="prewitt" aria-pressed="false">Prewitt</button><button type="button" data-v="sobel" aria-pressed="true">Sobel</button></div></div>
-      <div class="ctl"><label for="gSig">Smooth first σ</label><input type="range" id="gSig" min="0" max="4" step="0.1" value="1"><output id="gSigO">1.0</output></div>
+      <div class="ctl"><label for="gSig">Smooth first \(\sigma\)</label><input type="range" id="gSig" min="0" max="4" step="0.1" value="1"><output id="gSigO">1.0</output></div>
     </div>
     <div class="four">
-      <figure><canvas class="view" id="gx"></canvas><figcaption>∂I/∂x (gray = 0)</figcaption></figure>
-      <figure><canvas class="view" id="gy"></canvas><figcaption>∂I/∂y (gray = 0)</figcaption></figure>
-      <figure><canvas class="view click" id="gm"></canvas><figcaption>Strength ‖∇I‖. Click a pixel.</figcaption></figure>
+      <figure><canvas class="view" id="gx"></canvas><figcaption>\(\partial I/\partial x\) (gray = 0)</figcaption></figure>
+      <figure><canvas class="view" id="gy"></canvas><figcaption>\(\partial I/\partial y\) (gray = 0)</figcaption></figure>
+      <figure><canvas class="view click" id="gm"></canvas><figcaption>Strength \(\|\nabla I\|\). Click a pixel.</figcaption></figure>
       <figure><canvas class="view" id="go"></canvas><figcaption>Direction: hue = angle, brightness = strength</figcaption></figure>
     </div>
     <div class="two">
-      <div class="math"><h3>Kernels</h3><div id="opK" class="eq"></div></div>
+      <div class="math"><h3>Kernels</h3><div id="opK"></div></div>
       <div class="math"><h3>At the selected pixel</h3><div id="gRead"></div></div>
     </div>
   </section>
@@ -57,7 +59,7 @@
   <section class="stage" aria-labelledby="h3">
     <div class="stage-head"><span class="num">03</span><div><h2 id="h3">Canny, step by step</h2><p>Gradient strength gives thick, broken edges. Canny thins them to one pixel by keeping only local maxima across the edge, then links them using two thresholds.</p></div></div>
     <div class="controls">
-      <div class="ctl"><label for="cSig">σ</label><input type="range" id="cSig" min="0.5" max="4" step="0.1" value="1.4"><output id="cSigO">1.4</output></div>
+      <div class="ctl"><label for="cSig">\(\sigma\)</label><input type="range" id="cSig" min="0.5" max="4" step="0.1" value="1.4"><output id="cSigO">1.4</output></div>
       <div class="ctl"><label for="cLo">Low threshold</label><input type="range" id="cLo" min="1" max="60" value="8"><output id="cLoO">8%</output></div>
       <div class="ctl"><label for="cHi">High threshold</label><input type="range" id="cHi" min="2" max="80" value="20"><output id="cHiO">20%</output></div>
     </div>
@@ -71,13 +73,13 @@
   </section>
 
   <section class="stage" aria-labelledby="h4">
-    <div class="stage-head"><span class="num">04</span><div><h2 id="h4">Laplacian of Gaussian</h2><p>The Laplacian ∇²I = ∂²I/∂x² + ∂²I/∂y² is the 2D second derivative. It does not depend on direction, and edges are where it crosses zero. Larger σ finds only coarse edges.</p></div></div>
+    <div class="stage-head"><span class="num">04</span><div><h2 id="h4">Laplacian of Gaussian</h2><p>The Laplacian \(\nabla^2 I = \partial^2 I/\partial x^2 + \partial^2 I/\partial y^2\) is the 2D second derivative. It does not depend on direction, and edges are where it crosses zero. Larger \(\sigma\) finds only coarse edges.</p></div></div>
     <div class="controls">
-      <div class="ctl"><label for="lSig">σ</label><input type="range" id="lSig" min="1" max="6" step="0.1" value="2"><output id="lSigO">2.0</output></div>
+      <div class="ctl"><label for="lSig">\(\sigma\)</label><input type="range" id="lSig" min="1" max="6" step="0.1" value="2"><output id="lSigO">2.0</output></div>
       <div class="ctl"><label for="lThr">Min. crossing strength</label><input type="range" id="lThr" min="0" max="40" value="6"><output id="lThrO">6%</output></div>
     </div>
     <div class="two">
-      <figure><canvas class="view" id="l1"></canvas><figcaption>∇²(G<sub>σ</sub> ∗ I): gray = 0, dark = negative, bright = positive</figcaption></figure>
+      <figure><canvas class="view" id="l1"></canvas><figcaption>\(\nabla^2(G_\sigma \ast I)\): gray = 0, dark = negative, bright = positive</figcaption></figure>
       <figure><canvas class="view" id="l2"></canvas><figcaption>Zero crossings</figcaption></figure>
     </div>
   </section>
@@ -88,7 +90,7 @@
 <script>
 (() => {
 "use strict";
-const { $, nav, footer, SAMPLES, picker, toGray, show, showRGB, gaussBlur, conv2, imgXY, hiDPI, onTheme, cssVar, seg, segVal, hsvToRgb, arrow, fmt } = VB;
+const { $, nav, footer, SAMPLES, picker, toGray, show, showRGB, gaussBlur, conv2, imgXY, hiDPI, onTheme, cssVar, seg, segVal, hsvToRgb, arrow, fmt, tex } = VB;
 nav("edge-detection.html"); footer();
 const st = { w: 0, h: 0, g: null, row: 0, sel: null };
 
@@ -121,9 +123,9 @@ $("rowImg").addEventListener("click", e => { st.row = Math.max(0, Math.min(st.h 
 
 /* ---------- 02 gradient ---------- */
 const OPS = {
-  roberts: { x: [0, 0, 0, 0, 1, 0, 0, 0, -1], y: [0, 0, 0, 0, 0, 1, 0, -1, 0], txt: "Roberts (2×2, diagonal differences)<br>[ 1  0 ]    [ 0  1 ]<br>[ 0 −1 ]    [−1  0 ]<br>These measure change along the two diagonals, so ∂x and ∂y are rotated by 45°." },
-  prewitt: { x: [-1, 0, 1, -1, 0, 1, -1, 0, 1], y: [-1, -1, -1, 0, 0, 0, 1, 1, 1], txt: "Prewitt ∂x          ∂y<br>[−1 0 1]      [−1 −1 −1]<br>[−1 0 1]      [ 0  0  0]<br>[−1 0 1]      [ 1  1  1]" },
-  sobel: { x: [-1, 0, 1, -2, 0, 2, -1, 0, 1], y: [-1, -2, -1, 0, 0, 0, 1, 2, 1], txt: "Sobel ∂x            ∂y<br>[−1 0 1]      [−1 −2 −1]<br>[−2 0 2]      [ 0  0  0]<br>[−1 0 1]      [ 1  2  1]<br>Weights the center row more, which adds a little smoothing." },
+  roberts: { x: [0, 0, 0, 0, 1, 0, 0, 0, -1], y: [0, 0, 0, 0, 0, 1, 0, -1, 0], txt: `<p style="margin:0 0 4px">Roberts (2×2, diagonal differences)</p>${tex("G_x = \\begin{bmatrix}1 & 0 \\\\ 0 & -1\\end{bmatrix} \\quad G_y = \\begin{bmatrix}0 & 1 \\\\ -1 & 0\\end{bmatrix}", { display: true })}<p class="note">These measure change along the two diagonals, so ${tex("\\partial x")} and ${tex("\\partial y")} are rotated by ${tex("45^\\circ")}.</p>` },
+  prewitt: { x: [-1, 0, 1, -1, 0, 1, -1, 0, 1], y: [-1, -1, -1, 0, 0, 0, 1, 1, 1], txt: `<p style="margin:0 0 4px">Prewitt</p>${tex("G_x = \\begin{bmatrix}-1 & 0 & 1 \\\\ -1 & 0 & 1 \\\\ -1 & 0 & 1\\end{bmatrix} \\quad G_y = \\begin{bmatrix}-1 & -1 & -1 \\\\ 0 & 0 & 0 \\\\ 1 & 1 & 1\\end{bmatrix}", { display: true })}` },
+  sobel: { x: [-1, 0, 1, -2, 0, 2, -1, 0, 1], y: [-1, -2, -1, 0, 0, 0, 1, 2, 1], txt: `<p style="margin:0 0 4px">Sobel</p>${tex("G_x = \\begin{bmatrix}-1 & 0 & 1 \\\\ -2 & 0 & 2 \\\\ -1 & 0 & 1\\end{bmatrix} \\quad G_y = \\begin{bmatrix}-1 & -2 & -1 \\\\ 0 & 0 & 0 \\\\ 1 & 2 & 1\\end{bmatrix}", { display: true })}<p class="note">Weights the center row more, which adds a little smoothing.</p>` },
 };
 const gr = { gx: null, gy: null, m: null };
 function gradient(a, w, h, op) { const o = OPS[op]; return [conv2(a, w, h, o.x, 3, 3), conv2(a, w, h, o.y, 3, 3)]; }
@@ -143,7 +145,7 @@ function drawSel() {
   ctx.beginPath(); ctx.arc(x, y, 3, 0, 7); ctx.fillStyle = "#ff3b30"; ctx.fill();
   arrow(ctx, x, y, x + ux * L, y + uy * L, "#ff3b30", 2, 7);
   const ang = Math.atan2(-gy, gx) * 180 / Math.PI;
-  $("gRead").innerHTML = `<dl class="detail" style="display:grid;grid-template-columns:auto 1fr;gap:3px 12px;margin:0"><dt>Pixel</dt><dd class="mono">(${x}, ${y})</dd><dt>∂I/∂x</dt><dd class="mono">${fmt(gx, 1)}</dd><dt>∂I/∂y</dt><dd class="mono">${fmt(gy, 1)}</dd><dt>‖∇I‖</dt><dd class="mono">√(∂x² + ∂y²) = ${fmt(m, 1)}</dd><dt>Direction θ</dt><dd class="mono">atan2(−∂y, ∂x) = ${fmt(ang, 1)}°</dd></dl><p class="note">The red arrow points toward brighter pixels. The edge itself runs perpendicular to it. θ is measured counter-clockwise with y pointing up.</p>`;
+  $("gRead").innerHTML = `<dl class="detail" style="display:grid;grid-template-columns:auto 1fr;gap:3px 12px;margin:0"><dt>Pixel</dt><dd class="mono">(${x}, ${y})</dd><dt>${tex("\\partial I/\\partial x")}</dt><dd class="mono">${fmt(gx, 1)}</dd><dt>${tex("\\partial I/\\partial y")}</dt><dd class="mono">${fmt(gy, 1)}</dd><dt>${tex("\\|\\nabla I\\|")}</dt><dd>${tex("\\sqrt{I_x^2 + I_y^2} = " + fmt(m, 1))}</dd><dt>Direction ${tex("\\theta")}</dt><dd>${tex("\\operatorname{atan2}(-I_y,\\, I_x) = " + fmt(ang, 1) + "^\\circ")}</dd></dl><p class="note">The red arrow points toward brighter pixels. The edge itself runs perpendicular to it. ${tex("\\theta")} is measured counter-clockwise with y pointing up.</p>`;
 }
 seg("op", runGrad); $("gSig").addEventListener("input", runGrad);
 $("gm").addEventListener("click", e => { st.sel = imgXY(e, e.currentTarget, st.w, st.h); drawSel(); });

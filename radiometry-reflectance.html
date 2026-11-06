@@ -7,7 +7,9 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,500;8..60,600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="vendor/katex/katex.min.css">
 <link rel="stylesheet" href="site.css">
+<script src="vendor/katex/katex.min.js"></script>
 <style>
 #irr { height: 300px; cursor: grab; touch-action: none; }
 #dial { width: 190px; height: 190px; touch-action: none; cursor: grab; border-radius: 50%; display: block; }
@@ -22,9 +24,6 @@
 .side .ctl { justify-content: space-between; }
 .side input[type=range] { flex: 1; width: auto; }
 .dialrow { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; }
-.calc-lines { display: grid; gap: 5px; font-family: var(--mono); font-size: 0.82rem; }
-.calc-lines p { margin: 0; overflow-wrap: anywhere; }
-.calc-lines .hl { color: var(--accent); }
 @media (max-width: 760px) { .five { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 </style>
 </head>
@@ -38,28 +37,28 @@
   </div>
 
   <section class="stage" aria-labelledby="h0">
-    <div class="stage-head"><span class="num">00</span><div><h2 id="h0">How much light lands on a patch?</h2><p>Drag the yellow light around the patch, or use the sliders. Two things change the irradiance <i>E</i>: the angle from the surface normal, and the distance.</p></div></div>
+    <div class="stage-head"><span class="num">00</span><div><h2 id="h0">How much light lands on a patch?</h2><p>Drag the yellow light around the patch, or use the sliders. Two things change the irradiance \(E\): the angle from the surface normal, and the distance.</p></div></div>
     <canvas class="plot" id="irr" aria-label="A light above a small patch. Drag the light to change its angle and distance."></canvas>
     <div class="controls">
-      <div class="ctl"><label for="th">Angle θ from the normal</label><input type="range" id="th" min="-85" max="85" value="40"><output id="thO"></output></div>
-      <div class="ctl"><label for="rr">Distance r</label><input type="range" id="rr" min="0.5" max="4" step="0.05" value="1.5"><output id="rrO"></output></div>
+      <div class="ctl"><label for="th">Angle \(\theta\) from the normal</label><input type="range" id="th" min="-85" max="85" value="40"><output id="thO"></output></div>
+      <div class="ctl"><label for="rr">Distance \(r\)</label><input type="range" id="rr" min="0.5" max="4" step="0.05" value="1.5"><output id="rrO"></output></div>
     </div>
     <div class="two"><canvas class="plot" id="pTh" style="height:230px"></canvas><canvas class="plot" id="pR" style="height:230px"></canvas></div>
     <div class="stats" id="irrStats"></div>
     <div class="math"><h3>The equation</h3>
-      <p class="eq">E = I cos θ / r²</p>
-      <p>The source has intensity <i>I</i> = 100 W/sr here. Tilting the patch spreads the same beam over a longer footprint, 1/cos θ times larger, so the light per unit area falls as cos θ. Moving the source away spreads the light over a sphere of area 4πr², so the irradiance falls as 1/r². Try r = 1.5 and r = 3: doubling the distance cuts <i>E</i> to a quarter.</p></div>
+      <div class="eqd">\[ E = \frac{I \cos\theta}{r^2} \]</div>
+      <p>The source has intensity \(I = 100\) W/sr here. Tilting the patch spreads the same beam over a longer footprint, \(1/\cos\theta\) times larger, so the light per unit area falls as \(\cos\theta\). Moving the source away spreads the light over a sphere of area \(4\pi r^2\), so the irradiance falls as \(1/r^2\). Try \(r = 1.5\) and \(r = 3\): doubling the distance cuts \(E\) to a quarter.</p></div>
   </section>
 
   <section class="stage" aria-labelledby="h1">
-    <div class="stage-head"><span class="num">01</span><div><h2 id="h1">Light a sphere with a BRDF</h2><p>The BRDF <i>f</i>(θi, φi; θr, φr) says how much of the light from one direction leaves in another. Pick a model, drag the light in the dial, and move the sliders. Click the big sphere to inspect a pixel in the next section.</p></div></div>
+    <div class="stage-head"><span class="num">01</span><div><h2 id="h1">Light a sphere with a BRDF</h2><p>The BRDF \(f(\theta_i, \varphi_i; \theta_r, \varphi_r)\) says how much of the light from one direction leaves in another. Pick a model, drag the light in the dial, and move the sliders. Click the big sphere to inspect a pixel in the next section.</p></div></div>
     <div class="main-side">
-      <figure><canvas class="view click" id="sph" aria-label="Rendered sphere. Click a pixel to inspect it."></canvas><figcaption>The ringed pixel is the one inspected below. The camera looks along −z.</figcaption></figure>
+      <figure><canvas class="view click" id="sph" aria-label="Rendered sphere. Click a pixel to inspect it."></canvas><figcaption>The ringed pixel is the one inspected below. The camera looks along \(-z\).</figcaption></figure>
       <div class="side">
         <div class="ctl"><label>Model</label><div class="seg" id="model" style="flex-wrap:wrap"><button type="button" data-v="lambert" aria-pressed="false">Lambertian</button><button type="button" data-v="phong" aria-pressed="false">Phong</button><button type="button" data-v="blinn" aria-pressed="true">Blinn–Phong</button><button type="button" data-v="oren" aria-pressed="false">Oren–Nayar</button><button type="button" data-v="torrance" aria-pressed="false">Torrance–Sparrow</button></div></div>
         <div class="dialrow"><canvas id="dial" aria-label="Light direction. Drag the dot."></canvas><p class="note">Drag the dot. The center is a light behind the camera. The rim is a light at grazing angle.</p></div>
         <div class="ctl"><label for="rough">Roughness</label><input type="range" id="rough" min="0.05" max="1" step="0.01" value="0.35"><output id="roughO"></output></div>
-        <div class="ctl"><label for="alb">Albedo ρ</label><input type="range" id="alb" min="0.05" max="1" step="0.01" value="0.7"><output id="albO"></output></div>
+        <div class="ctl"><label for="alb">Albedo \(\rho\)</label><input type="range" id="alb" min="0.05" max="1" step="0.01" value="0.7"><output id="albO"></output></div>
         <div class="ctl"><label for="spec">Specular strength</label><input type="range" id="spec" min="0" max="1" step="0.01" value="0.5"><output id="specO"></output></div>
         <p class="note" id="modelNote"></p>
       </div>
@@ -72,12 +71,12 @@
     <div class="stage-head"><span class="num">02</span><div><h2 id="h2">Inspect one pixel</h2><p>Click the sphere above, or here. The left plot shows the BRDF in the plane that holds the light and the normal. The right panel plugs the pixel's angles into the formula.</p></div></div>
     <div class="main-side">
       <figure><canvas class="plot" id="polar" aria-label="Polar plot of the BRDF in the plane of incidence"></canvas>
-        <figcaption><span class="legend"><span><i style="background:var(--accent)"></i>BRDF of the chosen model</span><span><i style="background:var(--muted)"></i>Lambertian ρ/π</span><span><i style="background:#ca8a04"></i>Light direction</span><span><i style="background:var(--ink)"></i>This pixel's viewing direction</span></span></figcaption></figure>
-      <div class="math detail"><h3 id="pxTitle"></h3><div class="calc-lines" id="calc"></div></div>
+        <figcaption><span class="legend"><span><i style="background:var(--accent)"></i>BRDF of the chosen model</span><span><i style="background:var(--muted)"></i>Lambertian \(\rho/\pi\)</span><span><i style="background:#ca8a04"></i>Light direction</span><span><i style="background:var(--ink)"></i>This pixel's viewing direction</span></span></figcaption></figure>
+      <div class="math detail"><h3 id="pxTitle"></h3><div id="calc"></div></div>
     </div>
     <div class="math"><h3>Reading the plot</h3>
-      <p>Each point on the curve is a viewing direction in the plane of incidence. Its distance from the center is <i>f</i>. Lambertian is a perfect half-circle ring: the same in every direction. A glossy surface adds a lobe around the mirror direction, the reflection of the light about the normal. Raise roughness and the lobe widens and drops. Oren–Nayar brightens the return toward the light (backscatter), which flat-looking rough surfaces such as the Moon show.</p>
-      <p>If the viewer is out of the plane of incidence (φ is not 0° or 180°), the exact value can differ from the curve. The ring on the curve shows only the in-plane angle θr.</p></div>
+      <p>Each point on the curve is a viewing direction in the plane of incidence. Its distance from the center is \(f\). Lambertian is a perfect half-circle ring: the same in every direction. A glossy surface adds a lobe around the mirror direction, the reflection of the light about the normal. Raise roughness and the lobe widens and drops. Oren–Nayar brightens the return toward the light (backscatter), which flat-looking rough surfaces such as the Moon show.</p>
+      <p>If the viewer is out of the plane of incidence (\(\varphi\) is not \(0^\circ\) or \(180^\circ\)), the exact value can differ from the curve. The ring on the curve shows only the in-plane angle \(\theta_r\).</p></div>
   </section>
 </main>
 <footer class="wrap site"></footer>
@@ -86,7 +85,7 @@
 <script>
 (() => {
 "use strict";
-const { $, nav, footer, hiDPI, onTheme, cssVar, seg, segVal, imgXY, fmt, arrow } = VB;
+const { $, nav, footer, hiDPI, onTheme, cssVar, seg, segVal, imgXY, fmt, arrow, tex, mathRows, mathify } = VB;
 nav("radiometry-reflectance.html"); footer();
 const PI = Math.PI, D2R = PI / 180, f2 = (v, d = 3) => fmt(v, d);
 const mono = () => cssVar("--mono") || "monospace";
@@ -137,7 +136,7 @@ function drawIrrPlots() {
 function updIrr() {
   $("thO").value = ir.th + "°"; $("rrO").value = fmt(ir.r, 2) + " m"; $("th").value = ir.th; $("rr").value = ir.r;
   const E = irrE(ir.th, ir.r);
-  $("irrStats").innerHTML = `<span class="chip">cos θ = <b>${f2(Math.cos(ir.th * D2R))}</b></span><span class="chip">1/r² = <b>${f2(1 / (ir.r * ir.r))}</b></span><span class="chip">E = ${I0} × ${f2(Math.cos(ir.th * D2R))} × ${f2(1 / (ir.r * ir.r))} = <b>${fmt(E, 2)} W/m²</b></span>`;
+  $("irrStats").innerHTML = `<span class="chip">${tex("\\cos\\theta")} = <b>${f2(Math.cos(ir.th * D2R))}</b></span><span class="chip">${tex("1/r^2")} = <b>${f2(1 / (ir.r * ir.r))}</b></span><span class="chip">${tex("E")} = ${I0} × ${f2(Math.cos(ir.th * D2R))} × ${f2(1 / (ir.r * ir.r))} = <b>${fmt(E, 2)} W/m²</b></span>`;
   drawIrr(); drawIrrPlots();
 }
 $("th").addEventListener("input", e => { ir.th = +e.target.value; updIrr(); });
@@ -153,10 +152,10 @@ $("rr").addEventListener("input", e => { ir.r = +e.target.value; updIrr(); });
 /* ---------- BRDF models ---------- */
 const MODELS = { lambert: "Lambertian", phong: "Phong", blinn: "Blinn–Phong", oren: "Oren–Nayar", torrance: "Torrance–Sparrow" };
 const NOTES = {
-  lambert: "Perfectly matte. Brightness depends only on cos θi. Roughness and specular sliders do nothing.",
-  phong: "Matte base plus a lobe about the mirror direction R. Roughness sets the exponent. A common graphics model, not physically derived.",
-  blinn: "Like Phong, but the lobe is around the half vector H between light and viewer. The exponent here is 4× the Phong one, which gives a similar lobe.",
-  oren: "Rough diffuse surface made of tiny V-shaped facets. Roughness σ is the slope spread in radians. The specular slider does nothing.",
+  lambert: "Perfectly matte. Brightness depends only on \(\cos\theta_i\). Roughness and specular sliders do nothing.",
+  phong: "Matte base plus a lobe about the mirror direction \(R\). Roughness sets the exponent. A common graphics model, not physically derived.",
+  blinn: "Like Phong, but the lobe is around the half vector \(H\) between light and viewer. The exponent here is 4× the Phong one, which gives a similar lobe.",
+  oren: "Rough diffuse surface made of tiny V-shaped facets. Roughness \(\sigma\) is the slope spread in radians. The specular slider does nothing.",
   torrance: "Microfacet model: D (facet slope distribution), G (shadowing) and F (Fresnel) over 4 cos θi cos θr. Specular strength sets F at normal incidence. Roughness is the slope m."
 };
 const P = { model: "blinn", rough: 0.35, alb: 0.7, spec: 0.5, L: [-0.5, -0.45], sel: [0, 0] };
@@ -282,27 +281,25 @@ function drawPolar(info) {
 function calc(info) {
   const { o, nn, L, ti, tr, phi, x, y } = info, p = P, deg = a => fmt(a / D2R, 1) + "°", V3 = a => `(${a.map(v => f2(v, 2)).join(", ")})`;
   $("pxTitle").textContent = `Pixel (${x}, ${y}) of the ${MODELS[p.model]} sphere`;
-  const h = [];
-  h.push(`<p>n = ${V3(nn)}   s = ${V3(L)}   v = (0, 0, 1)</p>`);
-  h.push(`<p>θi = acos(n·s) = acos(${f2(o.ci)}) = <b>${deg(ti)}</b></p>`);
-  h.push(`<p>θr = acos(n·v) = acos(${f2(o.cr)}) = <b>${deg(tr)}</b></p>`);
-  h.push(`<p>φ = angle between s and v around n = <b>${fmt(phi, 1)}°</b></p>`);
-  if (o.dark) { h.push(`<p class="hl">cos θi ≤ 0 (or the surface faces away from the camera). No light arrives, so the radiance is 0.</p>`); $("calc").innerHTML = h.join(""); return; }
-  const m = p.model;
-  if (m === "lambert") h.push(`<p>f = ρ/π = ${f2(p.alb, 2)}/π = <b>${f2(o.f, 4)}</b></p>`);
-  else if (m === "phong") { h.push(`<p>R = 2(n·s)n − s,  R·v = ${f2(o.rv)},  exponent k = ${fmt(o.e, 0)}</p><p>f_d = ρ/π = ${f2(o.fd, 4)}</p><p>f_s = ks (k+2)/2π (R·v)^k = ${f2(p.spec, 2)} × ${f2((o.e + 2) / 2 / PI, 2)} × ${f2(o.rv)}^${fmt(o.e, 0)} = ${f2(o.fs, 4)}</p>`); }
-  else if (m === "blinn") h.push(`<p>H = (s+v)/‖s+v‖,  n·H = ${f2(o.nh)},  exponent k = ${fmt(o.e, 0)}</p><p>f_d = ρ/π = ${f2(o.fd, 4)}</p><p>f_s = ks (k+8)/8π (n·H)^k = ${f2(p.spec, 2)} × ${f2((o.e + 8) / 8 / PI, 2)} × ${f2(o.nh)}^${fmt(o.e, 0)} = ${f2(o.fs, 4)}</p>`);
-  else if (m === "oren") h.push(`<p>σ = ${f2(o.s, 2)}:  A = 1 − 0.5σ²/(σ²+0.33) = ${f2(o.A)},  B = 0.45σ²/(σ²+0.09) = ${f2(o.B)}</p><p>α = max(θi,θr) = ${deg(o.al)},  β = min(θi,θr) = ${deg(o.be)},  cos φ = ${f2(o.cphi)}</p><p>f = ρ/π [A + B max(0,cos φ) sin α tan β] = ${f2(p.alb / PI, 4)} × [${f2(o.A)} + ${f2(o.B)} × ${f2(Math.max(0, o.cphi))} × ${f2(Math.sin(o.al))} × ${f2(Math.tan(o.be))}] = ${f2(o.f, 4)}</p>`);
-  else h.push(`<p>H = (s+v)/‖s+v‖,  n·H = ${f2(o.nh)},  v·H = ${f2(o.vh)},  m = ${f2(p.rough, 2)}</p><p>D = exp(−tan²α/m²) / (π m² cos⁴α) = ${f2(o.D)}</p><p>G = min(1, 2(n·H)(n·v)/(v·H), 2(n·H)(n·s)/(v·H)) = ${f2(o.G)}</p><p>F = F₀ + (1−F₀)(1−v·H)⁵ = ${f2(o.F)}  (F₀ = ${f2(p.spec, 2)})</p><p>f_s = D G F / (4 cos θi cos θr) = ${f2(o.fs, 4)}</p><p>f_d = ρ/π = ${f2(o.fd, 4)}</p>`);
-  if (m !== "lambert" && m !== "oren") h.push(`<p>f = f_d + f_s = ${f2(o.fd, 4)} + ${f2(o.fs, 4)} = <b>${f2(o.f, 4)}</b></p>`);
-  h.push(`<p class="hl">L = f · E,  E = π cos θi = ${f2(PI * o.ci)}</p><p class="hl">L = ${f2(o.f, 4)} × ${f2(PI * o.ci)} = <b>${f2(o.f * PI * o.ci, 3)}</b>  → pixel value ${Math.round(tone(o.f * PI * o.ci))} / 255</p>`);
-  h.push(`<p class="note" style="font-family:var(--body)">Source irradiance is set to π on a surface facing the light, so a white Lambertian surface (ρ = 1) facing the light gives L = 1. Pixels use gamma 2.2 for display.</p>`);
-  $("calc").innerHTML = h.join("");
+  const r = [], dg = a => `${fmt(a / D2R, 1)}^{\\circ}`, V3t = a => `(${a.map(v => f2(v, 2)).join(",\\,")})`;
+  r.push({ label: "Vectors", tex: `\\mathbf{n} = ${V3t(nn)}\\quad \\mathbf{s} = ${V3t(L)}\\quad \\mathbf{v} = (0, 0, 1)` });
+  r.push({ label: "Incident angle", tex: `\\theta_i = \\arccos(\\mathbf{n}\\cdot\\mathbf{s}) = \\arccos(${f2(o.ci)})`, value: dg(ti) });
+  r.push({ label: "Viewing angle", tex: `\\theta_r = \\arccos(\\mathbf{n}\\cdot\\mathbf{v}) = \\arccos(${f2(o.cr)})`, value: dg(tr) });
+  r.push({ label: "Azimuth between s and v", tex: `\\varphi`, value: `${fmt(phi, 1)}^{\\circ}` });
+  if (o.dark) { mathRows($("calc"), r, `${tex("\\cos\\theta_i \\le 0")} (or the surface faces away from the camera). No light arrives, so the radiance is 0.`); return; }
+  const m = p.model, fd = { label: "Diffuse part", tex: `f_d = \\frac{\\rho}{\\pi}`, value: f2(o.fd, 4) }, fsum = { label: "Total", tex: `f = f_d + f_s = ${f2(o.fd, 4)} + ${f2(o.fs, 4)}`, value: f2(o.f, 4) };
+  if (m === "lambert") r.push({ label: "BRDF", tex: `f = \\frac{\\rho}{\\pi} = \\frac{${f2(p.alb, 2)}}{\\pi}`, value: f2(o.f, 4) });
+  else if (m === "phong") r.push({ label: "Mirror direction", tex: `\\mathbf{R} = 2(\\mathbf{n}\\cdot\\mathbf{s})\\mathbf{n} - \\mathbf{s},\\quad \\mathbf{R}\\cdot\\mathbf{v}`, value: f2(o.rv) }, { label: "Exponent", tex: `k`, value: fmt(o.e, 0) }, fd, { label: "Specular part", tex: `f_s = k_s\\frac{k+2}{2\\pi}(\\mathbf{R}\\cdot\\mathbf{v})^k = ${f2(p.spec, 2)} \\cdot ${f2((o.e + 2) / 2 / PI, 2)} \\cdot ${f2(o.rv)}^{${fmt(o.e, 0)}}`, value: f2(o.fs, 4) }, fsum);
+  else if (m === "blinn") r.push({ label: "Half vector", tex: `\\mathbf{H} = \\frac{\\mathbf{s}+\\mathbf{v}}{\\|\\mathbf{s}+\\mathbf{v}\\|},\\quad \\mathbf{n}\\cdot\\mathbf{H}`, value: f2(o.nh) }, { label: "Exponent", tex: `k`, value: fmt(o.e, 0) }, fd, { label: "Specular part", tex: `f_s = k_s\\frac{k+8}{8\\pi}(\\mathbf{n}\\cdot\\mathbf{H})^k = ${f2(p.spec, 2)} \\cdot ${f2((o.e + 8) / 8 / PI, 2)} \\cdot ${f2(o.nh)}^{${fmt(o.e, 0)}}`, value: f2(o.fs, 4) }, fsum);
+  else if (m === "oren") r.push({ label: "Roughness", tex: `\\sigma`, value: f2(o.s, 2) }, { label: "Coefficient A", tex: `A = 1 - \\frac{0.5\\sigma^2}{\\sigma^2 + 0.33}`, value: f2(o.A) }, { label: "Coefficient B", tex: `B = \\frac{0.45\\sigma^2}{\\sigma^2 + 0.09}`, value: f2(o.B) }, { label: "Angles", tex: `\\alpha = \\max(\\theta_i,\\theta_r) = ${dg(o.al)},\\ \\beta = \\min(\\theta_i,\\theta_r) = ${dg(o.be)}` }, { label: "Cosine of azimuth", tex: `\\cos\\varphi`, value: f2(o.cphi) }, { label: "BRDF", tex: `f = \\frac{\\rho}{\\pi}\\left[A + B\\max(0,\\cos\\varphi)\\sin\\alpha\\tan\\beta\\right] = ${f2(p.alb / PI, 4)}\\left[${f2(o.A)} + ${f2(o.B)} \\cdot ${f2(Math.max(0, o.cphi))} \\cdot ${f2(Math.sin(o.al))} \\cdot ${f2(Math.tan(o.be))}\\right]`, value: f2(o.f, 4) });
+  else r.push({ label: "Half vector", tex: `\\mathbf{H} = \\frac{\\mathbf{s}+\\mathbf{v}}{\\|\\mathbf{s}+\\mathbf{v}\\|}`, value: `(\\mathbf{n}\\cdot\\mathbf{H},\\ \\mathbf{v}\\cdot\\mathbf{H}) = (${f2(o.nh)},\\ ${f2(o.vh)})` }, { label: "Roughness", tex: `m`, value: f2(p.rough, 2) }, { label: "Distribution", tex: `D = \\frac{\\exp(-\\tan^2\\alpha / m^2)}{\\pi m^2 \\cos^4\\alpha}`, value: f2(o.D) }, { label: "Geometry", tex: `G = \\min\\!\\left(1,\\ \\frac{2(\\mathbf{n}\\cdot\\mathbf{H})(\\mathbf{n}\\cdot\\mathbf{v})}{\\mathbf{v}\\cdot\\mathbf{H}},\\ \\frac{2(\\mathbf{n}\\cdot\\mathbf{H})(\\mathbf{n}\\cdot\\mathbf{s})}{\\mathbf{v}\\cdot\\mathbf{H}}\\right)`, value: f2(o.G) }, { label: `Fresnel (F_0 = ${f2(p.spec, 2)})`, tex: `F = F_0 + (1 - F_0)(1 - \\mathbf{v}\\cdot\\mathbf{H})^5`, value: f2(o.F) }, { label: "Specular part", tex: `f_s = \\frac{D\\,G\\,F}{4\\cos\\theta_i\\cos\\theta_r}`, value: f2(o.fs, 4) }, fd, fsum);
+  r.push({ label: "Irradiance", tex: `E = \\pi\\cos\\theta_i`, value: f2(PI * o.ci) }, { label: "Radiance", tex: `L = f\\,E = ${f2(o.f, 4)} \\cdot ${f2(PI * o.ci)}`, value: f2(o.f * PI * o.ci, 3) });
+  mathRows($("calc"), r, `Pixel value ${Math.round(tone(o.f * PI * o.ci))} / 255. Source irradiance is set to ${tex("\\pi")} on a surface facing the light, so a white Lambertian surface (${tex("\\rho = 1")}) facing the light gives ${tex("L = 1")}. Pixels use gamma 2.2 for display.`);
 }
 
 function refresh() {
   for (const k of ["rough", "alb", "spec"]) $(k + "O").value = f2(P[k], 2);
-  $("modelNote").textContent = NOTES[P.model];
+  $("modelNote").textContent = NOTES[P.model]; mathify($("modelNote"));
   $("rough").disabled = P.model === "lambert"; $("spec").disabled = P.model === "lambert" || P.model === "oren";
   drawMain(); drawGallery(); drawDial(); const info = selInfo(); drawPolar(info); calc(info);
 }

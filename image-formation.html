@@ -7,7 +7,9 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,500;8..60,600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="vendor/katex/katex.min.css">
 <link rel="stylesheet" href="site.css">
+<script src="vendor/katex/katex.min.js"></script>
 <style>
   canvas.drag { cursor: grab; touch-action: none; }
   canvas.drag:active { cursor: grabbing; }
@@ -18,8 +20,6 @@
   .slots figure.on { border-color: var(--accent); }
   .slots canvas { border-radius: 4px; }
   .slots figcaption b { color: var(--ink); font-family: var(--mono); font-weight: 500; }
-  .eq b { color: var(--accent); font-weight: 500; }
-  .eq { white-space: pre; }
 </style>
 </head>
 <body>
@@ -34,25 +34,25 @@
   <section class="stage" aria-labelledby="h0">
     <div class="stage-head"><span class="num">00</span><div><h2 id="h0">The pinhole camera</h2><p>Light from each scene point passes through one small hole and lands on the image plane. A big hole lets in more light but smears every point into a spot. A tiny hole gives a sharp ray, until diffraction (light bending around the edge) smears it again. Drag the diagram or the plot, or use the slider.</p></div></div>
     <div class="controls">
-      <div class="ctl"><label for="phT">Pinhole diameter d</label><input type="range" id="phT" min="0" max="100" step="0.5" value="40"><output id="phO" style="min-width:7ch">0.5 mm</output></div>
+      <div class="ctl"><label for="phT">Pinhole diameter \(d\)</label><input type="range" id="phT" min="0" max="100" step="0.5" value="40"><output id="phO" style="min-width:7ch">0.5 mm</output></div>
       <div class="ctl"><label>Model</label><div class="seg" id="phDiff"><button type="button" data-v="0" aria-pressed="false">Rays only</button><button type="button" data-v="1" aria-pressed="true">Rays + diffraction</button></div></div>
     </div>
     <div class="main-side">
-      <figure><canvas class="plot drag" id="phDiag" style="height:300px"></canvas><figcaption>Side view. The wall has a hole of diameter d. Two cones of rays leave the top and bottom of the object, and each lands as a spot on the image plane. The hole is drawn larger than true scale.</figcaption></figure>
+      <figure><canvas class="plot drag" id="phDiag" style="height:300px"></canvas><figcaption>Side view. The wall has a hole of diameter \(d\). Two cones of rays leave the top and bottom of the object, and each lands as a spot on the image plane. The hole is drawn larger than true scale.</figcaption></figure>
       <figure><canvas class="view" id="phImg" width="240" height="180"></canvas><figcaption id="phCap"></figcaption></figure>
     </div>
     <figure><canvas class="plot click" id="phPlot" style="height:250px"></canvas>
-      <figcaption><span class="legend"><span><i style="background:#c2410c"></i>geometric blur</span><span><i style="background:#16a34a"></i>diffraction blur</span><span><i style="background:var(--accent)"></i>total blur</span><span><i style="background:var(--muted)"></i>brightness (dotted)</span></span> Click the plot to set d.</figcaption></figure>
+      <figcaption><span class="legend"><span><i style="background:#c2410c"></i>geometric blur</span><span><i style="background:#16a34a"></i>diffraction blur</span><span><i style="background:var(--accent)"></i>total blur</span><span><i style="background:var(--muted)"></i>brightness (dotted)</span></span> Click the plot to set \(d\).</figcaption></figure>
     <div class="two">
-      <div class="math"><h3>The model (simplified)</h3><div class="eq" id="phEq"></div><p class="note">Setup: image plane at i = 50 mm, object at o = 2000 mm, wavelength λ = 0.55 µm. Real blur spots are not exact discs, so we add the two blur sizes in quadrature as a rough guide.</p></div>
+      <div class="math"><h3>The model (simplified)</h3><div id="phEq"></div><p class="note">Setup: image plane at \(i = 50\) mm, object at \(o = 2000\) mm, wavelength \(\lambda = 0.55\) µm. Real blur spots are not exact discs, so we add the two blur sizes in quadrature as a rough guide.</p></div>
       <div class="math"><h3>At this d</h3><div id="phRead"></div></div>
     </div>
   </section>
 
   <section class="stage" aria-labelledby="h1">
-    <div class="stage-head"><span class="num">01</span><div><h2 id="h1">Perspective projection</h2><p>A point (X, Y, Z) in camera coordinates lands at x = f·X/Z, y = f·Y/Z. Parallel lines in 3D that are not parallel to the image plane meet at a vanishing point. Click a cube corner to see its numbers plugged in. Click or drag in the top view to move the camera.</p></div></div>
+    <div class="stage-head"><span class="num">01</span><div><h2 id="h1">Perspective projection</h2><p>A point \((X, Y, Z)\) in camera coordinates lands at \(x = fX/Z\), \(y = fY/Z\). Parallel lines in 3D that are not parallel to the image plane meet at a vanishing point. Click a cube corner to see its numbers plugged in. Click or drag in the top view to move the camera.</p></div></div>
     <div class="controls">
-      <div class="ctl"><label for="psF">Focal length f</label><input type="range" id="psF" min="8" max="120" step="1" value="30"><output id="psFO">30 mm</output></div>
+      <div class="ctl"><label for="psF">Focal length \(f\)</label><input type="range" id="psF" min="8" max="120" step="1" value="30"><output id="psFO">30 mm</output></div>
       <div class="ctl"><label for="psYaw">Pan (yaw)</label><input type="range" id="psYaw" min="-60" max="60" step="1" value="35"><output id="psYawO">35°</output></div>
       <div class="ctl"><label for="psTilt">Tilt</label><input type="range" id="psTilt" min="-40" max="40" step="1" value="0"><output id="psTiltO">0°</output></div>
     </div>
@@ -76,21 +76,21 @@
   <section class="stage" aria-labelledby="h2">
     <div class="stage-head"><span class="num">02</span><div><h2 id="h2">The thin lens</h2><p>A lens gathers many rays from one object point and bends them to meet at one image point. Three rays are easy to trace: one parallel to the axis (it crosses the far focal point), one through the lens center (it goes straight), and one through the near focal point (it leaves parallel). Drag the arrow tip.</p></div></div>
     <div class="controls">
-      <div class="ctl"><label for="lnF">Focal length f</label><input type="range" id="lnF" min="20" max="100" step="1" value="50"><output id="lnFO">50 mm</output></div>
-      <div class="ctl"><label for="lnO">Object distance o</label><input type="range" id="lnO" min="15" max="400" step="1" value="150"><output id="lnOO">150 mm</output></div>
+      <div class="ctl"><label for="lnF">Focal length \(f\)</label><input type="range" id="lnF" min="20" max="100" step="1" value="50"><output id="lnFO">50 mm</output></div>
+      <div class="ctl"><label for="lnO">Object distance \(o\)</label><input type="range" id="lnO" min="15" max="400" step="1" value="150"><output id="lnOO">150 mm</output></div>
     </div>
     <figure><canvas class="plot drag" id="lnDiag" style="height:340px"></canvas><figcaption>Drag the red handle. Moving left or right changes o. Moving up or down changes the object's height.</figcaption></figure>
     <div class="two">
-      <div class="math"><h3>Thin lens equation</h3><div class="eq" id="lnEq"></div></div>
-      <div class="math"><h3>What to try</h3><p>Put the object beyond 2f: the image is real, inverted and smaller. At o = 2f it has the same size. Between f and 2f it is larger and farther away. At o = f the rays leave parallel and no image forms. Inside f the image is virtual (dashed), upright and larger, like a magnifying glass.</p><div id="lnType"></div></div>
+      <div class="math"><h3>Thin lens equation</h3><div id="lnEq"></div></div>
+      <div class="math"><h3>What to try</h3><p>Put the object beyond \(2f\): the image is real, inverted and smaller. At \(o = 2f\) it has the same size. Between \(f\) and \(2f\) it is larger and farther away. At \(o = f\) the rays leave parallel and no image forms. Inside \(f\) the image is virtual (dashed), upright and larger, like a magnifying glass.</p><div id="lnType"></div></div>
     </div>
   </section>
 
   <section class="stage" aria-labelledby="h3">
-    <div class="stage-head"><span class="num">03</span><div><h2 id="h3">Aperture, blur circle and depth of field</h2><p>The sensor sits where the focus distance is sharp. An object at another distance focuses in front of or behind the sensor, so each point becomes a blur circle of diameter c = D·|i − i<sub>focus</sub>| / i, where D = f/N is the aperture diameter. A smaller aperture (larger f-number N) shrinks c, so more of the scene looks sharp. Click a target or the plot to choose which distance the ray diagram shows.</p></div></div>
+    <div class="stage-head"><span class="num">03</span><div><h2 id="h3">Aperture, blur circle and depth of field</h2><p>The sensor sits where the focus distance is sharp. An object at another distance focuses in front of or behind the sensor, so each point becomes a blur circle of diameter \(c = D\,|i - i_{focus}| / i\), where \(D = f/N\) is the aperture diameter. A smaller aperture (larger f-number \(N\)) shrinks \(c\), so more of the scene looks sharp. Click a target or the plot to choose which distance the ray diagram shows.</p></div></div>
     <div class="controls">
-      <div class="ctl"><label for="apF">Focal length f</label><input type="range" id="apF" min="20" max="200" step="1" value="50"><output id="apFO">50 mm</output></div>
-      <div class="ctl"><label for="apN">f-number N</label><input type="range" id="apN" min="0" max="8" step="1" value="2"><output id="apNO">f/2.8</output></div>
+      <div class="ctl"><label for="apF">Focal length \(f\)</label><input type="range" id="apF" min="20" max="200" step="1" value="50"><output id="apFO">50 mm</output></div>
+      <div class="ctl"><label for="apN">f-number \(N\)</label><input type="range" id="apN" min="0" max="8" step="1" value="2"><output id="apNO">f/2.8</output></div>
       <div class="ctl"><label for="apFocus">Focus distance</label><input type="range" id="apFocus" min="0" max="100" step="0.1" value="47.6"><output id="apFocusO">2.5 m</output></div>
     </div>
     <div class="main-side">
@@ -100,7 +100,7 @@
     <figure><canvas class="plot click" id="apPlot" style="height:240px"></canvas>
       <figcaption><span class="legend"><span><i style="background:var(--accent)"></i>blur circle c(o)</span><span><i style="background:#16a34a"></i>acceptably sharp (c below 0.03 mm)</span><span><i style="background:#c2410c"></i>limit c = 0.03 mm</span></span></figcaption></figure>
     <div class="slots" id="apSlots"></div>
-    <p class="note">Each tile shows a 10 × 10 mm patch of the sensor, with a 150 mm target at that distance. Near targets look large and far targets look small, as in a real photo. Blur is drawn as a Gaussian with σ = c/4, a simplification of the true disc.</p>
+    <p class="note">Each tile shows a 10 × 10 mm patch of the sensor, with a 150 mm target at that distance. Near targets look large and far targets look small, as in a real photo. Blur is drawn as a Gaussian with \(\sigma = c/4\), a simplification of the true disc.</p>
     <div class="stats" id="apStats"></div>
   </section>
 </main>
@@ -110,7 +110,7 @@
 <script>
 (() => {
 "use strict";
-const { $, nav, footer, SAMPLES, hiDPI, onTheme, cssVar, seg, segVal, gaussBlur, show, fmt } = VB;
+const { $, nav, footer, SAMPLES, hiDPI, onTheme, cssVar, seg, segVal, gaussBlur, show, fmt, tex, mathRows } = VB;
 nav("image-formation.html"); footer();
 const deb = (fn, ms = 50) => { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; };
 const RED = "#d9482b", GRN = "#16a34a", BLU = "#2563eb", ORG = "#c2410c";
@@ -187,9 +187,14 @@ function drawPinImg() {
 function readPin() {
   const d = PH.d, b = phBlur(d), a = 1 + PH.i / PH.o;
   $("phO").value = fmt(d, 2) + " mm";
-  $("phEq").innerHTML = `geometric blur  b<sub>g</sub> = d·(1 + i/o)\n               = ${fmt(d, 2)}·(1 + ${PH.i}/${PH.o}) = <b>${fmt(b.bg, 2)} mm</b>\ndiffraction    b<sub>d</sub> = 2.44·λ·i / d\n               = 2.44·${PH.lam}·${PH.i} / ${fmt(d, 2)} = <b>${fmt(b.bd, 2)} mm</b>\ntotal          b = √(b<sub>g</sub>² + b<sub>d</sub>²) = <b>${fmt(b.b, 2)} mm</b>\nbest hole      d* = √(2.44·λ·i / (1 + i/o)) = <b>${fmt(phOpt(), 2)} mm</b>`;
+  mathRows($("phEq"), [
+    { label: "Geometric blur", tex: `b_g = d\\left(1 + \\frac{i}{o}\\right) = ${fmt(d, 2)}\\left(1 + \\frac{${PH.i}}{${PH.o}}\\right)`, value: `${fmt(b.bg, 2)}\\,\\text{mm}` },
+    { label: "Diffraction blur", tex: `b_d = \\frac{2.44\\,\\lambda\\, i}{d} = \\frac{2.44 \\cdot ${PH.lam} \\cdot ${PH.i}}{${fmt(d, 2)}}`, value: `${fmt(b.bd, 2)}\\,\\text{mm}` },
+    { label: "Total", tex: `b = \\sqrt{b_g^2 + b_d^2}`, value: `${fmt(b.b, 2)}\\,\\text{mm}` },
+    { label: "Best hole", tex: `d^* = \\sqrt{\\frac{2.44\\,\\lambda\\, i}{1 + i/o}}`, value: `${fmt(phOpt(), 2)}\\,\\text{mm}` },
+  ]);
   const stops = 2 * Math.log2(d / 1);
-  $("phRead").innerHTML = `<dl class="detail" style="display:grid;grid-template-columns:auto 1fr;gap:3px 12px;margin:0"><dt>Light collected</dt><dd class="mono">∝ d² = ${fmt(d * d, 3)} (${stops >= 0 ? "+" : ""}${fmt(stops, 1)} stops vs 1 mm)</dd><dt>Blur spot</dt><dd class="mono">${fmt(b.b, 2)} mm = ${fmt(b.b * 240 / 36, 1)} px on this 240 px image</dd><dt>Verdict</dt><dd>${d < phOpt() * 0.7 && PH.diff ? '<span class="tag warn">too small: diffraction dominates</span>' : d > phOpt() * 1.5 ? '<span class="tag bad">too big: geometric blur dominates</span>' : '<span class="tag good">near the sharpest compromise</span>'}</dd></dl>
+  $("phRead").innerHTML = `<dl class="detail" style="display:grid;grid-template-columns:auto 1fr;gap:3px 12px;margin:0"><dt>Light collected</dt><dd class="mono">${tex("\\propto d^2")} = ${fmt(d * d, 3)} (${stops >= 0 ? "+" : ""}${fmt(stops, 1)} stops vs 1 mm)</dd><dt>Blur spot</dt><dd class="mono">${fmt(b.b, 2)} mm = ${fmt(b.b * 240 / 36, 1)} px on this 240 px image</dd><dt>Verdict</dt><dd>${d < phOpt() * 0.7 && PH.diff ? '<span class="tag warn">too small: diffraction dominates</span>' : d > phOpt() * 1.5 ? '<span class="tag bad">too big: geometric blur dominates</span>' : '<span class="tag good">near the sharpest compromise</span>'}</dd></dl>
   <p class="note">Halving the diameter cuts the light to a quarter. That trade is why real cameras add a lens.</p>`;
 }
 function setD(d) { PH.d = Math.max(0.05, Math.min(4, d)); $("phT").value = tFromD(PH.d); updPin(); }
@@ -269,9 +274,10 @@ function readPers() {
   $("psFO").value = PS.f + " mm"; $("psYawO").value = PS.yaw + "°"; $("psTiltO").value = PS.tilt + "°"; $("psXO").value = fmt(PS.x, 1) + " m"; $("psYO").value = fmt(PS.y, 1) + " m"; $("psZO").value = fmt(PS.z, 1) + " m";
   const v = verts[PS.sel], q = toCam(v);
   if (q[2] < 0.15) $("psRead").innerHTML = `<p>Corner (${v.map(a => fmt(a, 1)).join(", ")}) is behind the camera. Move the camera back.</p>`;
-  else $("psRead").innerHTML = `<dl class="detail" style="display:grid;grid-template-columns:auto 1fr;gap:3px 12px;margin:0"><dt>World point</dt><dd class="mono">(${v.map(a => fmt(a, 1)).join(", ")}) m</dd><dt>Camera coords</dt><dd class="mono">(X, Y, Z) = (${fmt(q[0], 2)}, ${fmt(q[1], 2)}, ${fmt(q[2], 2)}) m</dd><dt>x = f·X / Z</dt><dd class="mono">${PS.f} · ${fmt(q[0], 2)} / ${fmt(q[2], 2)} = <b>${fmt(PS.f * q[0] / q[2], 2)} mm</b></dd><dt>y = f·Y / Z</dt><dd class="mono">${PS.f} · ${fmt(q[1], 2)} / ${fmt(q[2], 2)} = <b>${fmt(PS.f * q[1] / q[2], 2)} mm</b></dd><dt>Visible?</dt><dd>${Math.abs(PS.f * q[0] / q[2]) <= 18 && Math.abs(PS.f * q[1] / q[2]) <= 12 ? '<span class="tag good">inside the sensor</span>' : '<span class="tag warn">outside the sensor</span>'}</dd></dl><p class="note">Double Z and x halves. That is why far objects look small.</p>`;
+  else $("psRead").innerHTML = `<dl class="detail" style="display:grid;grid-template-columns:auto 1fr;gap:3px 12px;margin:0"><dt>World point</dt><dd class="mono">(${v.map(a => fmt(a, 1)).join(", ")}) m</dd><dt>Camera coords</dt><dd class="mono">${tex("(X, Y, Z)")} = (${fmt(q[0], 2)}, ${fmt(q[1], 2)}, ${fmt(q[2], 2)}) m</dd></dl><div id="psGrid"></div><dl class="detail" style="display:grid;grid-template-columns:auto 1fr;gap:3px 12px;margin:6px 0 0"><dt>Visible?</dt><dd>${Math.abs(PS.f * q[0] / q[2]) <= 18 && Math.abs(PS.f * q[1] / q[2]) <= 12 ? '<span class="tag good">inside the sensor</span>' : '<span class="tag warn">outside the sensor</span>'}</dd></dl><p class="note">Double ${tex("Z")} and ${tex("x")} halves. That is why far objects look small.</p>`;
+  if ($("psGrid")) mathRows($("psGrid"), [{ label: "Horizontal", tex: `x = \\frac{fX}{Z} = \\frac{${PS.f} \\cdot ${fmt(q[0], 2)}}{${fmt(q[2], 2)}}`, value: `${fmt(PS.f * q[0] / q[2], 2)}\\,\\text{mm}` }, { label: "Vertical", tex: `y = \\frac{fY}{Z} = \\frac{${PS.f} \\cdot ${fmt(q[1], 2)}}{${fmt(q[2], 2)}}`, value: `${fmt(PS.f * q[1] / q[2], 2)}\\,\\text{mm}` }]);
   const rows = [["X-parallel lines", 0, RED], ["Y-parallel lines", 1, GRN], ["Z-parallel lines (rails)", 2, BLU]].map(([n, k, col]) => { const p = vpOf(k); return `<dt><span class="sw" style="background:${col}"></span>${n}</dt><dd class="mono">${p ? `(${fmt(p[0], 1)}, ${fmt(p[1], 1)})` : "at infinity (stay parallel)"}</dd>`; }).join("");
-  $("psVP").innerHTML = `<dl class="detail" style="display:grid;grid-template-columns:auto 1fr;gap:3px 12px;margin:0">${rows}</dl><p class="note">For a direction (dx, dy, dz) in camera coordinates, the vanishing point is f·(dx/dz, dy/dz). If dz = 0 the lines are parallel to the image plane and never meet. Tilt the camera to see the vertical lines converge. The sensor spans ±18 mm by ±12 mm.</p>`;
+  $("psVP").innerHTML = `<dl class="detail" style="display:grid;grid-template-columns:auto 1fr;gap:3px 12px;margin:0">${rows}</dl><p class="note">For a direction ${tex("(d_x, d_y, d_z)")} in camera coordinates, the vanishing point is ${tex("f\\,(d_x/d_z,\\ d_y/d_z)")}. If ${tex("d_z = 0")} the lines are parallel to the image plane and never meet. Tilt the camera to see the vertical lines converge. The sensor spans ±18 mm by ±12 mm.</p>`;
 }
 const updPers = () => { readPers(); drawPers(); drawTop(); };
 [["psF", "f"], ["psYaw", "yaw"], ["psTilt", "tilt"], ["psX", "x"], ["psY", "y"], ["psZ", "z"]].forEach(([id, k]) => $(id).addEventListener("input", () => { PS[k] = +$(id).value; updPers(); }));
@@ -321,10 +327,16 @@ function drawLens() {
 }
 function readLens() {
   const f = LN.f, o = LN.o, h = LN.h; $("lnFO").value = f + " mm"; $("lnOO").value = fmt(o, 0) + " mm";
-  if (Math.abs(o - f) < 0.5) { $("lnEq").innerHTML = `1/f = 1/${f} = ${fmt(1 / f, 4)}\n1/o = 1/${fmt(o, 0)} = ${fmt(1 / o, 4)}\n1/i = 1/f − 1/o = 0   so   i = ∞`; $("lnType").innerHTML = '<span class="tag warn">no image: rays leave parallel</span>'; return; }
+  if (Math.abs(o - f) < 0.5) { mathRows($("lnEq"), [{ label: "Focal term", tex: `\\frac{1}{f} = \\frac{1}{${f}}`, value: fmt(1 / f, 4) }, { label: "Object term", tex: `\\frac{1}{o} = \\frac{1}{${fmt(o, 0)}}`, value: fmt(1 / o, 4) }, { label: "Image", tex: `\\frac{1}{i} = \\frac{1}{f} - \\frac{1}{o} = 0 \\;\Rightarrow\\; i`, value: `\\infty` }]); $("lnType").innerHTML = '<span class="tag warn">no image: rays leave parallel</span>'; return; }
   const i = f * o / (o - f), m = -i / o;
-  $("lnEq").innerHTML = `1/f = 1/i + 1/o\n1/${f} = 1/i + 1/${fmt(o, 0)}\n1/i = ${fmt(1 / f, 4)} − ${fmt(1 / o, 4)} = ${fmt(1 / f - 1 / o, 4)}\ni = <b>${fmt(i, 1)} mm</b>\nmagnification m = −i/o = −${fmt(i, 1)}/${fmt(o, 0)} = <b>${fmt(m, 2)}</b>\nimage height = m·h = ${fmt(m, 2)} · ${fmt(h, 0)} = ${fmt(m * h, 1)} mm`;
-  $("lnType").innerHTML = `<span class="tag ${i > 0 ? "good" : "warn"}">${i > 0 ? "real" : "virtual"}</span> <span class="tag ${m < 0 ? "bad" : "good"}" style="color:inherit">${m < 0 ? "inverted" : "upright"}</span> <span class="tag warn">${Math.abs(m) > 1 ? "magnified" : Math.abs(m) < 1 ? "reduced" : "same size"} (|m| = ${fmt(Math.abs(m), 2)})</span>`;
+  mathRows($("lnEq"), [
+    { label: "Thin lens", tex: `\\frac{1}{f} = \\frac{1}{i} + \\frac{1}{o}` },
+    { label: "Plug in", tex: `\\frac{1}{i} = \\frac{1}{${f}} - \\frac{1}{${fmt(o, 0)}} = ${fmt(1 / f, 4)} - ${fmt(1 / o, 4)}`, value: fmt(1 / f - 1 / o, 4) },
+    { label: "Image distance", tex: `i`, value: `${fmt(i, 1)}\\,\\text{mm}` },
+    { label: "Magnification", tex: `m = -\\frac{i}{o} = -\\frac{${fmt(i, 1)}}{${fmt(o, 0)}}`, value: fmt(m, 2) },
+    { label: "Image height", tex: `m\\,h = ${fmt(m, 2)} \\cdot ${fmt(h, 0)}`, value: `${fmt(m * h, 1)}\\,\\text{mm}` },
+  ]);
+  $("lnType").innerHTML = `<span class="tag ${i > 0 ? "good" : "warn"}">${i > 0 ? "real" : "virtual"}</span> <span class="tag ${m < 0 ? "bad" : "good"}" style="color:inherit">${m < 0 ? "inverted" : "upright"}</span> <span class="tag warn">${Math.abs(m) > 1 ? "magnified" : Math.abs(m) < 1 ? "reduced" : "same size"} (${tex("|m|")} = ${fmt(Math.abs(m), 2)})</span>`;
 }
 const updLens = () => { readLens(); drawLens(); };
 $("lnF").addEventListener("input", () => { LN.f = +$("lnF").value; updLens(); });
@@ -402,7 +414,12 @@ function readAp() {
   AP.f = +$("apF").value; AP.N = NS[+$("apN").value]; AP.o0 = Math.round(focusFromT(+$("apFocus").value) / 10) * 10;
   $("apFO").value = AP.f + " mm"; $("apNO").value = "f/" + AP.N; $("apFocusO").value = fmt(AP.o0 / 1000, 2) + " m";
   const o = SLOT_O[AP.sel], D = AP.f / AP.N, i0 = imgDist(AP.o0, AP.f), i = imgDist(o, AP.f), c = blurC(o);
-  $("apRead").innerHTML = `<div class="eq">D = f/N = ${AP.f}/${AP.N} = <b>${fmt(D, 1)} mm</b>\ni(focus) = ${fmt(i0, 2)} mm   (sensor)\ni(${fmt(o / 1000, 1)} m) = ${fmt(i, 2)} mm\nc = D·|i − i<sub>focus</sub>| / i\n  = ${fmt(D, 1)}·${fmt(Math.abs(i - i0), 2)} / ${fmt(i, 2)}\n  = <b>${fmt(c, 3)} mm</b></div><p class="note">${c <= AP.cmax ? "Below the 0.03 mm limit, so this distance looks sharp." : "Above the 0.03 mm limit, so this distance looks blurred."} Halving the aperture diameter (two stops) halves c.</p>`;
+  mathRows($("apRead"), [
+    { label: "Aperture", tex: `D = \\frac{f}{N} = \\frac{${AP.f}}{${AP.N}}`, value: `${fmt(D, 1)}\\,\\text{mm}` },
+    { label: "Sensor distance", tex: `i_{focus}`, value: `${fmt(i0, 2)}\\,\\text{mm}` },
+    { label: `Image distance at ${fmt(o / 1000, 1)} m`, tex: `i`, value: `${fmt(i, 2)}\\,\\text{mm}` },
+    { label: "Blur circle", tex: `c = \\frac{D\\,|i - i_{focus}|}{i} = \\frac{${fmt(D, 1)} \\cdot ${fmt(Math.abs(i - i0), 2)}}{${fmt(i, 2)}}`, value: `${fmt(c, 3)}\\,\\text{mm}` },
+  ], `${c <= AP.cmax ? "Below the 0.03 mm limit, so this distance looks sharp." : "Above the 0.03 mm limit, so this distance looks blurred."} Halving the aperture diameter (two stops) halves ${tex("c")}.`);
   const dn = dofNums();
   $("apStats").innerHTML = `<span class="chip">Hyperfocal distance <b>${fmt(dn.H / 1000, 1)} m</b></span><span class="chip">Sharp from <b>${fmt(dn.near / 1000, 2)} m</b></span><span class="chip">to <b>${isFinite(dn.far) ? fmt(dn.far / 1000, 2) + " m" : "infinity"}</b></span><span class="chip">Depth of field <b>${isFinite(dn.far) ? fmt((dn.far - dn.near) / 1000, 2) + " m" : "unlimited"}</b></span>`;
 }

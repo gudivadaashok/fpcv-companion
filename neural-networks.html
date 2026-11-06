@@ -7,7 +7,9 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,500;8..60,600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="vendor/katex/katex.min.css">
 <link rel="stylesheet" href="site.css">
+<script src="vendor/katex/katex.min.js"></script>
 <style>
 canvas.sq { width: 100%; aspect-ratio: 1; display: block; border-radius: 6px; background: var(--bg); cursor: crosshair; touch-action: none; }
 #percCv { width: 100%; height: 340px; display: block; border-radius: 6px; background: var(--bg); cursor: crosshair; }
@@ -48,10 +50,10 @@ progress { width: 220px; accent-color: var(--accent); }
   </div>
 
   <section class="stage" id="secPerc" aria-labelledby="h0">
-    <div class="stage-head"><span class="num">00</span><div><h2 id="h0">The perceptron</h2><p>One neuron with a hard threshold. It classifies a point <b>x</b> by the sign of w·x + b, so its decision boundary is a line. Click the canvas to add points, and click an existing point to remove it. Then step through the learning rule.</p></div></div>
+    <div class="stage-head"><span class="num">00</span><div><h2 id="h0">The perceptron</h2><p>One neuron with a hard threshold. It classifies a point \(\mathbf{x}\) by the sign of \(\mathbf{w}\cdot\mathbf{x} + b\), so its decision boundary is a line. Click the canvas to add points, and click an existing point to remove it. Then step through the learning rule.</p></div></div>
     <div class="controls">
       <div class="ctl"><label>Add class</label><div class="seg" id="pClass"><button type="button" data-v="1" aria-pressed="true">Blue (+1)</button><button type="button" data-v="-1" aria-pressed="false">Orange (−1)</button></div></div>
-      <div class="ctl"><label for="pEta">Learning rate η</label><input type="range" id="pEta" min="0.1" max="1" step="0.1" value="0.5"><output id="pEtaO">0.5</output></div>
+      <div class="ctl"><label for="pEta">Learning rate \(\eta\)</label><input type="range" id="pEta" min="0.1" max="1" step="0.1" value="0.5"><output id="pEtaO">0.5</output></div>
     </div>
     <div class="controls">
       <button type="button" class="btn primary" id="pStep">Step: fix one mistake</button>
@@ -70,7 +72,7 @@ progress { width: 220px; accent-color: var(--accent); }
     </div>
     <div class="tablebox" style="max-height:220px"><table id="pTable"></table></div>
     <div class="math"><h3>The rule</h3>
-      <p class="eq">ŷ = sign(w·x + b)        if y·(w·x + b) ≤ 0:   w ← w + η y x,   b ← b + η y</p>
+      <div class="eqd">\[ \hat{y} = \operatorname{sign}(\mathbf{w}\cdot\mathbf{x} + b); \qquad \text{if } y\,(\mathbf{w}\cdot\mathbf{x} + b) \le 0:\quad \mathbf{w} \leftarrow \mathbf{w} + \eta\, y\,\mathbf{x}, \quad b \leftarrow b + \eta\, y \]</div>
       <p>A mistake pulls the line toward the missed point: the weight vector tilts toward a missed +1 point, and away from a missed −1 point. If the two classes can be separated by a line, this procedure stops after a finite number of updates. Press "Make XOR data" and run it. XOR cannot be separated by any line, so the perceptron never settles. The run stops after 300 updates.</p></div>
   </section>
 
@@ -105,8 +107,8 @@ progress { width: 220px; accent-color: var(--accent); }
       <div class="math"><h3>Selected neuron</h3><div id="neuron"></div></div>
     </div>
     <div class="math"><h3>What the training does</h3>
-      <p class="eq">a⁽ˡ⁾ = f(W⁽ˡ⁾ a⁽ˡ⁻¹⁾ + b⁽ˡ⁾),   p = σ(W⁽ᴸ⁾ a⁽ᴸ⁻¹⁾ + b⁽ᴸ⁾),   loss = −mean[ y ln p + (1−y) ln(1−p) ]</p>
-      <p class="eq">δ⁽ᴸ⁾ = p − y,   δ⁽ˡ⁾ = (W⁽ˡ⁺¹⁾ᵀ δ⁽ˡ⁺¹⁾) ⊙ f′(z⁽ˡ⁾),   ∂loss/∂W⁽ˡ⁾ = mean[ δ⁽ˡ⁾ a⁽ˡ⁻¹⁾ᵀ ]</p>
+      <div class="eqd">\[ a^{(l)} = f\big(W^{(l)} a^{(l-1)} + b^{(l)}\big), \qquad p = \sigma\big(W^{(L)} a^{(L-1)} + b^{(L)}\big), \qquad \text{loss} = -\operatorname{mean}\big[\, y \ln p + (1-y)\ln(1-p) \,\big] \]</div>
+      <div class="eqd">\[ \delta^{(L)} = p - y, \qquad \delta^{(l)} = \big(W^{(l+1)\top} \delta^{(l+1)}\big) \odot f'\big(z^{(l)}\big), \qquad \frac{\partial\, \text{loss}}{\partial W^{(l)}} = \operatorname{mean}\big[\, \delta^{(l)}\, a^{(l-1)\top} \,\big] \]</div>
       <p>Each epoch uses all 200 training points at once. The update uses the Adam optimizer, a gradient step with running averages that makes the slider range forgiving. Plain gradient descent would need a much longer run for the spiral. A separate set of 200 points, never trained on, gives the held-out numbers. Try 2 hidden layers with 16 neurons on the spiral, and give it a few thousand epochs. With 1 neuron, XOR cannot be solved at all. With 2 it often can.</p></div>
   </section>
 
@@ -127,13 +129,13 @@ progress { width: 220px; accent-color: var(--accent); }
     <div class="four">
       <figure><canvas class="view click" id="cIn"></canvas><figcaption>Input image</figcaption></figure>
       <figure><canvas class="view click" id="cConv"></canvas><figcaption>Convolution (gray = 0, bright = positive)</figcaption></figure>
-      <figure><canvas class="view click" id="cRelu"></canvas><figcaption>After ReLU, max(0, ·)</figcaption></figure>
+      <figure><canvas class="view click" id="cRelu"></canvas><figcaption>After ReLU, \(\max(0, \cdot)\)</figcaption></figure>
       <figure><canvas class="view click" id="cPool"></canvas><figcaption>After 2×2 max pooling</figcaption></figure>
     </div>
     <div class="math"><h3>At the selected pixel</h3><div id="cCalc"></div></div>
     <div class="math"><h3>The equations</h3>
-      <p class="eq">out(x, y) = b + Σⱼ Σᵢ K(i, j) · I(x + i, y + j),   i, j ∈ {−1, 0, 1}</p>
-      <p class="eq">relu(v) = max(0, v)        pool(x, y) = max of the 2×2 block at (2x, 2y)</p>
+      <div class="eqd">\[ \mathrm{out}(x, y) = b + \sum_j \sum_i K(i, j)\, I(x + i,\, y + j), \qquad i, j \in \{-1, 0, 1\} \]</div>
+      <div class="eqd">\[ \mathrm{relu}(v) = \max(0, v), \qquad \mathrm{pool}(x, y) = \max \text{ of the } 2{\times}2 \text{ block at } (2x, 2y) \]</div>
       <p>Strictly this is cross-correlation, which is what CNN libraries compute and call convolution. A true convolution flips the kernel first. The output is 2 pixels smaller each way because the filter stays inside the image. Pooling halves the size and keeps a response even if the feature moves by a pixel. Learned filters usually look like the hand-made ones: oriented edges and blobs.</p></div>
   </section>
 
@@ -158,7 +160,7 @@ progress { width: 220px; accent-color: var(--accent); }
       <div class="testgrid" id="testgrid"></div>
     </div>
     <div class="math"><h3>The network</h3>
-      <p class="eq">196 pixels → 48 ReLU neurons → 10 outputs, softmax:  p<sub>k</sub> = e^{z_k} / Σ e^{z_j},   loss = −ln p<sub>true</sub></p>
+      <p>196 pixels \(\to\) 48 ReLU neurons \(\to\) 10 outputs, with softmax and cross-entropy loss:</p><div class="eqd">\[ p_k = \frac{e^{z_k}}{\sum_j e^{z_j}}, \qquad \text{loss} = -\ln p_{\text{true}} \]</div>
       <p>The score is measured on 500 synthetic digits that the network never trained on. The training and held-out digits come from the same generator, so the score is optimistic for real handwriting. Draw one digit large and centered. Digits 1 and 7, or 4 and 9, are the usual confusions.</p></div>
   </section>
 </main>
@@ -168,7 +170,7 @@ progress { width: 220px; accent-color: var(--accent); }
 <script>
 (() => {
 "use strict";
-const { $, nav, footer, show, hiDPI, onTheme, cssVar, seg, setSeg, segVal, rng, fmt, toGray, SAMPLES, sampleCanvas } = VB;
+const { $, nav, footer, show, hiDPI, onTheme, cssVar, seg, setSeg, segVal, rng, fmt, toGray, SAMPLES, sampleCanvas, tex, mathRows } = VB;
 nav("neural-networks.html"); footer();
 const BLUE = [37, 99, 235], ORANGE = [234, 88, 12];
 const hex = h => { h = h.replace("#", ""); if (h.length === 3) h = h.replace(/./g, "$&$&"); return [0, 2, 4].map(i => parseInt(h.slice(i, i + 2), 16)); };
@@ -273,10 +275,21 @@ function pDraw() {
   const wrong = P.pts.filter(p => p.c * pScore(p) <= 0).length;
   $("pStats").innerHTML = `<span class="chip">Updates <b>${P.steps}</b></span><span class="chip">Misclassified <b>${wrong}</b> of ${P.pts.length}</span><span class="chip">w <b>(${fmt(P.w[0], 2)}, ${fmt(P.w[1], 2)})</b></span><span class="chip">b <b>${fmt(P.b, 2)}</b></span>` + (P.pts.length && !wrong ? '<span class="tag good">all correct</span>' : P.steps >= 300 ? '<span class="tag bad">not converging</span>' : "");
   const l = P.last;
-  $("pMath").innerHTML = l ? `<p class="mono">Point #${l.i + 1}: x = (${fmt(l.p.x, 2)}, ${fmt(l.p.y, 2)}), y = ${l.p.c > 0 ? "+1" : "−1"}</p><p class="mono">score = w·x + b = ${fmt(l.w0[0], 2)}·${fmt(l.p.x, 2)} + ${fmt(l.w0[1], 2)}·${fmt(l.p.y, 2)} + ${fmt(l.b0, 2)} = ${fmt(l.s, 2)}</p><p class="mono">y·score = ${fmt(l.p.c * l.s, 2)} ≤ 0, so this is a mistake.</p><p class="mono">w ← (${fmt(l.w0[0], 2)}, ${fmt(l.w0[1], 2)}) + ${l.e} · (${l.p.c}) · (${fmt(l.p.x, 2)}, ${fmt(l.p.y, 2)}) = (${fmt(P.w[0], 2)}, ${fmt(P.w[1], 2)})</p><p class="mono">b ← ${fmt(l.b0, 2)} + ${l.e} · (${l.p.c}) = ${fmt(P.b, 2)}</p>` : P.done || (P.pts.length && !wrong) ? `<p><b>No mistakes left.</b> Every point is on the correct side, so the rule changes nothing.</p>` : `<p>Press <b>Step</b> to find the next misclassified point (red ring) and apply the rule. The dashed line shows the boundary before the last update.</p>`;
-  $("pTable").innerHTML = `<thead><tr><th>Point</th><th>x₁</th><th>x₂</th><th>y</th><th>w·x + b</th><th>Status</th></tr></thead><tbody>` + P.pts.map((p, i) => { const s = pScore(p), ok = p.c * s > 0; return `<tr data-i="${i}" class="${i === P.sel ? "sel" : ""}"><td>#${i + 1}</td><td>${fmt(p.x, 2)}</td><td>${fmt(p.y, 2)}</td><td>${p.c > 0 ? "+1" : "−1"}</td><td>${fmt(s, 2)}</td><td style="color:${ok ? "#1f8a4c" : "#c53030"}">${ok ? "correct" : "mistake"}</td></tr>`; }).join("") + "</tbody>";
+  $("pMath").innerHTML = l ? `<div id="pGrid"></div>` : P.done || (P.pts.length && !wrong) ? `<p><b>No mistakes left.</b> Every point is on the correct side, so the rule changes nothing.</p>` : `<p>Press <b>Step</b> to find the next misclassified point (red ring) and apply the rule. The dashed line shows the boundary before the last update.</p>`;
+  if (l) mathRows($("pGrid"), [
+    { label: `Point #${l.i + 1}`, tex: `\\mathbf{x} = (${fmt(l.p.x, 2)}, ${fmt(l.p.y, 2)}),\\; y`, value: l.p.c > 0 ? "+1" : "-1" },
+    { label: "Score", tex: `\\mathbf{w}\\cdot\\mathbf{x} + b = ${fmt(l.w0[0], 2)}\\cdot ${fmt(l.p.x, 2)} + ${fmt(l.w0[1], 2)}\\cdot ${fmt(l.p.y, 2)} + ${fmt(l.b0, 2)}`, value: fmt(l.s, 2) },
+    { label: "Check", tex: `y \\cdot \\text{score}`, value: fmt(l.p.c * l.s, 2) },
+    { label: "Weights", tex: `\\mathbf{w} \\leftarrow (${fmt(l.w0[0], 2)}, ${fmt(l.w0[1], 2)}) + ${l.e}\\cdot(${l.p.c})\\cdot(${fmt(l.p.x, 2)}, ${fmt(l.p.y, 2)})`, value: `(${fmt(P.w[0], 2)}, ${fmt(P.w[1], 2)})` },
+    { label: "Bias", tex: `b \\leftarrow ${fmt(l.b0, 2)} + ${l.e}\\cdot(${l.p.c})`, value: fmt(P.b, 2) },
+  ], "The product is not positive, so this point is a mistake.");
+  $("pTable").innerHTML = `<thead><tr><th>Point</th><th>${tex("x_1")}</th><th>${tex("x_2")}</th><th>${tex("y")}</th><th>${tex("\\mathbf{w}\\cdot\\mathbf{x} + b")}</th><th>Status</th></tr></thead><tbody>` + P.pts.map((p, i) => { const s = pScore(p), ok = p.c * s > 0; return `<tr data-i="${i}" class="${i === P.sel ? "sel" : ""}"><td>#${i + 1}</td><td>${fmt(p.x, 2)}</td><td>${fmt(p.y, 2)}</td><td>${p.c > 0 ? "+1" : "−1"}</td><td>${fmt(s, 2)}</td><td style="color:${ok ? "#1f8a4c" : "#c53030"}">${ok ? "correct" : "mistake"}</td></tr>`; }).join("") + "</tbody>";
 }
-$("pTable").addEventListener("click", e => { const tr = e.target.closest("tr[data-i]"); if (!tr) return; P.sel = +tr.dataset.i; const p = P.pts[P.sel], s = pScore(p); P.last = null; pDraw(); $("pMath").innerHTML = `<p class="mono">Point #${P.sel + 1}: x = (${fmt(p.x, 2)}, ${fmt(p.y, 2)}), y = ${p.c > 0 ? "+1" : "−1"}</p><p class="mono">score = ${fmt(P.w[0], 2)}·${fmt(p.x, 2)} + ${fmt(P.w[1], 2)}·${fmt(p.y, 2)} + ${fmt(P.b, 2)} = ${fmt(s, 2)}</p><p class="mono">y·score = ${fmt(p.c * s, 2)} ${p.c * s > 0 ? "> 0: classified correctly." : "≤ 0: a mistake. The next Step may use this point."}</p>`; });
+$("pTable").addEventListener("click", e => { const tr = e.target.closest("tr[data-i]"); if (!tr) return; P.sel = +tr.dataset.i; const p = P.pts[P.sel], s = pScore(p); P.last = null; pDraw(); $("pMath").innerHTML = `<div id="pGrid"></div>`; mathRows($("pGrid"), [
+    { label: `Point #${P.sel + 1}`, tex: `\\mathbf{x} = (${fmt(p.x, 2)}, ${fmt(p.y, 2)}),\\; y`, value: p.c > 0 ? "+1" : "-1" },
+    { label: "Score", tex: `${fmt(P.w[0], 2)}\\cdot ${fmt(p.x, 2)} + ${fmt(P.w[1], 2)}\\cdot ${fmt(p.y, 2)} + ${fmt(P.b, 2)}`, value: fmt(s, 2) },
+    { label: "Check", tex: `y \\cdot \\text{score}`, value: fmt(p.c * s, 2) },
+  ], p.c * s > 0 ? "Greater than 0: classified correctly." : "Not positive: a mistake. The next Step may use this point.");  });
 pCv.addEventListener("click", e => {
   const r = pCv.getBoundingClientRect(), S = r.height / 2.3, x = (e.clientX - r.left - r.width / 2) / S, y = (e.clientY - r.top - r.height / 2) / S;
   const hit = P.pts.findIndex(p => Math.hypot(p.x - x, p.y - y) * S < 11);
@@ -364,13 +377,13 @@ function mText() {
   const net = M.net, a = M.last || net.evaluate(M.tr.X, M.tr.Y), b = M.lastTe;
   $("mStats").innerHTML = `<span class="chip">Epoch <b>${M.epoch}</b></span><span class="chip">Train loss <b>${fmt(a.loss, 3)}</b></span><span class="chip">Train acc <b>${fmt(100 * a.acc, 1)}%</b></span><span class="chip">Held-out acc <b>${fmt(100 * b.acc, 1)}%</b></span><span class="chip">Parameters <b>${net.W.reduce((s, w, l) => s + w.length + net.b[l].length, 0)}</b></span>`;
   // probe
-  const [px, py] = M.probe, p = net.forward([px, py])[0]; let h = `<p class="mono">input (x, y) = (${fmt(px, 2)}, ${fmt(py, 2)})</p>`;
-  for (let l = 1; l < net.L; l++) { const v = Array.from(net.A[l]), shown = v.slice(0, 10).map(q => fmt(q, 2)).join(", "); h += `<p class="mono">layer ${l} = ${net.act}(W·in + b) = [${shown}${v.length > 10 ? ", …" : ""}]</p>`; }
-  h += `<p class="mono">output p = σ(W·a + b) = ${fmt(p, 3)} &rarr; class ${p > 0.5 ? "+1 (blue)" : "−1 (orange)"}</p>`; $("probe").innerHTML = h;
+  const [px, py] = M.probe, p = net.forward([px, py])[0]; let h = `<p>Input ${tex(`(x, y) = (${fmt(px, 2)}, ${fmt(py, 2)})`)}</p>`;
+  for (let l = 1; l < net.L; l++) { const v = Array.from(net.A[l]), shown = v.slice(0, 10).map(q => fmt(q, 2)).join(", "); h += `<p>Layer ${l}: ${tex(`\\operatorname{${net.act}}(W\\mathbf{a} + \\mathbf{b})`)} = <span class="mono">[${shown}${v.length > 10 ? ", …" : ""}]</span></p>`; }
+  h += `<p>Output ${tex(`p = \\sigma(W\\mathbf{a} + \\mathbf{b}) = ${fmt(p, 3)}`)} &rarr; class ${p > 0.5 ? "+1 (blue)" : "−1 (orange)"}</p>`; $("probe").innerHTML = h;
   // neuron
   const { layer: l, idx: j } = M.sel; if (!net.W[l] || j >= net.sizes[l + 1]) return; const i = net.sizes[l], w = net.W[l].subarray(j * i, j * i + i), bb = net.b[l][j]; net.forward([px, py]); const inp = net.A[l], z = Array.from(w).reduce((s, q, k) => s + q * inp[k], bb);
-  const terms = Array.from(w).slice(0, 6).map((q, k) => `${fmt(q, 2)}·${l === 0 ? ["x", "y"][k] : "a" + (k + 1)}`).join(" + ");
-  $("neuron").innerHTML = `<p><b>Layer ${l + 1}, neuron ${j + 1}</b></p><p class="mono">z = ${terms}${i > 6 ? " + …" : ""} + ${fmt(bb, 2)}</p><p class="mono">at the probe point: z = ${fmt(z, 3)}, a = ${net.act}(z) = ${fmt(net.A[l + 1][j], 3)}</p>` + (l === 0 ? `<p class="note">The dashed line on the heatmap is z = 0. The neuron switches across this line, and its weights (${fmt(w[0], 2)}, ${fmt(w[1], 2)}) point toward its high side.</p>` : `<p class="note">This neuron combines the ${i} outputs of the previous layer, so its shape is a mix of those thumbnails.</p>`);
+  const terms = Array.from(w).slice(0, 6).map((q, k) => `${fmt(q, 2)}\\,${l === 0 ? ["x", "y"][k] : "a_{" + (k + 1) + "}"}`).join(" + ");
+  $("neuron").innerHTML = `<p><b>Layer ${l + 1}, neuron ${j + 1}</b></p><p>${tex(`z = ${terms}${i > 6 ? " + \\cdots" : ""} + ${fmt(bb, 2)}`)}</p><p>At the probe point: ${tex(`z = ${fmt(z, 3)}`)}, ${tex(`a = \\operatorname{${net.act}}(z) = ${fmt(net.A[l + 1][j], 3)}`)}</p>` + (l === 0 ? `<p class="note">The dashed line on the heatmap is ${tex("z = 0")}. The neuron switches across this line, and its weights (${fmt(w[0], 2)}, ${fmt(w[1], 2)}) point toward its high side.</p>` : `<p class="note">This neuron combines the ${i} outputs of the previous layer, so its shape is a mix of those thumbnails.</p>`);
 }
 function mLoop() {
   if (!M.playing || !active("secMlp")) return; if (M.epoch >= M.maxEpoch) { M.playing = false; $("mPlay").textContent = "Resume"; return; }
@@ -417,7 +430,7 @@ function cRun() {
   const tbl = (a, fm) => `<table class="calc">${[0, 1, 2].map(r => `<tr>${[0, 1, 2].map(c => `<td>${fm(a[r * 3 + c])}</td>`).join("")}</tr>`).join("")}</table>`;
   const prods = patch.map((v, i) => v * C.k[i]), sum = prods.reduce((s, v) => s + v, 0), cv = C.conv[sy * C.cw + sx];
   const bx = (sx >> 1) << 1, by = (sy >> 1) << 1, blk = []; for (let j = 0; j < 2; j++) for (let i = 0; i < 2; i++) blk.push(by + j < C.ch && bx + i < C.cw ? C.relu[(by + j) * C.cw + bx + i] : 0);
-  $("cCalc").innerHTML = `<p class="mono">Output pixel (${sx}, ${sy}). Patch × kernel, summed:</p><div class="calcrow">${tbl(patch, f2)}<span>×</span>${tbl(C.k, f2)}<span>=</span>${tbl(prods, v => fmt(v, 2))}</div><p class="mono">Σ = ${f2(sum)}, plus bias ${f2(C.b)} = <b>${f2(cv)}</b>. ReLU gives <b>${f2(Math.max(0, cv))}</b>.</p><p class="mono">Pooling block (2×2 of ReLU outputs at (${bx}, ${by})): ${blk.map(f2).join(", ")} &rarr; max = <b>${f2(Math.max(...blk))}</b></p>`;
+  $("cCalc").innerHTML = `<p class="mono">Output pixel (${sx}, ${sy}). Patch × kernel, summed:</p><div class="calcrow">${tbl(patch, f2)}<span>${tex("\\times")}</span>${tbl(C.k, f2)}<span>=</span>${tbl(prods, v => fmt(v, 2))}</div><p>${tex(`\\textstyle\\sum = ${f2(sum)}`)}, plus bias ${f2(C.b)} = <b>${f2(cv)}</b>. ReLU gives <b>${f2(Math.max(0, cv))}</b>.</p><p class="mono">Pooling block (2×2 of ReLU outputs at (${bx}, ${by})): ${blk.map(f2).join(", ")} &rarr; max = <b>${f2(Math.max(...blk))}</b></p>`;
   $("kName").textContent = C.name;
   document.querySelectorAll("#fbtns .fbtn").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.name === C.name)));
 }

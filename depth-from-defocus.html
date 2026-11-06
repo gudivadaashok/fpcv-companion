@@ -7,7 +7,9 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,500;8..60,600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="vendor/katex/katex.min.css">
 <link rel="stylesheet" href="site.css">
+<script src="vendor/katex/katex.min.js"></script>
 <style>
 #lens { height: 300px; }
 #blurPlot, #curve, #dfdPlot { height: 260px; }
@@ -34,12 +36,12 @@ table.cmp tbody tr { cursor: default; }
   </div>
 
   <section class="stage" aria-labelledby="h0">
-    <div class="stage-head"><span class="num">00</span><div><h2 id="h0">The thin lens and its blur circle</h2><p>A point at distance <i>z</i> focuses at image distance <i>v</i>, but the sensor sits at <i>v</i>ₛ, set for the focus distance. The cone of light cuts the sensor in a disc of diameter <i>b</i>. Change the lens and the object distance and watch <i>b</i>.</p></div></div>
+    <div class="stage-head"><span class="num">00</span><div><h2 id="h0">The thin lens and its blur circle</h2><p>A point at distance \(z\) focuses at image distance \(v\), but the sensor sits at \(v_s\), set for the focus distance. The cone of light cuts the sensor in a disc of diameter \(b\). Change the lens and the object distance and watch \(b\).</p></div></div>
     <div class="controls">
-      <div class="ctl"><label for="f">Focal length f</label><input type="range" id="f" min="25" max="100" step="1" value="50"><output id="fO"></output></div>
-      <div class="ctl"><label for="fn">f-number N (aperture A = f / N)</label><input type="range" id="fn" min="1.4" max="8" step="0.1" value="2.8"><output id="fnO"></output></div>
+      <div class="ctl"><label for="f">Focal length \(f\)</label><input type="range" id="f" min="25" max="100" step="1" value="50"><output id="fO"></output></div>
+      <div class="ctl"><label for="fn">f-number \(N\) (aperture \(A = f / N\))</label><input type="range" id="fn" min="1.4" max="8" step="0.1" value="2.8"><output id="fnO"></output></div>
       <div class="ctl"><label for="zf">Focus distance</label><input type="range" id="zf" min="0.5" max="4" step="0.05" value="1.5"><output id="zfO"></output></div>
-      <div class="ctl"><label for="zo">Object distance z</label><input type="range" id="zo" min="0.5" max="4" step="0.05" value="2.5"><output id="zoO"></output></div>
+      <div class="ctl"><label for="zo">Object distance \(z\)</label><input type="range" id="zo" min="0.5" max="4" step="0.05" value="2.5"><output id="zoO"></output></div>
     </div>
     <div class="main-side">
       <figure><canvas class="plot" id="lens" aria-label="Thin lens diagram"></canvas><figcaption>Schematic only. Distances behind the lens are stretched so the blur disc is visible.</figcaption></figure>
@@ -47,8 +49,8 @@ table.cmp tbody tr { cursor: default; }
     </div>
     <div class="stats" id="lensStats"></div>
     <div class="math"><h3>The equations</h3>
-      <p class="eq">1/f = 1/z + 1/v        vₛ = f·z_f / (z_f − f)        b = A · |vₛ − v| / v        A = f / N</p>
-      <p>Blur is zero at the focus distance and grows on both sides, faster on the near side. A larger aperture A makes depth of field shallower and the blur a stronger depth cue. Throughout the page, the blur is a Gaussian with σ = b / 2 pixels, a common stand-in for the true disc.</p></div>
+      <div class="eqd">\[ \frac{1}{f} = \frac{1}{z} + \frac{1}{v} \qquad v_s = \frac{f\, z_f}{z_f - f} \qquad b = A\,\frac{|v_s - v|}{v} \qquad A = \frac{f}{N} \]</div>
+      <p>Blur is zero at the focus distance and grows on both sides, faster on the near side. A larger aperture \(A\) makes depth of field shallower and the blur a stronger depth cue. Throughout the page, the blur is a Gaussian with \(\sigma = b / 2\) pixels, a common stand-in for the true disc.</p></div>
   </section>
 
   <section class="stage" aria-labelledby="h1">
@@ -65,7 +67,7 @@ table.cmp tbody tr { cursor: default; }
   </section>
 
   <section class="stage" aria-labelledby="h2">
-    <div class="stage-head"><span class="num">02</span><div><h2 id="h2">Depth from focus: take a stack, find the sharpest</h2><p>Take 15 photos while moving the focus from near to far. At each pixel, measure local sharpness as the sum of the modified Laplacian |2I − I<sub>left</sub> − I<sub>right</sub>| + |2I − I<sub>up</sub> − I<sub>down</sub>| over a 7 × 7 window. The focus setting where it peaks gives the depth.</p></div></div>
+    <div class="stage-head"><span class="num">02</span><div><h2 id="h2">Depth from focus: take a stack, find the sharpest</h2><p>Take 15 photos while moving the focus from near to far. At each pixel, measure local sharpness as the sum of the modified Laplacian \(|2I - I_{left} - I_{right}| + |2I - I_{up} - I_{down}|\) over a \(7 \times 7\) window. The focus setting where it peaks gives the depth.</p></div></div>
     <div class="controls"><div class="ctl"><label for="ks">Focus-stack photo</label><input type="range" id="ks" min="0" max="14" step="1" value="6" style="width:260px"><output id="ksO"></output></div></div>
     <div class="three">
       <figure><canvas class="view click" id="dStack"></canvas><figcaption id="dStackCap">Photo from the stack</figcaption></figure>
@@ -83,7 +85,7 @@ table.cmp tbody tr { cursor: default; }
   </section>
 
   <section class="stage" aria-labelledby="h3">
-    <div class="stage-head"><span class="num">03</span><div><h2 id="h3">Depth from defocus: two photos are enough</h2><p>Take just two photos at different focus settings. Image 2 is image 1 blurred by a relative amount: σ<sub>r</sub>² = |σ₂² − σ₁²|. At each pixel, find the σ<sub>r</sub> that best matches the two images in a 9 × 9 window, then invert the optics to get depth.</p></div></div>
+    <div class="stage-head"><span class="num">03</span><div><h2 id="h3">Depth from defocus: two photos are enough</h2><p>Take just two photos at different focus settings. Image 2 is image 1 blurred by a relative amount: \(\sigma_r^2 = |\sigma_2^2 - \sigma_1^2|\). At each pixel, find the \(\sigma_r\) that best matches the two images in a \(9 \times 9\) window, then invert the optics to get depth.</p></div></div>
     <div class="controls">
       <div class="ctl"><label for="za">Focus of photo 1</label><input type="range" id="za" min="0.5" max="4" step="0.05" value="1.2"><output id="zaO"></output></div>
       <div class="ctl"><label for="zb">Focus of photo 2</label><input type="range" id="zb" min="0.5" max="4" step="0.05" value="2.4"><output id="zbO"></output></div>
@@ -91,7 +93,7 @@ table.cmp tbody tr { cursor: default; }
     <div class="three">
       <figure><canvas class="view click" id="eA"></canvas><figcaption>Photo 1</figcaption></figure>
       <figure><canvas class="view click" id="eB"></canvas><figcaption>Photo 2</figcaption></figure>
-      <figure><canvas class="view click" id="eRel"></canvas><figcaption>Relative blur σ<sub>r</sub> (bright = large)</figcaption></figure>
+      <figure><canvas class="view click" id="eRel"></canvas><figcaption>Relative blur \(\sigma_r\) (bright = large)</figcaption></figure>
     </div>
     <div class="three">
       <figure><canvas class="view click" id="eDepth"></canvas><figcaption>Depth from defocus</figcaption></figure>
@@ -99,8 +101,8 @@ table.cmp tbody tr { cursor: default; }
       <div class="math detail"><h3 id="pxTitle2"></h3><div class="calc-lines" id="dfdCalc"></div></div>
     </div>
     <div class="two">
-      <figure><canvas class="plot" id="dfdPlot" aria-label="Matching error against relative blur"></canvas><figcaption>Matching error of the clicked pixel against trial blur. Negative σ<sub>r</sub> means photo 1 is the blurrier one.</figcaption></figure>
-      <figure><canvas class="plot" id="gPlot" style="height:260px" aria-label="Blur difference against depth"></canvas><figcaption>The optics: σ₂² − σ₁² against true depth for these two focus settings. The measured value picks the depth.</figcaption></figure>
+      <figure><canvas class="plot" id="dfdPlot" aria-label="Matching error against relative blur"></canvas><figcaption>Matching error of the clicked pixel against trial blur. Negative \(\sigma_r\) means photo 1 is the blurrier one.</figcaption></figure>
+      <figure><canvas class="plot" id="gPlot" style="height:260px" aria-label="Blur difference against depth"></canvas><figcaption>The optics: \(\sigma_2^2 - \sigma_1^2\) against true depth for these two focus settings. The measured value picks the depth.</figcaption></figure>
     </div>
     <div class="math"><h3>Scoreboard</h3>
       <table class="cmp"><thead><tr><th>Method</th><th>Photos used</th><th>RMS error (m)</th><th>Median error (m)</th><th>Pixels within 10%</th></tr></thead><tbody id="cmp"></tbody></table>
@@ -113,7 +115,7 @@ table.cmp tbody tr { cursor: default; }
 <script>
 (() => {
 "use strict";
-const { $, nav, footer, show, showRGB, gaussBlur, boxSum, imgXY, hiDPI, onTheme, cssVar, seg, segVal, fmt, rng, hsvToRgb } = VB;
+const { $, nav, footer, show, showRGB, gaussBlur, boxSum, imgXY, hiDPI, onTheme, cssVar, seg, segVal, fmt, rng, hsvToRgb, tex } = VB;
 nav("depth-from-defocus.html"); footer();
 const W = 160, H = 120, NP = W * H, K = 15, PITCH = 0.1, ZMIN = 0.7, ZMAX = 3.3, INV0 = 1 / 3.4, INV1 = 1 / 0.7;
 const S = { scene: "planes", tex: "rich", f: 50, fn: 2.8, zf: 1.5, zo: 2.5, k: 6, za: 1.2, zb: 2.4, sel: [60, 44] };
@@ -240,7 +242,7 @@ function drawBlurPlot() {
 function updLens() {
   $("fO").value = S.f + " mm"; $("fnO").value = "f/" + f2(S.fn, 1); $("zfO").value = f2(S.zf) + " m"; $("zoO").value = f2(S.zo) + " m";
   const zm = S.zo * 1000, zfm = S.zf * 1000, vs = S.f * zfm / (zfm - S.f), v = S.f * zm / (zm - S.f), A = aper(), b = A * Math.abs(vs - v) / v;
-  $("lensStats").innerHTML = `<span class="chip">vₛ = ${S.f}·${fmt(zfm, 0)} / (${fmt(zfm, 0)} − ${S.f}) = <b>${f2(vs, 3)} mm</b></span><span class="chip">v = <b>${f2(v, 3)} mm</b></span><span class="chip">A = ${S.f} / ${f2(S.fn, 1)} = <b>${f2(A, 1)} mm</b></span><span class="chip">b = ${f2(A, 1)} × ${f2(Math.abs(vs - v), 3)} / ${f2(v, 2)} = <b>${f2(b, 3)} mm = ${f2(b / PITCH, 1)} px</b></span>`;
+  $("lensStats").innerHTML = `<span class="chip">${tex("v_s")} = ${S.f}·${fmt(zfm, 0)} / (${fmt(zfm, 0)} − ${S.f}) = <b>${f2(vs, 3)} mm</b></span><span class="chip">${tex("v")} = <b>${f2(v, 3)} mm</b></span><span class="chip">${tex("A")} = ${S.f} / ${f2(S.fn, 1)} = <b>${f2(A, 1)} mm</b></span><span class="chip">${tex("b")} = ${f2(A, 1)} × ${f2(Math.abs(vs - v), 3)} / ${f2(v, 2)} = <b>${f2(b, 3)} mm = ${f2(b / PITCH, 1)} px</b></span>`;
   drawLens(); drawBlurPlot();
 }
 
@@ -268,7 +270,7 @@ function drawCurve() {
   ctx.strokeStyle = cssVar("--accent"); ctx.lineWidth = 2.4; ctx.beginPath(); vals.forEach((v, k) => k ? ctx.lineTo(X(k), Y(v)) : ctx.moveTo(X(k), Y(v))); ctx.stroke(); ctx.fillStyle = cssVar("--accent"); vals.forEach((v, k) => { ctx.beginPath(); ctx.arc(X(k), Y(v), 3.5, 0, 7); ctx.fill(); });
   $("pxTitle").textContent = `Pixel (${x}, ${y})`;
   const b = Math.round(dff.k[i]), pk = vals[Math.max(0, Math.min(K - 1, b))], flat = pk < 0.3 * mx + 1e-9 || mx < 8;
-  $("dffCalc").innerHTML = `<p>True depth z = <b>${f2(depth[i])} m</b></p><p>Sharpness peak at stack index ${f2(dff.k[i], 2)}</p><p class="hl">Estimated depth = <b>${f2(dff.z[i])} m</b></p><p>Error = ${f2(dff.z[i] - depth[i])} m</p><p>Peak sharpness = ${f2(pk, 1)}, a sharpness of ${f2(mx > 0 ? 100 * Math.min(...vals) / mx : 0, 0)}% at the dullest setting</p>` + (mx < 8 ? `<p class="note" style="font-family:var(--body)">This pixel has almost no texture, so no setting is sharper than another. The estimate is unreliable.</p>` : `<p class="note" style="font-family:var(--body)">The curve peaks where the lens is focused on this pixel's depth. The blur circle there is the smallest.</p>`);
+  $("dffCalc").innerHTML = `<p>True depth ${tex("z")} = <b>${f2(depth[i])} m</b></p><p>Sharpness peak at stack index ${f2(dff.k[i], 2)}</p><p class="hl">Estimated depth = <b>${f2(dff.z[i])} m</b></p><p>Error = ${f2(dff.z[i] - depth[i])} m</p><p>Peak sharpness = ${f2(pk, 1)}, a sharpness of ${f2(mx > 0 ? 100 * Math.min(...vals) / mx : 0, 0)}% at the dullest setting</p>` + (mx < 8 ? `<p class="note" style="font-family:var(--body)">This pixel has almost no texture, so no setting is sharper than another. The estimate is unreliable.</p>` : `<p class="note" style="font-family:var(--body)">The curve peaks where the lens is focused on this pixel's depth. The blur circle there is the smallest.</p>`);
 }
 function drawDFD() {
   const d = dfd; put("eA", gray(d.A)); put("eB", gray(d.B)); put("eRel", i => { const v = Math.min(255, Math.abs(d.rel[i]) / 5 * 255); return d.rel[i] >= 0 ? [v, v * 0.7 + 30, 30] : [30, v * 0.7 + 30, v]; });
@@ -289,7 +291,7 @@ function drawDFDPix() {
   const rel = d.rel[i]; const best = ys.find(a => Math.abs(a[0] - rel) < 1e-6); ctx.fillStyle = cssVar("--ink"); if (best) { ctx.beginPath(); ctx.arc(X(best[0]), Y(best[1]), 5, 0, 7); ctx.fill(); }
   const zt = depth[i], s1 = blurPx(zt, S.za) / 2, s2 = blurPx(zt, S.zb) / 2, dl = s2 * s2 - s1 * s1, tr = Math.sign(dl) * Math.sqrt(Math.abs(dl)); ctx.strokeStyle = "#ca8a04"; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(X(Math.max(-5, Math.min(5, tr))), Tp); ctx.lineTo(X(Math.max(-5, Math.min(5, tr))), Tp + ph); ctx.stroke();
   const dm = Math.sign(rel) * rel * rel;
-  $("dfdCalc").innerHTML = `<p>True depth z = <b>${f2(zt)} m</b></p><p>True σ₁ = ${f2(s1)}, σ₂ = ${f2(s2)} px</p><p>True σ₂² − σ₁² = ${f2(dl)}</p><p>Best match: σr = <b>${f2(rel)}</b> px ${rel > 0 ? "(photo 2 is blurrier)" : rel < 0 ? "(photo 1 is blurrier)" : "(equal blur)"}</p><p>Measured σ₂² − σ₁² = ${f2(dm)}</p><p class="hl">Optics lookup: depth = <b>${f2(d.z[i])} m</b> (error ${f2(d.z[i] - zt)} m)</p>`;
+  $("dfdCalc").innerHTML = `<p>True depth ${tex("z")} = <b>${f2(zt)} m</b></p><p>True ${tex("\\sigma_1")} = ${f2(s1)}, ${tex("\\sigma_2")} = ${f2(s2)} px</p><p>True ${tex("\\sigma_2^2 - \\sigma_1^2")} = ${f2(dl)}</p><p>Best match: ${tex("\\sigma_r")} = <b>${f2(rel)}</b> px ${rel > 0 ? "(photo 2 is blurrier)" : rel < 0 ? "(photo 1 is blurrier)" : "(equal blur)"}</p><p>Measured ${tex("\\sigma_2^2 - \\sigma_1^2")} = ${f2(dm)}</p><p class="hl">Optics lookup: depth = <b>${f2(d.z[i])} m</b> (error ${f2(d.z[i] - zt)} m)</p>`;
   const cv2 = $("gPlot"); const c = hiDPI(cv2, 260), cx = c.ctx; cx.clearRect(0, 0, c.W, c.H);
   const gv = ZG.map(gOf), gm = Math.max(...gv.map(Math.abs), 1), L2 = 50, pw2 = c.W - L2 - 14, ph2 = c.H - 14 - 36, X2 = z => L2 + (z - 0.5) / 3.5 * pw2, Y2 = v => 14 + ph2 / 2 - v / gm * ph2 / 2;
   cx.strokeStyle = cssVar("--line"); cx.fillStyle = cssVar("--muted"); cx.font = "11px " + mono(); cx.lineWidth = 1; cx.strokeRect(L2, 14, pw2, ph2); cx.beginPath(); cx.moveTo(L2, Y2(0)); cx.lineTo(L2 + pw2, Y2(0)); cx.stroke(); cx.textAlign = "center"; for (const t of [0.5, 1, 2, 3, 4]) cx.fillText(t + " m", X2(t), 14 + ph2 + 15); cx.fillText("object distance z", L2 + pw2 / 2, c.H - 5); cx.textAlign = "right"; cx.fillText(fmt(gm, 0), L2 - 5, 24); cx.fillText(fmt(-gm, 0), L2 - 5, 14 + ph2); cx.textAlign = "start";

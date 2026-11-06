@@ -7,7 +7,9 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,500;8..60,600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="vendor/katex/katex.min.css">
 <link rel="stylesheet" href="site.css">
+<script src="vendor/katex/katex.min.js"></script>
 <style>
 #dial { width: 190px; height: 190px; touch-action: none; cursor: grab; border-radius: 50%; display: block; }
 #pq { height: 420px; }
@@ -16,9 +18,6 @@ canvas.view { max-width: 100%; }
 #hist { height: 150px; cursor: default; }
 .lightbox { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 20px; align-items: center; }
 @media (max-width: 760px) { .lightbox { grid-template-columns: 1fr; justify-items: center; } }
-.calc-lines { display: grid; gap: 5px; font-family: var(--mono); font-size: 0.82rem; }
-.calc-lines p { margin: 0; overflow-wrap: anywhere; }
-.calc-lines .hl { color: var(--accent); }
 </style>
 </head>
 <body>
@@ -31,7 +30,7 @@ canvas.view { max-width: 100%; }
   </div>
 
   <section class="stage" aria-labelledby="h0">
-    <div class="stage-head"><span class="num">00</span><div><h2 id="h0">Render a surface under a light</h2><p>Choose a shape, or upload a photo to use as a height map (brighter pixels are higher). Drag the light in the dial. The image is <i>I</i> = R(<i>p</i>, <i>q</i>), where (<i>p</i>, <i>q</i>) is the surface slope at that pixel.</p></div></div>
+    <div class="stage-head"><span class="num">00</span><div><h2 id="h0">Render a surface under a light</h2><p>Choose a shape, or upload a photo to use as a height map (brighter pixels are higher). Drag the light in the dial. The image is \(I = R(p, q)\), where \((p, q)\) is the surface slope at that pixel.</p></div></div>
     <div id="pick"></div>
     <p class="note" id="pickNote"></p>
     <div class="lightbox">
@@ -44,7 +43,7 @@ canvas.view { max-width: 100%; }
   </section>
 
   <section class="stage" aria-labelledby="h1">
-    <div class="stage-head"><span class="num">01</span><div><h2 id="h1">One pixel gives a curve, not a point</h2><p>The plot is gradient space: every point (<i>p</i>, <i>q</i>) is one surface slope. The curves are iso-brightness contours of the reflectance map R(<i>p</i>, <i>q</i>). Click a pixel in the image: the thick curve holds every slope that would give that brightness. The true slope is one point on it.</p></div></div>
+    <div class="stage-head"><span class="num">01</span><div><h2 id="h1">One pixel gives a curve, not a point</h2><p>The plot is gradient space: every point \((p, q)\) is one surface slope. The curves are iso-brightness contours of the reflectance map \(R(p, q)\). Click a pixel in the image: the thick curve holds every slope that would give that brightness. The true slope is one point on it.</p></div></div>
     <div class="main-side">
       <figure><canvas class="plot" id="pq" aria-label="Reflectance map contours in gradient space"></canvas><figcaption><span class="legend"><span><i style="background:var(--muted)"></i>Contours of R at 0.1 steps</span><span><i style="background:var(--accent)"></i>Contour of the clicked pixel</span><span><i style="background:var(--ink)"></i>True (p, q)</span><span><i style="background:#ca8a04"></i>Brightest slope</span></span></figcaption></figure>
       <div style="display:grid;gap:14px">
@@ -52,7 +51,7 @@ canvas.view { max-width: 100%; }
         <div class="math detail"><h3 id="pxTitle"></h3><div class="calc-lines" id="calc"></div></div>
       </div>
     </div>
-    <div class="math"><h3>The reflectance map</h3><p class="eq">R(p, q) = (s_z − p s_x − q s_y) / √(1 + p² + q²)</p><p>For a Lambertian surface, the contours are conic sections (ellipses, parabolas or hyperbolas). Gray shading marks slopes that face away from the light, where R is 0 and the pixel is in shadow. A single image therefore gives one equation for two unknowns at every pixel. The solver needs extra assumptions: the surface is smooth, and its edges are known.</p></div>
+    <div class="math"><h3>The reflectance map</h3><div class="eqd">\[ R(p,q) = \frac{s_z - p\,s_x - q\,s_y}{\sqrt{1+p^2+q^2}} \]</div><p>For a Lambertian surface, the contours are conic sections (ellipses, parabolas or hyperbolas). Gray shading marks slopes that face away from the light, where \(R = 0\) and the pixel is in shadow. A single image therefore gives one equation for two unknowns at every pixel. The solver needs extra assumptions: the surface is smooth, and its edges are known.</p></div>
   </section>
 
   <section class="stage" aria-labelledby="h2">
@@ -67,7 +66,7 @@ canvas.view { max-width: 100%; }
   </section>
 
   <section class="stage" aria-labelledby="h3">
-    <div class="stage-head"><span class="num">03</span><div><h2 id="h3">Recover the shape iteratively</h2><p>This is a Horn-style variational method. It lowers an energy made of the image error plus a smoothness penalty on the surface, by momentum gradient descent, with the boundary condition <i>Z</i> = 0 on the image border. It starts coarse (24 × 24), then refines to 48 and 96 pixels. The page starts after 300 iterations. On the default dome the solver often returns a dent instead of a dome, which is the ambiguity from stage 02. Try the Bumps or Crater surface for a close match. Press Reset to start from a flat surface, then Run.</p></div></div>
+    <div class="stage-head"><span class="num">03</span><div><h2 id="h3">Recover the shape iteratively</h2><p>This is a Horn-style variational method. It lowers an energy made of the image error plus a smoothness penalty on the surface, by momentum gradient descent, with the boundary condition \(Z = 0\) on the image border. It starts coarse (24 × 24), then refines to 48 and 96 pixels. The page starts after 300 iterations. On the default dome the solver often returns a dent instead of a dome, which is the ambiguity from stage 02. Try the Bumps or Crater surface for a close match. Press Reset to start from a flat surface, then Run.</p></div></div>
     <div class="controls">
       <button type="button" class="btn primary" id="run">Run</button>
       <button type="button" class="btn" id="step">Step 1 iteration</button>
@@ -87,9 +86,9 @@ canvas.view { max-width: 100%; }
     </div>
     <figure><canvas class="plot" id="hist" aria-label="Error versus iteration"></canvas><figcaption>RMS height error against iteration</figcaption></figure>
     <div class="math"><h3>The energy</h3>
-      <p class="eq">E(Z) = Σ [ I − R(p, q) ]² + λ Σ ‖∇Z‖²,   p = (Z(x+1,y) − Z(x−1,y))/2,  q = (Z(x,y+1) − Z(x,y−1))/2</p>
-      <p class="eq">Z ← Z + v,   v ← 0.9 v − η ∂E/∂Z,   Z = 0 on the border</p>
-      <p>The first term asks the surface to reproduce the image. The second asks for smoothness, which supplies the missing equation at each pixel. A large λ flattens the result, and a small λ lets noise and the bump/crater ambiguity through. Honest limits: one light and no known interior heights make the problem under-determined, so the answer depends on the boundary and on λ. The dome is the hardest shape here: its shading is nearly the same for several surfaces, and the solver settles on one of them. Pixels in shadow (R = 0) give no data and are filled by smoothness only. Other methods, such as Tsai–Shah's linear approximation, make different trade-offs and need more care to stay stable.</p></div>
+      <div class="eqd">\[ E(Z) = \sum \big[\, I - R(p,q) \,\big]^2 + \lambda \sum \lVert \nabla Z \rVert^2,\quad p=\tfrac{Z(x+1,y)-Z(x-1,y)}{2},\ \ q=\tfrac{Z(x,y+1)-Z(x,y-1)}{2} \]</div>
+      <div class="eqd">\[ Z \leftarrow Z + v,\quad v \leftarrow 0.9\,v - \eta\,\frac{\partial E}{\partial Z},\quad Z = 0 \text{ on the border} \]</div>
+      <p>The first term asks the surface to reproduce the image. The second asks for smoothness, which supplies the missing equation at each pixel. A large \(\lambda\) flattens the result, and a small \(\lambda\) lets noise and the bump/crater ambiguity through. Honest limits: one light and no known interior heights make the problem under-determined, so the answer depends on the boundary and on \(\lambda\). The dome is the hardest shape here: its shading is nearly the same for several surfaces, and the solver settles on one of them. Pixels in shadow (\(R = 0\)) give no data and are filled by smoothness only. Other methods, such as Tsai–Shah's linear approximation, make different trade-offs and need more care to stay stable.</p></div>
   </section>
 </main>
 <footer class="wrap site"></footer>
@@ -98,7 +97,7 @@ canvas.view { max-width: 100%; }
 <script>
 (() => {
 "use strict";
-const { $, nav, footer, picker, toGray, show, showRGB, gaussBlur, imgXY, hiDPI, onTheme, cssVar, fmt } = VB;
+const { $, nav, footer, picker, toGray, show, showRGB, gaussBlur, imgXY, hiDPI, onTheme, cssVar, fmt, mathRows, tex } = VB;
 nav("shape-from-shading.html"); footer();
 const N = 96, N2 = N * N, mono = () => cssVar("--mono") || "monospace", f2 = (v, d = 3) => fmt(v, d);
 const st = { z: null, I: null, L: [-0.45, -0.4], sel: [30, 30], Z: null, it: 0, hist: [], run: false, kind: "bumps" };
@@ -191,13 +190,15 @@ function drawPQ() {
   contour(ctx, 240, E, ox, oy, sz, s, Math.max(I, 0.003), 3, cssVar("--accent"), null);
   const bp = -s[0] / s[2], bq = -s[1] / s[2]; if (Math.abs(bp) < E && Math.abs(bq) < E) { ctx.fillStyle = "#ca8a04"; ctx.beginPath(); ctx.arc(P(bp), Q(bq), 5, 0, 7); ctx.fill(); ctx.fillText("R = 1", P(bp) + 8, Q(bq) + 4); }
   if (Math.abs(tp) < E && Math.abs(tq) < E) { ctx.strokeStyle = cssVar("--ink"); ctx.lineWidth = 2.5; ctx.beginPath(); ctx.arc(P(tp), Q(tq), 7, 0, 7); ctx.stroke(); }
-  const h = [];
   $("pxTitle").textContent = `Pixel (${x}, ${y})`;
-  h.push(`<p>Light s = (${f2(s[0], 2)}, ${f2(s[1], 2)}, ${f2(s[2], 2)})</p><p>Measured brightness I = <b>${f2(I)}</b></p>`);
-  h.push(`<p>Contour: (${f2(s[2], 2)} − ${f2(s[0], 2)}p − ${f2(s[1], 2)}q) / √(1 + p² + q²) = ${f2(I)}</p>`);
-  h.push(`<p>True slope (p, q) = (${f2(tp, 2)}, ${f2(tq, 2)})</p><p class="hl">R(p, q) = (${f2(s[2], 2)} − ${f2(tp * s[0], 2)} − ${f2(tq * s[1], 2)}) / √${f2(1 + tp * tp + tq * tq, 2)} = <b>${f2(Rmap(tp, tq, s))}</b></p>`);
-  h.push(I < 0.003 ? `<p class="note" style="font-family:var(--body)">This pixel is in shadow. Any slope in the gray region gives 0, so the solution set is an area, not even a curve.</p>` : `<p class="note" style="font-family:var(--body)">Every point on the thick curve reproduces this brightness. Only the smoothness of neighboring pixels can pick one.</p>`);
-  $("calc").innerHTML = h.join("");
+  const sg = v => (v < 0 ? "-" : "+") + " " + f2(Math.abs(v), 2), Rt = Rmap(tp, tq, s);
+  mathRows($("calc"), [
+    { label: "Light", tex: "\\mathbf{s}", value: `(${f2(s[0], 2)},\\ ${f2(s[1], 2)},\\ ${f2(s[2], 2)})` },
+    { label: "Measured brightness", tex: "I", value: f2(I) },
+    { label: "Contour", tex: `\\frac{${f2(s[2], 2)} ${sg(-s[0])}\\,p ${sg(-s[1])}\\,q}{\\sqrt{1+p^2+q^2}}`, value: f2(I) },
+    { label: "True slope", tex: "(p,\\ q)", value: `(${f2(tp, 2)},\\ ${f2(tq, 2)})` },
+    { label: "Reflectance at true slope", tex: `R(p,q)=\\frac{${f2(s[2], 2)} ${sg(-tp * s[0])} ${sg(-tq * s[1])}}{\\sqrt{${f2(1 + tp * tp + tq * tq, 2)}}}`, value: f2(Rt) }
+  ], I < 0.003 ? "This pixel is in shadow. Any slope in the gray region gives 0, so the solution set is an area, not even a curve." : "Every point on the thick curve reproduces this brightness. Only the smoothness of neighboring pixels can pick one.");
 }
 
 /* ---------- ambiguity ---------- */

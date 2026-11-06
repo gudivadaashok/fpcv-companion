@@ -7,7 +7,9 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,500;8..60,600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="vendor/katex/katex.min.css">
 <link rel="stylesheet" href="site.css">
+<script src="vendor/katex/katex.min.js"></script>
 <style>
 #lights { width: 220px; height: 220px; touch-action: none; cursor: grab; border-radius: 50%; display: block; }
 #view3d { height: 380px; }
@@ -34,7 +36,7 @@
   </section>
 
   <section class="stage" aria-labelledby="h1">
-    <div class="stage-head"><span class="num">01</span><div><h2 id="h1">Three lights, three images</h2><p>Drag the three lights. The circle is the sky above the surface seen from the camera: the center is straight overhead and the rim is the horizon. Each image follows Lambert's law, <i>I</i> = ρ (<b>n</b> · <b>s</b>).</p></div></div>
+    <div class="stage-head"><span class="num">01</span><div><h2 id="h1">Three lights, three images</h2><p>Drag the three lights. The circle is the sky above the surface seen from the camera: the center is straight overhead and the rim is the horizon. Each image follows Lambert's law, \(I = \rho\,(\mathbf{n}\cdot\mathbf{s})\).</p></div></div>
     <div class="lightbox">
       <canvas id="lights" aria-label="Light directions. Drag a numbered dot to move that light."></canvas>
       <div class="three">
@@ -52,28 +54,28 @@
   </section>
 
   <section class="stage" aria-labelledby="h2">
-    <div class="stage-head"><span class="num">02</span><div><h2 id="h2">Solve each pixel</h2><p>Stack the three light directions as rows of a matrix <b>S</b>. At each pixel, the three brightness values give <b>ρn</b> = <b>S</b><sup>−1</sup> <b>I</b>. The length of that vector is the albedo ρ and its direction is the normal <b>n</b>.</p></div></div>
+    <div class="stage-head"><span class="num">02</span><div><h2 id="h2">Solve each pixel</h2><p>Stack the three light directions as rows of a matrix \(\mathbf{S}\). At each pixel, the three brightness values give \(\rho\mathbf{n} = \mathbf{S}^{-1}\mathbf{I}\). The length of that vector is the albedo \(\rho\) and its direction is the normal \(\mathbf{n}\).</p></div></div>
     <div class="three">
       <figure><canvas class="view" id="rAlb"></canvas><figcaption>Recovered albedo ρ</figcaption></figure>
       <figure><canvas class="view" id="rNrm"></canvas><figcaption>Recovered normals (red = x, green = up, blue = toward camera)</figcaption></figure>
       <figure><canvas class="view" id="rErr"></canvas><figcaption>Normal error in degrees, black = 0°, white ≥ 20°</figcaption></figure>
     </div>
     <div class="math"><h3>The equations</h3>
-      <p class="eq">[I₁ I₂ I₃]ᵀ = ρ S n,    S = [s₁ᵀ; s₂ᵀ; s₃ᵀ]    ⇒    ρn = S⁻¹ I,   ρ = ‖S⁻¹ I‖,   n = S⁻¹ I / ρ</p>
-      <p>This requires <b>S</b> to be invertible: the three lights must not lie in one plane through the surface point. Bunch them together and noise grows quickly. Pixels in shadow (<b>n</b> · <b>s</b> &lt; 0) break the linear model, so they show up as errors.</p></div>
+      <div class="eqd">\[ \begin{bmatrix} I_1\\ I_2\\ I_3 \end{bmatrix} = \rho\,\mathbf{S}\,\mathbf{n},\quad \mathbf{S}=\begin{bmatrix} \mathbf{s}_1^{T}\\ \mathbf{s}_2^{T}\\ \mathbf{s}_3^{T} \end{bmatrix} \;\Rightarrow\; \rho\mathbf{n}=\mathbf{S}^{-1}\mathbf{I},\quad \rho=\lVert \mathbf{S}^{-1}\mathbf{I}\rVert,\quad \mathbf{n}=\frac{\mathbf{S}^{-1}\mathbf{I}}{\rho} \]</div>
+      <p>This requires \(\mathbf{S}\) to be invertible: the three lights must not lie in one plane through the surface point. Bunch them together and noise grows quickly. Pixels in shadow (\(\mathbf{n}\cdot\mathbf{s} &lt; 0\)) break the linear model, so they show up as errors.</p></div>
   </section>
 
   <section class="stage" aria-labelledby="h3">
-    <div class="stage-head"><span class="num">03</span><div><h2 id="h3">One pixel in gradient space</h2><p>Click any pixel in the three images above. A surface direction can be written as the gradient (<i>p</i>, <i>q</i>) = (∂z/∂x, ∂z/∂y). One image constrains it only to a curve of directions with the same brightness. Three images give three curves that meet at one point.</p></div></div>
+    <div class="stage-head"><span class="num">03</span><div><h2 id="h3">One pixel in gradient space</h2><p>Click any pixel in the three images above. A surface direction can be written as the gradient \((p, q) = (\partial z/\partial x,\ \partial z/\partial y)\). One image constrains it only to a curve of directions with the same brightness. Three images give three curves that meet at one point.</p></div></div>
     <div class="main-side">
       <figure><canvas class="plot" id="pq" style="height:380px"></canvas><figcaption><span class="legend"><span><i style="background:#e11d48"></i>Light 1 curve</span><span><i style="background:#0284c7"></i>Light 2 curve</span><span><i style="background:#ca8a04"></i>Light 3 curve</span><span><i style="background:var(--ink)"></i>True (p, q)</span></span></figcaption></figure>
       <div class="math" id="pqRead"></div>
     </div>
-    <div class="math"><h3>The reflectance map</h3><p class="eq">R(p, q) = ρ (−p·sₓ − q·s_y + s_z) / √(1 + p² + q²)</p><p>Each curve is a contour R<sub>k</sub>(p, q) = I<sub>k</sub>, the set of directions that would produce the brightness observed under light <i>k</i>. Two curves can cross at two points. The third light settles which one is correct.</p></div>
+    <div class="math"><h3>The reflectance map</h3><div class="eqd">\[ R(p,q) = \rho\,\frac{-p\,s_x - q\,s_y + s_z}{\sqrt{1+p^2+q^2}} \]</div><p>Each curve is a contour \(R_k(p,q) = I_k\), the set of directions that would produce the brightness observed under light \(k\). Two curves can cross at two points. The third light settles which one is correct.</p></div>
   </section>
 
   <section class="stage" aria-labelledby="h4">
-    <div class="stage-head"><span class="num">04</span><div><h2 id="h4">From normals to shape</h2><p>The normals give the slope at each pixel. Integrating the slopes gives the height <i>z</i>(<i>x</i>, <i>y</i>). Here this uses the Frankot–Chellappa method, which finds the surface whose slopes best match in the least-squares sense. Drag to rotate, scroll or pinch to zoom, and choose which of the three lights shines on it: the surface is shaded with the same Lambert law as the images above.</p></div></div>
+    <div class="stage-head"><span class="num">04</span><div><h2 id="h4">From normals to shape</h2><p>The normals give the slope at each pixel. Integrating the slopes gives the height \(z(x, y)\). Here this uses the Frankot–Chellappa method, which finds the surface whose slopes best match in the least-squares sense. Drag to rotate, scroll or pinch to zoom, and choose which of the three lights shines on it: the surface is shaded with the same Lambert law as the images above.</p></div></div>
     <div class="controls">
       <div class="ctl"><label>Show</label><div class="seg" id="which"><button type="button" data-v="rec" aria-pressed="true">Recovered shape</button><button type="button" data-v="true" aria-pressed="false">True shape</button></div></div>
       <div class="ctl"><label>Lit by</label><div class="seg" id="lit"><button type="button" data-v="0" aria-pressed="true">Light 1</button><button type="button" data-v="1" aria-pressed="false">Light 2</button><button type="button" data-v="2" aria-pressed="false">Light 3</button></div></div>

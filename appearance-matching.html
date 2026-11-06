@@ -7,7 +7,9 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,500;8..60,600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="vendor/katex/katex.min.css">
 <link rel="stylesheet" href="site.css">
+<script src="vendor/katex/katex.min.js"></script>
 <style>
 .strip { display: flex; gap: 4px; overflow-x: auto; padding: 4px 2px 8px; }
 .strip canvas { flex: none; width: 56px; height: 56px; image-rendering: pixelated; border: 2px solid transparent; border-radius: 4px; cursor: pointer; background: var(--stage); }
@@ -43,7 +45,7 @@
     <div class="strip" id="strip" aria-label="Filmstrip of 48 poses. Click a frame to select it."></div>
     <div class="main-side">
       <figure><canvas class="view bigsel" id="selImg"></canvas><figcaption id="selCap">Selected image</figcaption></figure>
-      <div class="math"><h3>What the data looks like</h3><p>Stack the pixels of an image into one long vector <b>x</b> with 2304 entries. The training set has 4 objects × 48 poses = 192 such vectors. The object is lit from a fixed direction, so shading changes as it turns, and so does its silhouette.</p><p class="note">The scene is simple: a plain background, no cast shadows, and one fixed camera. Real appearance matching needs the same lighting and a segmented object, or extra training images that cover other lights.</p></div>
+      <div class="math"><h3>What the data looks like</h3><p>Stack the pixels of an image into one long vector \(\mathbf{x}\) with 2304 entries. The training set has 4 objects × 48 poses = 192 such vectors. The object is lit from a fixed direction, so shading changes as it turns, and so does its silhouette.</p><p class="note">The scene is simple: a plain background, no cast shadows, and one fixed camera. Real appearance matching needs the same lighting and a segmented object, or extra training images that cover other lights.</p></div>
     </div>
   </section>
 
@@ -56,28 +58,28 @@
       <figure><canvas class="plot" id="scree" aria-label="Eigenvalues and cumulative energy. Click to set k."></canvas><figcaption><span class="legend"><span><i style="background:var(--accent)"></i>Eigenvalue share</span><span><i style="background:#c2410c"></i>Cumulative energy</span><span><i style="background:var(--ink)"></i>Current k</span></span></figcaption></figure>
     </div>
     <div class="math"><h3>The Gram matrix trick</h3>
-      <p class="eq">X = [x₁−m, …, x_N−m]  (2304 × 192)    covariance C = X Xᵀ / N  (2304 × 2304, too big)</p>
-      <p class="eq">G = XᵀX  (192 × 192):   G v = λ v   ⇒   C (X v) = (λ/N) (X v)   ⇒   eigenimage e = X v / √λ</p>
+      <div class="eqd">\[ \mathbf{X} = [\mathbf{x}_1-\mathbf{m},\ \dots,\ \mathbf{x}_N-\mathbf{m}]\ \ (2304\times 192),\qquad \mathbf{C} = \tfrac{1}{N}\mathbf{X}\mathbf{X}^{T}\ \ (2304\times 2304,\ \text{too big}) \]</div>
+      <div class="eqd">\[ \mathbf{G} = \mathbf{X}^{T}\mathbf{X}\ \ (192\times 192):\quad \mathbf{G}\mathbf{v} = \lambda\mathbf{v} \;\Rightarrow\; \mathbf{C}(\mathbf{X}\mathbf{v}) = \tfrac{\lambda}{N}(\mathbf{X}\mathbf{v}) \;\Rightarrow\; \mathbf{e} = \frac{\mathbf{X}\mathbf{v}}{\sqrt{\lambda}} \]</div>
       <p>Solving the small 192×192 problem gives the same nonzero eigenvalues. The eigen solver here is a cyclic Jacobi method: it applies plane rotations until the matrix is diagonal. <span id="eigInfo"></span></p></div>
   </section>
 
   <section class="stage" aria-labelledby="h2">
-    <div class="stage-head"><span class="num">02</span><div><h2 id="h2">Reconstruct from k components</h2><p>Each image becomes k coefficients g<sub>i</sub> = e<sub>i</sub> · (x − m). Adding up the first k eigenimages, weighted by the coefficients, rebuilds an approximation. Drag the slider and watch the error shrink.</p></div></div>
+    <div class="stage-head"><span class="num">02</span><div><h2 id="h2">Reconstruct from k components</h2><p>Each image becomes \(k\) coefficients \(g_i = \mathbf{e}_i\cdot(\mathbf{x}-\mathbf{m})\). Adding up the first \(k\) eigenimages, weighted by the coefficients, rebuilds an approximation. Drag the slider and watch the error shrink.</p></div></div>
     <div class="controls">
       <div class="ctl"><label for="kRange">Components k</label><input type="range" id="kRange" min="0" max="24" value="6"><output id="kO">6</output></div>
       <span class="note">Selected image: <b id="kSel"></b></span>
     </div>
     <div class="three">
       <figure><canvas class="view" id="rOrig"></canvas><figcaption>Original x</figcaption></figure>
-      <figure><canvas class="view" id="rRec"></canvas><figcaption>Reconstruction x̂ = m + Σ g<sub>i</sub> e<sub>i</sub></figcaption></figure>
-      <figure><canvas class="view" id="rErr"></canvas><figcaption>Absolute error |x − x̂|, scaled to its own maximum</figcaption></figure>
+      <figure><canvas class="view" id="rRec"></canvas><figcaption>Reconstruction \(\hat{\mathbf{x}} = \mathbf{m} + \sum_i g_i\,\mathbf{e}_i\)</figcaption></figure>
+      <figure><canvas class="view" id="rErr"></canvas><figcaption>Absolute error \(|\mathbf{x}-\hat{\mathbf{x}}|\), scaled to its own maximum</figcaption></figure>
     </div>
     <div class="stats" id="rStats"></div>
     <div class="math"><h3>The numbers for this image</h3><div id="rCoef"></div></div>
   </section>
 
   <section class="stage" aria-labelledby="h3">
-    <div class="stage-head"><span class="num">03</span><div><h2 id="h3">The pose manifold</h2><p>Plot the first three coefficients (g₁, g₂, g₃) of every image. As an object turns through 360°, its point travels around a closed curve. Drag to rotate the view. Click any point to see its image.</p></div></div>
+    <div class="stage-head"><span class="num">03</span><div><h2 id="h3">The pose manifold</h2><p>Plot the first three coefficients \((g_1, g_2, g_3)\) of every image. As an object turns through 360°, its point travels around a closed curve. Drag to rotate the view. Click any point to see its image.</p></div></div>
     <div class="main-side">
       <figure><canvas class="plot" id="view3d" aria-label="3D plot of the pose manifolds. Drag to rotate. Click a point to select it."></canvas>
         <figcaption><span class="legend" id="legend3d"></span></figcaption></figure>
@@ -108,8 +110,8 @@
       <div class="math"><h3>Result</h3><div class="res" id="qRes"></div></div>
     </div>
     <div class="math"><h3>How the match is made</h3>
-      <p class="eq">g = Eₖᵀ (x − m)        d(j) = ‖g − g_j‖  over all stored points j</p>
-      <p>The curve between neighboring stored poses is treated as a straight segment, and g is projected onto each segment. That gives a pose estimate finer than the 7.5° spacing. Heavy noise barely matters, because noise spreads over all 2304 dimensions and only a few land in the first components. Occlusion is harder: it changes the image in a structured way that moves g toward the wrong place.</p></div>
+      <div class="eqd">\[ \mathbf{g} = \mathbf{E}_k^{T}(\mathbf{x}-\mathbf{m}),\qquad d(j) = \lVert \mathbf{g}-\mathbf{g}_j\rVert\ \ \text{over all stored points } j \]</div>
+      <p>The curve between neighboring stored poses is treated as a straight segment, and \(\mathbf{g}\) is projected onto each segment. That gives a pose estimate finer than the 7.5° spacing. Heavy noise barely matters, because noise spreads over all 2304 dimensions and only a few land in the first components. Occlusion is harder: it changes the image in a structured way that moves \(\mathbf{g}\) toward the wrong place.</p></div>
     <div class="controls">
       <button type="button" class="btn primary" id="qBatch">Test 100 random poses</button>
       <span class="note">Uses the noise, occlusion and component settings above, with random objects and angles.</span>
@@ -123,7 +125,7 @@
 <script>
 (() => {
 "use strict";
-const { $, nav, footer, show, hiDPI, onTheme, cssVar, seg, setSeg, segVal, rng, fmt, imgXY } = VB;
+const { $, nav, footer, show, hiDPI, onTheme, cssVar, seg, setSeg, segVal, rng, fmt, imgXY, tex, mathRows } = VB;
 nav("appearance-matching.html"); footer();
 
 const R = 48, D = R * R, NP = 48, STEP = 360 / NP, K = 24;
@@ -276,8 +278,8 @@ function initUI() {
   $("legendD").innerHTML = OBJECTS.map((o, i) => `<span><i style="background:${COLS[i]}"></i>${o.name}</span>`).join("");
   buildStrip();
   const eigs = $("eigs");
-  for (let k = 0; k < 12; k++) { const f = document.createElement("figure"); f.innerHTML = `<canvas id="eg${k}" width="${R}" height="${R}"></canvas><figcaption>e<sub>${k + 1}</sub> · ${(100 * M.vals[k] / M.total).toFixed(1)}%</figcaption>`; eigs.append(f); }
-  const mf = document.createElement("figure"); mf.innerHTML = `<canvas id="egm" width="${R}" height="${R}"></canvas><figcaption>mean m</figcaption>`; eigs.prepend(mf);
+  for (let k = 0; k < 12; k++) { const f = document.createElement("figure"); f.innerHTML = `<canvas id="eg${k}" width="${R}" height="${R}"></canvas><figcaption>${tex(`e_{${k + 1}}`)} · ${(100 * M.vals[k] / M.total).toFixed(1)}%</figcaption>`; eigs.append(f); }
+  const mf = document.createElement("figure"); mf.innerHTML = `<canvas id="egm" width="${R}" height="${R}"></canvas><figcaption>mean ${tex("\\mathbf{m}")}</figcaption>`; eigs.prepend(mf);
   drawTo("egm", M.mean); for (let k = 0; k < 12; k++) drawTo("eg" + k, M.eig[k], "auto");
   $("eigInfo").innerHTML = `Here it took ${M.sweeps} sweeps and ${fmt(M.ms / 1000, 2)} s in total, including rendering. The first 3 components hold ${(100 * (M.vals[0] + M.vals[1] + M.vals[2]) / M.total).toFixed(0)}% of the variance.`;
 }
@@ -323,8 +325,12 @@ function drawRecon() {
   drawTo("rErr", err, "auto");
   let cap = 0; for (let c = 0; c < k; c++) cap += g[c] * g[c];
   $("rStats").innerHTML = `<span class="chip">RMS error <b>${fmt(Math.sqrt(se / D), 1)}</b> gray levels</span><span class="chip">Image variance captured <b>${ss > 0 ? fmt(100 * cap / ss, 1) : "–"}%</b></span><span class="chip">Numbers stored <b>${k}</b> instead of <b>${D}</b></span><span class="chip">Compression <b>${k ? fmt(D / k, 0) : "–"}×</b></span>`;
-  const terms = []; for (let c = 0; c < Math.min(k, 6); c++) terms.push(`<tr><td>g<sub>${c + 1}</sub></td><td>= e<sub>${c + 1}</sub> · (x − m)</td><td>= ${fmt(g[c], 1)}</td></tr>`);
-  $("rCoef").innerHTML = k ? `<table class="calc" style="margin-top:4px">${terms.join("")}</table><p class="eq" style="margin-top:6px">x̂ = m ${Array.from({ length: Math.min(k, 3) }, (_, c) => `${g[c] < 0 ? "−" : "+"} ${fmt(Math.abs(g[c]), 1)} e${c + 1}`).join(" ")}${k > 3 ? ` + … (${k - 3} more terms)` : ""}</p>${k > 6 ? '<p class="note">Showing the first 6 coefficients.</p>' : ""}` : `<p>With k = 0 the reconstruction is just the mean image m. Every pose of every object collapses to the same picture.</p>`;
+  if (k) {
+    const rows = []; for (let c = 0; c < Math.min(k, 6); c++) rows.push({ label: c ? "" : "Coefficients", tex: `g_{${c + 1}} = \\mathbf{e}_{${c + 1}}\\cdot(\\mathbf{x}-\\mathbf{m})`, value: fmt(g[c], 1) });
+    const sum = Array.from({ length: Math.min(k, 3) }, (_, c) => `${g[c] < 0 ? "-" : "+"} ${fmt(Math.abs(g[c]), 1)}\\,\\mathbf{e}_{${c + 1}}`).join(" ") + (k > 3 ? ` + \\cdots\\ (${k - 3}\\text{ more terms})` : "");
+    rows.push({ label: "Reconstruction", tex: `\\hat{\\mathbf{x}} = \\mathbf{m} ${sum}` });
+    mathRows($("rCoef"), rows, k > 6 ? "Showing the first 6 coefficients." : "");
+  } else $("rCoef").innerHTML = `<p>With ${tex("k = 0")} the reconstruction is just the mean image ${tex("\\mathbf{m}")}. Every pose of every object collapses to the same picture.</p>`;
   drawScree();
 }
 $("kRange").addEventListener("input", drawRecon);
@@ -358,7 +364,7 @@ function draw3d() {
 }
 function manInfo() {
   const g = M.coef[S.obj][S.pose]; const mi = $("manInfo");
-  mi.innerHTML = `<h3>Selected point</h3><canvas class="view bigsel" id="manImg" style="max-width:150px"></canvas><dl><dt>Object</dt><dd>${OBJECTS[S.obj].name}</dd><dt>Pose</dt><dd>${(S.pose * STEP).toFixed(1)}°</dd><dt>g₁</dt><dd>${fmt(g[0], 1)}</dd><dt>g₂</dt><dd>${fmt(g[1], 1)}</dd><dt>g₃</dt><dd>${fmt(g[2], 1)}</dd></dl><p class="note">Click another point, or drag to rotate.</p>`;
+  mi.innerHTML = `<h3>Selected point</h3><canvas class="view bigsel" id="manImg" style="max-width:150px"></canvas><dl><dt>Object</dt><dd>${OBJECTS[S.obj].name}</dd><dt>Pose</dt><dd>${(S.pose * STEP).toFixed(1)}°</dd><dt>${tex("g_1")}</dt><dd>${fmt(g[0], 1)}</dd><dt>${tex("g_2")}</dt><dd>${fmt(g[1], 1)}</dd><dt>${tex("g_3")}</dt><dd>${fmt(g[2], 1)}</dd></dl><p class="note">Click another point, or drag to rotate.</p>`;
   drawTo("manImg", M.imgs[S.obj][S.pose]);
 }
 (() => {

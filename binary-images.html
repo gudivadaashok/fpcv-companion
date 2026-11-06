@@ -7,7 +7,9 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,500;8..60,600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="vendor/katex/katex.min.css">
 <link rel="stylesheet" href="site.css">
+<script src="vendor/katex/katex.min.js"></script>
 </head>
 <body>
 
@@ -44,17 +46,17 @@
       <span class="num">01</span>
       <div>
         <h2 id="h-thr">Threshold: gray to binary</h2>
-        <p>Each pixel becomes 1 (object) or 0 (background) depending on which side of the threshold <i>T</i> its brightness falls. Drag on the histogram or use the slider.</p>
+        <p>Each pixel becomes 1 (object) or 0 (background) depending on which side of the threshold \(T\) its brightness falls. Drag on the histogram or use the slider.</p>
       </div>
     </div>
     <div class="two">
       <figure>
         <canvas class="view" id="grayView" aria-label="Grayscale image"></canvas>
-        <figcaption>Grayscale image <i>I</i>(<i>x</i>, <i>y</i>), values 0–255</figcaption>
+        <figcaption>Grayscale image \(I(x, y)\), values 0–255</figcaption>
       </figure>
       <figure>
         <canvas class="view" id="binView" aria-label="Binary image"></canvas>
-        <figcaption>Binary image <i>b</i>(<i>x</i>, <i>y</i>): white = 1 (object), black = 0 (background)</figcaption>
+        <figcaption>Binary image \(b(x, y)\): white = 1 (object), black = 0 (background)</figcaption>
       </figure>
     </div>
     <figure>
@@ -62,7 +64,7 @@
       <figcaption>Brightness histogram. The shaded side of the line becomes object pixels.</figcaption>
     </figure>
     <div class="controls">
-      <div class="ctl"><label for="thr">Threshold <i>T</i></label><input type="range" id="thr" min="0" max="255" value="128"><output id="thrOut">128</output></div>
+      <div class="ctl"><label for="thr">Threshold \(T\)</label><input type="range" id="thr" min="0" max="255" value="128"><output id="thrOut">128</output></div>
       <div class="ctl"><label>Objects are</label>
         <div class="seg" id="polarity"><button type="button" data-v="dark" aria-pressed="true">Darker than T</button><button type="button" data-v="light" aria-pressed="false">Brighter than T</button></div>
       </div>
@@ -70,8 +72,8 @@
     </div>
     <div class="math">
       <h3>The rule</h3>
-      <p class="eq" id="ruleEq">b(x, y) = 1 if I(x, y) &lt; T, otherwise 0</p>
-      <p>Otsu's method picks the <i>T</i> that best separates the histogram into two groups, by maximizing the variance between them. If the lighting is uneven, no single <i>T</i> works for the whole image. Try the “Uneven light” sample to see this.</p>
+      <div id="ruleEq"></div>
+      <p>Otsu's method picks the \(T\) that best separates the histogram into two groups, by maximizing the variance between them. If the lighting is uneven, no single \(T\) works for the whole image. Try the “Uneven light” sample to see this.</p>
     </div>
   </section>
 
@@ -101,16 +103,16 @@
     </div>
     <div class="tablebox">
       <table>
-        <thead><tr><th>Object</th><th>Area A (px)</th><th>Centroid (x̄, ȳ)</th><th>Orientation θ</th><th>Roundedness</th></tr></thead>
+        <thead><tr><th>Object</th><th>Area \(A\) (px)</th><th>Centroid \((\bar{x}, \bar{y})\)</th><th>Orientation \(\theta\)</th><th>Roundedness</th></tr></thead>
         <tbody id="tbody"></tbody>
       </table>
     </div>
     <div class="math">
       <h3>The formulas</h3>
-      <p class="eq">A = ΣΣ b(x, y)        x̄ = (1/A) ΣΣ x·b        ȳ = (1/A) ΣΣ y·b</p>
-      <p class="eq">a = ΣΣ x′² b    b′ = 2 ΣΣ x′y′ b    c = ΣΣ y′² b      (x′ = x − x̄,  y′ = y − ȳ)</p>
-      <p class="eq">E(θ) = a sin²θ − b′ sinθ cosθ + c cos²θ        tan 2θ = b′ / (a − c)</p>
-      <p>E(θ) is the second moment, the sum of squared distances from the object's pixels to a line at angle θ through the centroid. The θ that minimizes it is the object's orientation. Roundedness = E<sub>min</sub> / E<sub>max</sub>: 1 for a circle or square, close to 0 for a thin line. θ is measured counter-clockwise from the x-axis, with y pointing up.</p>
+      <div class="eqd">\[ A = \sum_x\sum_y b(x, y), \qquad \bar{x} = \frac{1}{A}\sum_x\sum_y x\, b(x, y), \qquad \bar{y} = \frac{1}{A}\sum_x\sum_y y\, b(x, y) \]</div>
+      <div class="eqd">\[ a = \sum\sum x'^2\, b, \qquad b' = 2\sum\sum x'y'\, b, \qquad c = \sum\sum y'^2\, b, \qquad (x' = x - \bar{x},\; y' = y - \bar{y}) \]</div>
+      <div class="eqd">\[ E(\theta) = a\sin^2\theta - b'\sin\theta\cos\theta + c\cos^2\theta, \qquad \tan 2\theta = \frac{b'}{a - c} \]</div>
+      <p>\(E(\theta)\) is the second moment, the sum of squared distances from the object's pixels to a line at angle \(\theta\) through the centroid. The \(\theta\) that minimizes it is the object's orientation. Roundedness = \(E_{\min} / E_{\max}\): 1 for a circle or square, close to 0 for a thin line. \(\theta\) is measured counter-clockwise from the x-axis, with y pointing up.</p>
     </div>
   </section>
 
@@ -148,7 +150,7 @@
 
 <script src="common.js"></script>
 <script>
-VB.nav("binary-images.html"); VB.footer();
+VB.nav("binary-images.html"); VB.footer(); const tex = VB.tex;
 (() => {
 "use strict";
 const MAXDIM = 480;
@@ -303,7 +305,7 @@ function run(resetSel) {
   const kept = st.comps.filter(c => c.keep);
   if (resetSel || !st.comps[st.sel - 1] || !st.comps[st.sel - 1].keep) st.sel = kept.length ? kept.reduce((p, c) => c.A > p.A ? c : p).id : -1;
   drawBin(); drawHist(); drawLab(); renderTable(); renderDetail(); renderStats();
-  $("ruleEq").textContent = st.dark ? `b(x, y) = 1 if I(x, y) < ${st.T}, otherwise 0` : `b(x, y) = 1 if I(x, y) ≥ ${st.T}, otherwise 0`;
+  $("ruleEq").innerHTML = tex(`b(x, y) = \\begin{cases} 1 & I(x, y) ${st.dark ? "<" : "\\geq"} ${st.T} \\\\ 0 & \\text{otherwise} \\end{cases}`, { display: true });
 }
 
 /* ---------- drawing ---------- */
@@ -382,16 +384,16 @@ function renderDetail() {
   const shape = c.round > 0.85 ? "nearly round, so its orientation is poorly defined" : c.round < 0.15 ? "long and thin, with a clear orientation" : "elongated, with a clear orientation";
   el.innerHTML = `<h3>Object ${c.id}</h3><p class="note">This object is ${shape}.</p>
   <dl>
-    <dt>Area A</dt><dd>${c.A.toLocaleString()} px</dd>
-    <dt>Centroid</dt><dd>x̄ = ${fmt(c.x)}, ȳ = ${fmt(c.y)}</dd>
-    <dt>a</dt><dd>${fmt(c.a, 0)}</dd>
-    <dt>b′</dt><dd>${fmt(c.b, 0)}</dd>
-    <dt>c</dt><dd>${fmt(c.c, 0)}</dd>
-    <dt>tan 2θ</dt><dd>b′/(a − c) = ${Math.abs(c.a - c.c) < 1e-9 ? "∞" : fmt(c.b / (c.a - c.c), 3)}</dd>
-    <dt>θ</dt><dd>${deg(c.th)}</dd>
-    <dt>E<sub>min</sub></dt><dd>${fmt(c.Emin, 0)}</dd>
-    <dt>E<sub>max</sub></dt><dd>${fmt(c.Emax, 0)}</dd>
-    <dt>Roundedness</dt><dd>E<sub>min</sub>/E<sub>max</sub> = ${fmt(c.round, 3)}</dd>
+    <dt>Area ${tex("A")}</dt><dd>${c.A.toLocaleString()} px</dd>
+    <dt>Centroid</dt><dd>${tex(`\\bar{x} = ${fmt(c.x)},\\; \\bar{y} = ${fmt(c.y)}`)}</dd>
+    <dt>${tex("a")}</dt><dd>${fmt(c.a, 0)}</dd>
+    <dt>${tex("b'")}</dt><dd>${fmt(c.b, 0)}</dd>
+    <dt>${tex("c")}</dt><dd>${fmt(c.c, 0)}</dd>
+    <dt>${tex("\\tan 2\\theta")}</dt><dd>${tex("b'/(a - c)")} = ${Math.abs(c.a - c.c) < 1e-9 ? "∞" : fmt(c.b / (c.a - c.c), 3)}</dd>
+    <dt>${tex("\\theta")}</dt><dd>${deg(c.th)}</dd>
+    <dt>${tex("E_{\\min}")}</dt><dd>${fmt(c.Emin, 0)}</dd>
+    <dt>${tex("E_{\\max}")}</dt><dd>${fmt(c.Emax, 0)}</dd>
+    <dt>Roundedness</dt><dd>${tex("E_{\\min}/E_{\\max}")} = ${fmt(c.round, 3)}</dd>
   </dl>`;
 }
 function select(id) { st.sel = id; drawLab(); renderTable(); renderDetail(); }
@@ -484,7 +486,7 @@ function drawSeq() {
     el.className = "cell" + (on ? " on" : "") + (i === sq.cur && sq.phase === "pass1" ? " cur" : "") + (sq.phase === "pass1" && sq.nb.includes(i) ? " nb" : "") + (sq.phase === "pass1" && !on && i < sq.cur ? " scanned" : "");
     el.textContent = l ? l : ""; el.style.background = l ? `hsl(${hue(l)} 65% 66%)` : "";
   }
-  $("eqlist").innerHTML = sq.eqs.length ? sq.eqs.map(e => `<span>${e}</span>`).join("") : `<span style="border:0;padding:0;color:var(--muted)">None yet</span>`;
+  $("eqlist").innerHTML = sq.eqs.length ? sq.eqs.map(e => `<span>${tex(e.replace(" ≡ ", "\\equiv "))}</span>`).join("") : `<span style="border:0;padding:0;color:var(--muted)">None yet</span>`;
   $("sPlay").textContent = sq.timer ? "Pause" : "Play";
 }
 function stopPlay() { if (sq.timer) { clearInterval(sq.timer); sq.timer = null; } $("sPlay").textContent = "Play"; }

@@ -7,7 +7,9 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,500;8..60,600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="vendor/katex/katex.min.css">
 <link rel="stylesheet" href="site.css">
+<script src="vendor/katex/katex.min.js"></script>
 <style>
 canvas.view.click { cursor: crosshair; }
 canvas.view { image-rendering: auto; }
@@ -36,10 +38,10 @@ canvas.view { image-rendering: auto; }
   </section>
 
   <section class="stage" aria-labelledby="h1">
-    <div class="stage-head"><span class="num">01</span><div><h2 id="h1">K-means on color (and position)</h2><p>Each pixel becomes a point in CIE Lab color space. K-means picks <i>k</i> centroids, then alternates two steps: assign every pixel to its nearest centroid, and move each centroid to the mean of its pixels. Press Step to watch each half-step. Click the images to inspect a pixel.</p></div></div>
+    <div class="stage-head"><span class="num">01</span><div><h2 id="h1">K-means on color (and position)</h2><p>Each pixel becomes a point in CIE Lab color space. K-means picks \(k\) centroids, then alternates two steps: assign every pixel to its nearest centroid, and move each centroid to the mean of its pixels. Press Step to watch each half-step. Click the images to inspect a pixel.</p></div></div>
     <div class="controls">
-      <div class="ctl"><label for="kK">Clusters k</label><input type="range" id="kK" min="2" max="10" value="5"><output id="kKO"></output></div>
-      <div class="ctl"><label for="kL">Position weight λ</label><input type="range" id="kL" min="0" max="1" step="0.05" value="0"><output id="kLO"></output></div>
+      <div class="ctl"><label for="kK">Clusters \(k\)</label><input type="range" id="kK" min="2" max="10" value="5"><output id="kKO"></output></div>
+      <div class="ctl"><label for="kL">Position weight \(\lambda\)</label><input type="range" id="kL" min="0" max="1" step="0.05" value="0"><output id="kLO"></output></div>
       <div class="ctl"><label>Scatter axes</label><div class="seg" id="kAx"><button type="button" data-v="ab" aria-pressed="true">a – b</button><button type="button" data-v="La" aria-pressed="false">a – L</button><button type="button" data-v="Lb" aria-pressed="false">b – L</button></div></div>
     </div>
     <div class="controls">
@@ -55,15 +57,15 @@ canvas.view { image-rendering: auto; }
     <div class="main-side">
       <div class="math detail rd" id="kRead"></div>
       <div class="math"><h3>The two steps</h3>
-        <p class="eq">assign:  cᵢ = argmin_j ‖ fᵢ − μ_j ‖²</p>
-        <p class="eq">update:  μ_j = mean { fᵢ : cᵢ = j }</p>
-        <p class="eq">objective:  J = Σᵢ ‖ fᵢ − μ_{cᵢ} ‖²</p>
-        <p>The feature f is (L, a, b), or (L, a, b, λx, λy) when position weight is on. Each full iteration lowers J or leaves it unchanged, so the process stops. It may stop at a poor answer: try New random start. With λ above 0, nearby pixels prefer the same cluster, so regions become compact. The result depends on k, and a gradient such as sky gets split in bands.</p></div>
+        <div class="eqd">\[ \text{assign:}\quad c_i = \arg\min_j \|f_i - \mu_j\|^2 \]</div>
+        <div class="eqd">\[ \text{update:}\quad \mu_j = \operatorname{mean}\{ f_i : c_i = j \} \]</div>
+        <div class="eqd">\[ \text{objective:}\quad J = \sum_i \|f_i - \mu_{c_i}\|^2 \]</div>
+        <p>The feature \(f\) is \((L, a, b)\), or \((L, a, b, \lambda x, \lambda y)\) when position weight is on. Each full iteration lowers \(J\) or leaves it unchanged, so the process stops. It may stop at a poor answer: try New random start. With \(\lambda\) above 0, nearby pixels prefer the same cluster, so regions become compact. The result depends on \(k\), and a gradient such as sky gets split in bands.</p></div>
     </div>
   </section>
 
   <section class="stage" aria-labelledby="h2">
-    <div class="stage-head"><span class="num">02</span><div><h2 id="h2">Mean-shift segmentation</h2><p>Mean shift needs no <i>k</i>. Each pixel climbs the density of nearby, similar pixels in a joint space of position (x, y) and color (L, a, b) until it stops at a peak. Pixels that reach the same peak form one region. Click a pixel to see its climb.</p></div></div>
+    <div class="stage-head"><span class="num">02</span><div><h2 id="h2">Mean-shift segmentation</h2><p>Mean shift needs no \(k\). Each pixel climbs the density of nearby, similar pixels in a joint space of position \((x, y)\) and color \((L, a, b)\) until it stops at a peak. Pixels that reach the same peak form one region. Click a pixel to see its climb.</p></div></div>
     <div class="controls">
       <div class="ctl"><label for="mHs">Spatial bandwidth hₛ</label><input type="range" id="mHs" min="3" max="18" value="8"><output id="mHsO"></output></div>
       <div class="ctl"><label for="mHr">Color bandwidth hᵣ</label><input type="range" id="mHr" min="4" max="45" value="18"><output id="mHrO"></output></div>
@@ -76,19 +78,19 @@ canvas.view { image-rendering: auto; }
       <figure><canvas class="view click" id="mBnd" aria-label="Mean-shift boundaries. Click to inspect a pixel."></canvas><figcaption>Boundaries over the image</figcaption></figure>
     </div>
     <div class="main-side">
-      <figure><canvas class="plot" id="mPath" style="height:300px" aria-label="Path of one pixel's mean shift in a-b color space"></canvas><figcaption>The clicked pixel's climb in a – b space. The ring has radius hᵣ, the color window of the first step.</figcaption></figure>
+      <figure><canvas class="plot" id="mPath" style="height:300px" aria-label="Path of one pixel's mean shift in a-b color space"></canvas><figcaption>The clicked pixel's climb in a – b space. The ring has radius \(h_r\), the color window of the first step.</figcaption></figure>
       <div class="math detail rd" id="mRead"></div>
     </div>
     <div class="math"><h3>The mean-shift step</h3>
-      <p class="eq">y ← mean { zⱼ : ‖xⱼ − xᵧ‖ ≤ hₛ  and  ‖cⱼ − cᵧ‖ ≤ hᵣ }</p>
-      <p>Here z = (x, y, L, a, b) and the window is flat. Repeat until y stops moving. The converged y is the pixel's mode. This page merges neighboring pixels whose modes lie within hₛ/2 in position and hᵣ/2 in color, then merges regions smaller than the minimum size into their most similar neighbor. Larger bandwidths give fewer, smoother regions. Small hᵣ keeps fine color differences apart. The image is downsampled to 100 px to keep this fast.</p></div>
+      <div class="eqd">\[ y \leftarrow \operatorname{mean}\{ z_j : \|x_j - x_y\| \le h_s \text{ and } \|c_j - c_y\| \le h_r \} \]</div>
+      <p>Here \(z = (x, y, L, a, b)\) and the window is flat. Repeat until \(y\) stops moving. The converged \(y\) is the pixel's mode. This page merges neighboring pixels whose modes lie within \(h_s/2\) in position and \(h_r/2\) in color, then merges regions smaller than the minimum size into their most similar neighbor. Larger bandwidths give fewer, smoother regions. Small \(h_r\) keeps fine color differences apart. The image is downsampled to 100 px to keep this fast.</p></div>
   </section>
 
   <section class="stage" aria-labelledby="h3">
     <div class="stage-head"><span class="num">03</span><div><h2 id="h3">Graph-based segmentation (Felzenszwalb–Huttenlocher)</h2><p>Treat pixels as graph nodes joined to their neighbors by edges weighted by color difference. Sort the edges from lightest to heaviest. Merge two regions across an edge when the edge is light compared with how varied each region already is. Slide the progress bar to replay the merging.</p></div></div>
     <div class="controls">
       <div class="ctl"><label for="gK">Scale k</label><input type="range" id="gK" min="20" max="1500" step="10" value="300"><output id="gKO"></output></div>
-      <div class="ctl"><label for="gSig">Smoothing σ</label><input type="range" id="gSig" min="0" max="2" step="0.1" value="0.8"><output id="gSigO"></output></div>
+      <div class="ctl"><label for="gSig">Smoothing \(\sigma\)</label><input type="range" id="gSig" min="0" max="2" step="0.1" value="0.8"><output id="gSigO"></output></div>
       <div class="ctl"><label for="gMin">Min region size</label><input type="range" id="gMin" min="1" max="200" value="30"><output id="gMinO"></output></div>
       <div class="ctl"><label for="gProg">Merge progress</label><input type="range" id="gProg" min="0" max="100" value="100"><output id="gProgO"></output></div>
     </div>
@@ -101,9 +103,9 @@ canvas.view { image-rendering: auto; }
     <div class="main-side">
       <div class="math detail rd" id="gRead"></div>
       <div class="math"><h3>The merge rule</h3>
-        <p class="eq">Int(C) = largest edge inside C's minimum spanning tree</p>
-        <p class="eq">merge C₁, C₂ across edge w   if   w ≤ min( Int(C₁) + k/|C₁|,  Int(C₂) + k/|C₂| )</p>
-        <p>A region's internal variation Int(C) is the heaviest edge needed to hold it together. The term k/|C| gives small regions extra tolerance, so single pixels merge easily and large regions only merge across clearly lighter edges. A larger k favors larger regions. After the main pass, any region below the minimum size merges into a neighbor across its lightest edge. Edge weights are RGB distances between 8-connected neighbors of the smoothed image.</p></div>
+        <div class="eqd">\[ \mathrm{Int}(C) = \text{largest edge inside the minimum spanning tree of } C \]</div>
+        <div class="eqd">\[ \text{merge } C_1, C_2 \text{ across edge } w \iff w \le \min\!\left( \mathrm{Int}(C_1) + \frac{k}{|C_1|},\; \mathrm{Int}(C_2) + \frac{k}{|C_2|} \right) \]</div>
+        <p>A region's internal variation \(\mathrm{Int}(C)\) is the heaviest edge needed to hold it together. The term \(k/|C|\) gives small regions extra tolerance, so single pixels merge easily and large regions only merge across clearly lighter edges. A larger \(k\) favors larger regions. After the main pass, any region below the minimum size merges into a neighbor across its lightest edge. Edge weights are RGB distances between 8-connected neighbors of the smoothed image.</p></div>
     </div>
   </section>
 
@@ -119,7 +121,7 @@ canvas.view { image-rendering: auto; }
 <script>
 (() => {
 "use strict";
-const { $, nav, footer, SAMPLES, picker, onTheme, cssVar, seg, segVal, rng, fmt, gaussBlur, imgXY } = VB;
+const { $, nav, footer, SAMPLES, picker, onTheme, cssVar, seg, segVal, rng, fmt, gaussBlur, imgXY, tex } = VB;
 nav("image-segmentation.html"); footer();
 const S = { img: null, imgM: null, selN: [0.5, 0.55], km: null, seed: 3, ms: null, fh: null, times: {}, src: null };
 
@@ -190,17 +192,17 @@ function kmDraw() {
   kmRead(cols);
 }
 function kmRead(cols) {
-  const m = S.km, img = S.img, [x, y] = selPx(img), i = y * img.w + x, { k, d, F, cent } = m; const f = []; for (let j = 0; j < d; j++) f.push(F[i * d + j]); const names = ["L", "a", "b", "λx", "λy"];
+  const m = S.km, img = S.img, [x, y] = selPx(img), i = y * img.w + x, { k, d, F, cent } = m; const f = []; for (let j = 0; j < d; j++) f.push(F[i * d + j]); const names = ["L", "a", "b", "\\lambda x", "\\lambda y"];
   const dists = []; for (let c = 0; c < k; c++) { let s = 0; for (let j = 0; j < d; j++) s += (f[j] - cent[c * d + j]) ** 2; dists.push(Math.sqrt(s)); }
   const nearest = dists.indexOf(Math.min(...dists)), order = [...dists.keys()].sort((a, b) => dists[a] - dists[b]), mx = Math.max(...dists);
   const lab = m.phase === "init" ? -1 : m.labels[i];
   const rgb = [img.rgb[3 * i], img.rgb[3 * i + 1], img.rgb[3 * i + 2]];
-  let html = `<h3>Pixel (${x}, ${y}) ${sw(...rgb)}</h3><p class="note">RGB (${rgb.join(", ")}). Feature vector f = (${f.map(v => fmt(v, 1)).join(", ")}).</p>`;
+  let html = `<h3>Pixel (${x}, ${y}) ${sw(...rgb)}</h3><p class="note">RGB (${rgb.join(", ")}). Feature vector ${tex("f")} = (${f.map(v => fmt(v, 1)).join(", ")}).</p>`;
   html += `<p><b>${lab < 0 ? "Not assigned yet." : "Cluster " + (lab + 1)}</b> ${lab >= 0 ? sw(...cols[lab]) : ""}</p>`;
   html += dists.map((v, c) => `<div class="dbar ${c === nearest ? "win" : ""}"><span>${sw(...cols[c])}Cluster ${c + 1}</span><span class="tr"><i style="width:${100 * v / Math.max(mx, 1e-9)}%"></i></span><span>${fmt(v, 1)}</span></div>`).join("");
   const sec = order[1] !== undefined ? ` The runner-up, cluster ${order[1] + 1}, is ${fmt(dists[order[1]], 1)} away.` : "";
   html += `<p class="note"><b>Why:</b> the nearest centroid is cluster ${nearest + 1} at distance ${fmt(dists[nearest], 1)}.${sec} ${m.phase === "init" ? "Step to apply it." : ""}</p>`;
-  html += `<table class="calc"><tr><td></td>${f.map((_, j) => `<td>${names[j]}</td>`).join("")}</tr><tr><td>f</td>${f.map(v => `<td>${fmt(v, 1)}</td>`).join("")}</tr><tr><td>μ${nearest + 1}</td>${f.map((_, j) => `<td>${fmt(cent[nearest * d + j], 1)}</td>`).join("")}</tr><tr><td>(f−μ)²</td>${f.map((v, j) => `<td>${fmt((v - cent[nearest * d + j]) ** 2, 1)}</td>`).join("")}</tr></table><p class="eq">‖f − μ${nearest + 1}‖ = √${fmt(dists[nearest] ** 2, 1)} = ${fmt(dists[nearest], 2)}</p>`;
+  html += `<table class="calc"><tr><td></td>${f.map((_, j) => `<td>${tex(names[j])}</td>`).join("")}</tr><tr><td>${tex("f")}</td>${f.map(v => `<td>${fmt(v, 1)}</td>`).join("")}</tr><tr><td>${tex("\\mu_{" + (nearest + 1) + "}")}</td>${f.map((_, j) => `<td>${fmt(cent[nearest * d + j], 1)}</td>`).join("")}</tr><tr><td>${tex("(f-\\mu)^2")}</td>${f.map((v, j) => `<td>${fmt((v - cent[nearest * d + j]) ** 2, 1)}</td>`).join("")}</tr></table>${tex(`\\|f - \\mu_{${nearest + 1}}\\| = \\sqrt{${fmt(dists[nearest] ** 2, 1)}} = ${fmt(dists[nearest], 2)}`, { display: true })}`;
   $("kRead").innerHTML = html;
 }
 
@@ -247,7 +249,7 @@ function msRead(cols) {
   const last = path[path.length - 1], rgb = [img.rgb[3 * i], img.rgb[3 * i + 1], img.rgb[3 * i + 2]];
   const rows = path.map((p, k) => `<tr><td>${k}</td><td>${fmt(p.x, 1)}, ${fmt(p.y, 1)}</td><td>${fmt(p.L, 1)}, ${fmt(p.A, 1)}, ${fmt(p.B, 1)}</td><td>${k ? p.cnt : "–"}</td></tr>`).join("");
   $("mRead").innerHTML = `<h3>Pixel (${x}, ${y}) ${sw(...rgb)} reaches its peak in ${path.length - 1} step${path.length === 2 ? "" : "s"}</h3><div class="tablebox" style="max-height:200px"><table class="calc" style="width:100%"><thead><tr><th>step</th><th>position</th><th>color L, a, b</th><th>count</th></tr></thead><tbody>${rows}</tbody></table></div>
-  <p><b>Region ${lab + 1}</b> ${sw(...reg)} has ${size} pixels.</p><p class="note"><b>Why:</b> the pixel moved by ${fmt(Math.hypot(last.x - path[0].x, last.y - path[0].y), 1)} px and ${fmt(Math.sqrt((last.L - path[0].L) ** 2 + (last.A - path[0].A) ** 2 + (last.B - path[0].B) ** 2), 1)} color units to a peak where the window average stops changing. Neighbors that end at nearly the same peak (within hₛ/2 and hᵣ/2) share this region.</p>`;
+  <p><b>Region ${lab + 1}</b> ${sw(...reg)} has ${size} pixels.</p><p class="note"><b>Why:</b> the pixel moved by ${fmt(Math.hypot(last.x - path[0].x, last.y - path[0].y), 1)} px and ${fmt(Math.sqrt((last.L - path[0].L) ** 2 + (last.A - path[0].A) ** 2 + (last.B - path[0].B) ** 2), 1)} color units to a peak where the window average stops changing. Neighbors that end at nearly the same peak (within ${tex("h_s/2")} and ${tex("h_r/2")}) share this region.</p>`;
 }
 
 /* ---------- Felzenszwalb–Huttenlocher ---------- */
@@ -281,16 +283,16 @@ function fhRead(cols) {
   const nbs = new Map(); for (let e = 0; e < ed.E && nbs.size < 400; e++) { const a = f.find(ed.U[e]), b = f.find(ed.V[e]); if (a === b || (a !== r && b !== r)) continue; const o = a === r ? b : a; if (!nbs.has(o)) nbs.set(o, ed.Wt[e]); }
   const own = f.intd[r] + k / f.size[r]; const rows = [...nbs.entries()].slice(0, 5).map(([o, w]) => { const thr = Math.min(own, f.intd[o] + k / f.size[o]); const oc = cols[f.labels[(() => { for (let j = 0; j < img.n; j++) if (f.find(j) === o) return j; return 0; })()]]; return `<tr><td>${sw(...oc)}${f.size[o]} px</td><td>${fmt(w, 1)}</td><td>${fmt(thr, 1)}</td><td>${w > thr ? '<span class="tag good">kept apart</span>' : '<span class="tag warn">close call</span>'}</td></tr>`; }).join("");
   $("gRead").innerHTML = `<h3>Pixel (${x}, ${y}) ${sw(...rgb)} in region ${lab + 1} ${sw(...cols[lab])}</h3>
-  <dl><dt>Size |C|</dt><dd>${f.size[r].toLocaleString()} px</dd><dt>Int(C)</dt><dd>${fmt(f.intd[r], 1)}</dd><dt>k / |C|</dt><dd>${fmt(k / f.size[r], 1)}</dd><dt>Int(C) + k/|C|</dt><dd>${fmt(own, 1)}</dd></dl>
-  <p class="note">Cheapest edge from this region to each neighbor (up to 5), against the merge threshold min(Int + k/|C|) of the two regions, using final sizes:</p>
-  ${rows ? `<div class="tablebox" style="max-height:200px"><table class="calc" style="width:100%"><thead><tr><th>Neighbor</th><th>Edge w</th><th>Threshold</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>` : "<p>This region touches no other region.</p>"}
-  <p class="note"><b>Why:</b> an edge joins two regions only if its weight w is at most the threshold. Edges were tested earlier, when regions were smaller, so a near-threshold row can be a close call.</p>`;
+  <dl><dt>Size ${tex("|C|")}</dt><dd>${f.size[r].toLocaleString()} px</dd><dt>${tex("\\mathrm{Int}(C)")}</dt><dd>${fmt(f.intd[r], 1)}</dd><dt>${tex("k / |C|")}</dt><dd>${fmt(k / f.size[r], 1)}</dd><dt>${tex("\\mathrm{Int}(C) + k/|C|")}</dt><dd>${fmt(own, 1)}</dd></dl>
+  <p class="note">Cheapest edge from this region to each neighbor (up to 5), against the merge threshold ${tex("\\min(\\mathrm{Int} + k/|C|)")} of the two regions, using final sizes:</p>
+  ${rows ? `<div class="tablebox" style="max-height:200px"><table class="calc" style="width:100%"><thead><tr><th>Neighbor</th><th>Edge ${tex("w")}</th><th>Threshold</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>` : "<p>This region touches no other region.</p>"}
+  <p class="note"><b>Why:</b> an edge joins two regions only if its weight ${tex("w")} is at most the threshold. Edges were tested earlier, when regions were smaller, so a near-threshold row can be a close call.</p>`;
 }
 
 /* ---------- comparison and wiring ---------- */
 function cmp() {
   const km = S.km, ms = S.ms, fh = S.fh, lab = km.phase === "init" ? null : km.labels;
-  const rows = [["K-means", `k = ${km.k}, λ = ${(+$("kL").value).toFixed(2)}`, lab ? components(lab, S.img.w, S.img.h) + " connected (" + km.k + " clusters)" : "–", S.times.km], ["Mean shift", `hₛ = ${ms.hs}, hᵣ = ${ms.hr}`, ms.nreg, S.times.ms], ["Graph-based", `k = ${fh.k}, σ = ${(+$("gSig").value).toFixed(1)}`, fh.nreg, S.times.fh]];
+  const rows = [["K-means", tex(`k = ${km.k},\\; \\lambda = ${(+$("kL").value).toFixed(2)}`), lab ? components(lab, S.img.w, S.img.h) + " connected (" + km.k + " clusters)" : "–", S.times.km], ["Mean shift", tex(`h_s = ${ms.hs},\\; h_r = ${ms.hr}`), ms.nreg, S.times.ms], ["Graph-based", tex(`k = ${fh.k},\\; \\sigma = ${(+$("gSig").value).toFixed(1)}`), fh.nreg, S.times.fh]];
   $("cmpT").innerHTML = rows.map(r => `<tr><td>${r[0]}</td><td>${r[1]}</td><td>${r[2]}</td><td>${fmt(r[3] || 0, 0)} ms</td></tr>`).join("");
 }
 function drawAll() { kmDraw(); msDraw(); fhDraw(); cmp(); }

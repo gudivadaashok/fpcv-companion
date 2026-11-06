@@ -7,7 +7,9 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,500;8..60,600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="vendor/katex/katex.min.css">
 <link rel="stylesheet" href="site.css">
+<script src="vendor/katex/katex.min.js"></script>
 <style>
 #vid { background: var(--stage); cursor: crosshair; touch-action: none; }
 .scrub { width: 220px; }
@@ -49,28 +51,28 @@
   </section>
 
   <section class="stage" aria-labelledby="h2">
-    <div class="stage-head"><span class="num">02</span><div><h2 id="h2">The measurement matrix and its rank</h2><p>Stack the horizontal coordinates of all frames above the vertical coordinates, one column per point. Subtract each row's mean so the object's centroid sits at the origin. Without noise, this 2F × P matrix has rank 3, because it is a product of a 2F × 3 motion matrix and a 3 × P shape matrix.</p></div></div>
+    <div class="stage-head"><span class="num">02</span><div><h2 id="h2">The measurement matrix and its rank</h2><p>Stack the horizontal coordinates of all frames above the vertical coordinates, one column per point. Subtract each row's mean so the object's centroid sits at the origin. Without noise, this \(2F \times P\) matrix has rank 3, because it is a product of a \(2F \times 3\) motion matrix and a \(3 \times P\) shape matrix.</p></div></div>
     <div class="main-side">
-      <figure><canvas class="plot" id="wmat" style="height:300px" aria-label="Heat map of the centered measurement matrix"></canvas><figcaption>Centered W. Top half: u (horizontal) per frame. Bottom half: v (vertical). Orange is positive and blue is negative.</figcaption></figure>
-      <figure><canvas class="plot" id="svs" style="height:300px" aria-label="Bar chart of singular values"></canvas><figcaption>Singular values of W. Three large bars and the rest near zero means rank 3.</figcaption></figure>
+      <figure><canvas class="plot" id="wmat" style="height:300px" aria-label="Heat map of the centered measurement matrix"></canvas><figcaption>Centered \(W\). Top half: \(u\) (horizontal) per frame. Bottom half: \(v\) (vertical). Orange is positive and blue is negative.</figcaption></figure>
+      <figure><canvas class="plot" id="svs" style="height:300px" aria-label="Bar chart of singular values"></canvas><figcaption>Singular values of \(W\). Three large bars and the rest near zero means rank 3.</figcaption></figure>
     </div>
     <div class="stats" id="svStats"></div>
     <div class="math"><h3>Why rank 3</h3>
-      <p class="eq">W̃ = M S,    W̃ is 2F × P,    M is 2F × 3,    S is 3 × P</p>
-      <p>Row <i>f</i> of M holds the camera's horizontal axis <b>i</b><sub>f</sub>, and row <i>F</i>+<i>f</i> holds its vertical axis <b>j</b><sub>f</sub>. Column <i>p</i> of S is the point's 3D position <b>s</b><sub>p</sub>. Each measurement is a dot product: <i>u</i><sub>fp</sub> − <i>ū</i><sub>f</sub> = <b>i</b><sub>f</sub> · <b>s</b><sub>p</sub>. Noise lifts the fourth and later singular values off zero. Keeping only three removes much of that noise.</p></div>
+      <div class="eqd">\[ \tilde W = M S, \qquad \tilde W \text{ is } 2F \times P, \quad M \text{ is } 2F \times 3, \quad S \text{ is } 3 \times P \]</div>
+      <p>Row \(f\) of \(M\) holds the camera's horizontal axis \(\mathbf{i}_f\), and row \(F+f\) holds its vertical axis \(\mathbf{j}_f\). Column \(p\) of \(S\) is the point's 3D position \(\mathbf{s}_p\). Each measurement is a dot product: \(u_{fp} - \bar u_f = \mathbf{i}_f \cdot \mathbf{s}_p\). Noise lifts the fourth and later singular values off zero. Keeping only three removes much of that noise.</p></div>
   </section>
 
   <section class="stage" aria-labelledby="h3">
-    <div class="stage-head"><span class="num">03</span><div><h2 id="h3">Factorize, then make the motion a true rotation</h2><p>The SVD gives a valid factorization, but any invertible 3 × 3 matrix Q can slip in between: M̂S&#x302; = (M̂Q)(Q⁻¹Ŝ). The camera axes must be unit length and perpendicular, which pins Q down.</p></div></div>
+    <div class="stage-head"><span class="num">03</span><div><h2 id="h3">Factorize, then make the motion a true rotation</h2><p>The SVD gives a valid factorization, but any invertible \(3 \times 3\) matrix \(Q\) can slip in between: \(\hat M \hat S = (\hat M Q)(Q^{-1}\hat S)\). The camera axes must be unit length and perpendicular, which pins \(Q\) down.</p></div></div>
     <div class="main-side">
       <div class="math" id="qRead"></div>
       <figure><canvas class="plot" id="rown" style="height:300px" aria-label="Lengths of the camera axes before and after the metric upgrade"></canvas><figcaption><span class="legend"><span><i style="background:var(--muted)"></i>Length before upgrade</span><span><i style="background:var(--accent)"></i>Length after upgrade</span></span> Camera-axis length per frame. A true orthographic camera has length 1.</figcaption></figure>
     </div>
     <div class="math"><h3>The two steps</h3>
-      <p class="eq">1.  W̃ = U Σ Vᵀ    →    M̂ = U₃ Σ₃^½,   Ŝ = Σ₃^½ V₃ᵀ</p>
-      <p class="eq">2.  m̂ₖᵀ L m̂ₖ = 1,   n̂ₖᵀ L n̂ₖ = 1,   m̂ₖᵀ L n̂ₖ = 0,   L = Q Qᵀ</p>
-      <p class="eq">    M = M̂ Q,   S = Q⁻¹ Ŝ</p>
-      <p>The three constraints per frame are linear in the six unknowns of the symmetric matrix L. Stack them for all frames and solve by least squares. A Cholesky factorization L = Q Qᵀ then gives Q. With noise, L can lose positive definiteness. This page then clips its negative eigenvalues, which is a simplification. What remains unknown is a global rotation (and mirror) of the whole scene.</p></div>
+      <div class="eqd">\[ \text{1.}\quad \tilde W = U \Sigma V^\top \ \rightarrow\ \hat M = U_3 \Sigma_3^{1/2}, \quad \hat S = \Sigma_3^{1/2} V_3^\top \]
+      \[ \text{2.}\quad \hat{\mathbf{m}}_k^\top L\, \hat{\mathbf{m}}_k = 1, \quad \hat{\mathbf{n}}_k^\top L\, \hat{\mathbf{n}}_k = 1, \quad \hat{\mathbf{m}}_k^\top L\, \hat{\mathbf{n}}_k = 0, \quad L = Q Q^\top \]
+      \[ \phantom{\text{2.}}\quad M = \hat M Q, \quad S = Q^{-1}\hat S \]</div>
+      <p>The three constraints per frame are linear in the six unknowns of the symmetric matrix \(L\). Stack them for all frames and solve by least squares. A Cholesky factorization \(L = Q Q^\top\) then gives \(Q\). With noise, \(L\) can lose positive definiteness. This page then clips its negative eigenvalues, which is a simplification. What remains unknown is a global rotation (and mirror) of the whole scene.</p></div>
   </section>
 
   <section class="stage" aria-labelledby="h4">
@@ -93,7 +95,7 @@
 <script>
 (() => {
 "use strict";
-const { $, nav, footer, hiDPI, onTheme, cssVar, seg, segVal, rng, fmt } = VB;
+const { $, nav, footer, hiDPI, onTheme, cssVar, seg, segVal, rng, fmt, tex, mathRows } = VB;
 nav("structure-from-motion.html"); footer();
 
 /*CORE-START*/
@@ -260,14 +262,14 @@ function drawSV() {
     ctx.fillStyle = cssVar("--ink"); ctx.font = "11px " + ff(); ctx.textAlign = "center"; ctx.fillText(v >= 100 ? fmt(v, 0) : v >= 0.01 ? fmt(v, 2) : v.toExponential(0), ox + i * bw + bw / 2, oy + bh - h - 5); ctx.fillStyle = cssVar("--muted"); ctx.fillText("σ" + (i + 1), ox + i * bw + bw / 2, H - 12); });
   ctx.textAlign = "left"; ctx.strokeStyle = cssVar("--line"); ctx.beginPath(); ctx.moveTo(ox, oy + bh + 0.5); ctx.lineTo(W - 10, oy + bh + 0.5); ctx.stroke();
   const s = st.fac.sv, tot = s.reduce((a, b) => a + b * b, 0), top = s[0] ** 2 + s[1] ** 2 + s[2] ** 2;
-  $("svStats").innerHTML = `<span class="chip">σ₃ <b>${fmt(s[2], 2)}</b></span><span class="chip">σ₄ <b>${s[3] !== undefined ? (s[3] < 0.01 ? s[3].toExponential(1) : fmt(s[3], 2)) : "–"}</b></span><span class="chip">Energy in top 3 <b>${fmt(100 * top / Math.max(tot, 1e-12), 3)}%</b></span> ${s[3] !== undefined && s[3] < 1e-3 * s[2] ? '<span class="tag good">rank 3</span>' : '<span class="tag warn">noise lifts σ₄</span>'}`;
+  $("svStats").innerHTML = `<span class="chip">${tex("\\sigma_3")} <b>${fmt(s[2], 2)}</b></span><span class="chip">${tex("\\sigma_4")} <b>${s[3] !== undefined ? (s[3] < 0.01 ? s[3].toExponential(1) : fmt(s[3], 2)) : "–"}</b></span><span class="chip">Energy in top 3 <b>${fmt(100 * top / Math.max(tot, 1e-12), 3)}%</b></span> ${s[3] !== undefined && s[3] < 1e-3 * s[2] ? '<span class="tag good">rank 3</span>' : `<span class="tag warn">noise lifts ${tex("\\sigma_4")}</span>`}`;
 }
 function m3(M, d = 3) { return `<table class="calc">${M.map(r => "<tr>" + r.map(v => `<td>${fmt(v, d)}</td>`).join("") + "</tr>").join("")}</table>`; }
 function drawQ() {
   const f = st.fac; const G = f.G;
-  $("qRead").innerHTML = `<h3>Solving for L</h3><p>${3 * st.F} equations, 6 unknowns, solved by linear least squares. RMS constraint residual: <b class="mono">${f.resid.toExponential(1)}</b>${f.clipped ? ' <span class="tag warn">L was not positive definite; eigenvalues clipped</span>' : ' <span class="tag good">L positive definite</span>'}</p>
-  <div class="pair"><div><p class="note">L = Q Qᵀ</p>${m3(f.L)}</div><div><p class="note">Q (Cholesky factor)</p>${m3(G)}</div></div>
-  <p class="note">M = M̂Q has orthonormal camera axes. S = Q⁻¹Ŝ is the 3D shape in an unknown orientation. The shape matrix S has ${st.X.length} columns, one per point.</p>`;
+  $("qRead").innerHTML = `<h3>Solving for ${tex("L")}</h3><p>${3 * st.F} equations, 6 unknowns, solved by linear least squares. RMS constraint residual: <b class="mono">${f.resid.toExponential(1)}</b>${f.clipped ? ` <span class="tag warn">${tex("L")} was not positive definite; eigenvalues clipped</span>` : ` <span class="tag good">${tex("L")} positive definite</span>`}</p>
+  <div class="pair"><div><p class="note">${tex("L = Q Q^\\top")}</p>${m3(f.L)}</div><div><p class="note">${tex("Q")} (Cholesky factor)</p>${m3(G)}</div></div>
+  <p class="note">${tex("M = \\hat M Q")} has orthonormal camera axes. ${tex("S = Q^{-1}\\hat S")} is the 3D shape in an unknown orientation. The shape matrix ${tex("S")} has ${st.X.length} columns, one per point.</p>`;
 }
 function drawRowN() {
   const cv = $("rown"); const { ctx, W, H } = hiDPI(cv, 300); ctx.clearRect(0, 0, W, H); const f = st.fac, F = st.F;
@@ -314,15 +316,15 @@ function detail() {
   const t = [st.T[0][p], st.T[1][p], st.T[2][p]]; const e = Math.hypot(s[0] - t[0], s[1] - t[1], s[2] - t[2]); const cu = fa.Wc[f][p];
   const v = a => "(" + a.map(x => fmt(x, 1)).join(", ") + ")";
   $("ptRead").innerHTML = `<h3>Point ${p + 1} of ${st.X.length}, frame ${f + 1}</h3>
-  <dl><dt>Image position (u, v)</dt><dd>(${fmt(o[0], 1)}, ${fmt(o[1], 1)}) px</dd>
+  <dl><dt>Image position ${tex("(u, v)")}</dt><dd>(${fmt(o[0], 1)}, ${fmt(o[1], 1)}) px</dd>
   <dt>Track length</dt><dd>${F} positions</dd>
-  <dt>Recovered (X, Y, Z)</dt><dd>${v(s)}</dd>
-  <dt>True (X, Y, Z)</dt><dd>${v(t)}</dd>
+  <dt>Recovered ${tex("(X, Y, Z)")}</dt><dd>${v(s)}</dd>
+  <dt>True ${tex("(X, Y, Z)")}</dt><dd>${v(t)}</dd>
   <dt>3D error</dt><dd>${fmt(e, 2)} px</dd></dl>
-  <p class="eq">u − ū = i · s</p>
-  <p class="eq">${fmt(cu, 2)} ≈ ${v(mu)} · ${v(s)}</p>
-  <p class="eq">   = ${fmt(dot, 2)}</p>
-  <p class="note">The camera axis i for this frame comes from the recovered motion matrix, rotated into the same frame as the aligned shape. The two sides match to within the noise.</p>`;
+  <div id="ptEq"></div>
+  <p class="note">The camera axis ${tex("\\mathbf{i}")} for this frame comes from the recovered motion matrix, rotated into the same frame as the aligned shape. The two sides match to within the noise.</p>`;
+  const vt = a => `(${a.map(x => fmt(x, 1)).join(",\\,")})`;
+  mathRows($("ptEq"), [{ label: "Centered measurement", tex: `u - \\bar u = \\mathbf{i}\\cdot\\mathbf{s}` }, { label: "This point", tex: `${fmt(cu, 2)} \\approx ${vt(mu)} \\cdot ${vt(s)}`, value: fmt(dot, 2) }]);
 }
 
 /* ---------- start ---------- */

@@ -7,7 +7,9 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,500;8..60,600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="vendor/katex/katex.min.css">
 <link rel="stylesheet" href="site.css">
+<script src="vendor/katex/katex.min.js"></script>
 </head>
 <body>
 <header class="site"></header>
@@ -25,46 +27,46 @@
   </section>
 
   <section class="stage" aria-labelledby="h1">
-    <div class="stage-head"><span class="num">01</span><div><h2 id="h1">Point processing</h2><p>Each output pixel depends only on the input pixel at the same place: <i>g</i>(<i>x</i>, <i>y</i>) = <i>f</i>(<i>I</i>(<i>x</i>, <i>y</i>)). The curve below shows the mapping <i>f</i>, from input brightness to output brightness.</p></div></div>
+    <div class="stage-head"><span class="num">01</span><div><h2 id="h1">Point processing</h2><p>Each output pixel depends only on the input pixel at the same place: \(g(x, y) = f(I(x, y))\). The curve below shows the mapping \(f\), from input brightness to output brightness.</p></div></div>
     <div class="two">
-      <figure><canvas class="view" id="ppIn"></canvas><figcaption>Input <i>I</i></figcaption></figure>
-      <figure><canvas class="view" id="ppOut"></canvas><figcaption>Output <i>g</i> = <i>f</i>(<i>I</i>)</figcaption></figure>
+      <figure><canvas class="view" id="ppIn"></canvas><figcaption>Input \(I\)</figcaption></figure>
+      <figure><canvas class="view" id="ppOut"></canvas><figcaption>Output \(g = f(I)\)</figcaption></figure>
     </div>
     <div class="two">
-      <figure><canvas class="plot" id="ppCurve" style="height:200px"></canvas><figcaption>Transfer function <i>f</i>: input brightness (x-axis) to output brightness (y-axis)</figcaption></figure>
+      <figure><canvas class="plot" id="ppCurve" style="height:200px"></canvas><figcaption>Transfer function \(f\): input brightness (x-axis) to output brightness (y-axis)</figcaption></figure>
       <figure><canvas class="plot" id="ppHist" style="height:200px"></canvas><figcaption><span class="legend"><span><i style="background:var(--muted)"></i>Input histogram</span><span><i style="background:var(--accent)"></i>Output histogram</span></span></figcaption></figure>
     </div>
     <div class="controls">
       <div class="ctl"><label for="ppB">Brightness</label><input type="range" id="ppB" min="-120" max="120" value="0"><output id="ppBo">0</output></div>
       <div class="ctl"><label for="ppC">Contrast</label><input type="range" id="ppC" min="0.2" max="3" step="0.05" value="1"><output id="ppCo">1.00</output></div>
-      <div class="ctl"><label for="ppG">Gamma γ</label><input type="range" id="ppG" min="0.25" max="3" step="0.05" value="1"><output id="ppGo">1.00</output></div>
+      <div class="ctl"><label for="ppG">Gamma \(\gamma\)</label><input type="range" id="ppG" min="0.25" max="3" step="0.05" value="1"><output id="ppGo">1.00</output></div>
       <div class="ctl"><label for="ppEq">Histogram equalization</label><input type="checkbox" id="ppEq"></div>
       <div class="ctl"><label for="ppInv">Invert</label><input type="checkbox" id="ppInv"></div>
       <button type="button" class="btn" id="ppReset">Reset</button>
     </div>
-    <div class="math"><h3>The mapping</h3><p class="eq" id="ppEqn"></p><p>Equalization uses the cumulative histogram as <i>f</i>, which spreads the brightness levels so each is used about equally. The output histogram becomes roughly flat.</p></div>
+    <div class="math"><h3>The mapping</h3><div id="ppEqn"></div><p>Equalization uses the cumulative histogram as \(f\), which spreads the brightness levels so each is used about equally. The output histogram becomes roughly flat.</p></div>
   </section>
 
   <section class="stage" aria-labelledby="h2">
-    <div class="stage-head"><span class="num">02</span><div><h2 id="h2">Convolution with a kernel</h2><p>A linear shift-invariant system is fully described by its kernel <i>h</i>. Each output pixel is a weighted sum of the input pixels around it. Click any pixel in the output to see the exact sum.</p></div></div>
+    <div class="stage-head"><span class="num">02</span><div><h2 id="h2">Convolution with a kernel</h2><p>A linear shift-invariant system is fully described by its kernel \(h\). Each output pixel is a weighted sum of the input pixels around it. Click any pixel in the output to see the exact sum.</p></div></div>
     <div class="controls">
       <div class="ctl"><label for="kSel">Kernel</label>
         <select id="kSel"><option value="box">Box (average) 3×3</option><option value="gauss" selected>Gaussian</option><option value="sharpen">Sharpen</option><option value="lap">Laplacian (edges)</option><option value="sobelx">Sobel x (vertical edges)</option><option value="emboss">Emboss</option><option value="id">Identity</option><option value="custom">Custom 3×3</option></select></div>
-      <div class="ctl" id="sigWrap"><label for="kSig">σ</label><input type="range" id="kSig" min="0.5" max="6" step="0.1" value="2"><output id="kSigO">2.0</output></div>
+      <div class="ctl" id="sigWrap"><label for="kSig">\(\sigma\)</label><input type="range" id="kSig" min="0.5" max="6" step="0.1" value="2"><output id="kSigO">2.0</output></div>
     </div>
     <div class="main-side">
       <div class="two">
-        <figure><canvas class="view" id="cvIn"></canvas><figcaption>Input <i>f</i></figcaption></figure>
-        <figure><canvas class="view click" id="cvOut"></canvas><figcaption id="cvCap">Output <i>g</i> = <i>f</i> ∗ <i>h</i>. Click a pixel.</figcaption></figure>
+        <figure><canvas class="view" id="cvIn"></canvas><figcaption>Input \(f\)</figcaption></figure>
+        <figure><canvas class="view click" id="cvOut"></canvas><figcaption id="cvCap">Output \(g = f \ast h\). Click a pixel.</figcaption></figure>
       </div>
       <div class="math">
-        <h3>Kernel <i>h</i></h3>
+        <h3>Kernel \(h\)</h3>
         <div id="kView"></div>
         <p class="note" id="kNote"></p>
         <div id="calc"></div>
       </div>
     </div>
-    <div class="math"><h3>The sum</h3><p class="eq">g(i, j) = Σ<sub>m</sub> Σ<sub>n</sub> f(m, n) · h(i − m, j − n)</p><p>Kernels whose weights sum to 1 (box, Gaussian) keep the overall brightness. Kernels whose weights sum to 0 (Laplacian, Sobel) respond only to change, so their output is shown with gray as 0, darker as negative and brighter as positive.</p></div>
+    <div class="math"><h3>The sum</h3><div class="eqd">\[ g(i, j) = \sum_m \sum_n f(m, n)\, h(i - m,\, j - n) \]</div><p>Kernels whose weights sum to 1 (box, Gaussian) keep the overall brightness. Kernels whose weights sum to 0 (Laplacian, Sobel) respond only to change, so their output is shown with gray as 0, darker as negative and brighter as positive.</p></div>
   </section>
 
   <section class="stage" aria-labelledby="h3">
@@ -73,7 +75,7 @@
       <div class="ctl"><label>Noise</label><div class="seg" id="nType"><button type="button" data-v="sp" aria-pressed="true">Salt &amp; pepper</button><button type="button" data-v="gauss" aria-pressed="false">Gaussian</button></div></div>
       <div class="ctl"><label for="nAmt">Amount</label><input type="range" id="nAmt" min="0" max="40" value="10"><output id="nAmtO">10%</output></div>
       <div class="ctl"><label>Window</label><div class="seg" id="nWin"><button type="button" data-v="3" aria-pressed="false">3×3</button><button type="button" data-v="5" aria-pressed="true">5×5</button><button type="button" data-v="7" aria-pressed="false">7×7</button></div></div>
-      <div class="ctl"><label for="nSr">Bilateral σ<sub>r</sub></label><input type="range" id="nSr" min="5" max="120" value="40"><output id="nSrO">40</output></div>
+      <div class="ctl"><label for="nSr">Bilateral \(\sigma_r\)</label><input type="range" id="nSr" min="5" max="120" value="40"><output id="nSrO">40</output></div>
     </div>
     <div class="four">
       <figure><canvas class="view" id="nNoisy"></canvas><figcaption>Noisy <span class="metric" id="mNoisy"></span></figcaption></figure>
@@ -81,7 +83,7 @@
       <figure><canvas class="view" id="nMed"></canvas><figcaption>Median filter <span class="metric" id="mMed"></span></figcaption></figure>
       <figure><canvas class="view" id="nBil"></canvas><figcaption>Bilateral filter <span class="metric" id="mBil"></span></figcaption></figure>
     </div>
-    <div class="math"><h3>Why they differ</h3><p><b>Gaussian</b> averages everything in the window, so it spreads noise around and blurs edges. <b>Median</b> takes the middle value of the window, which discards extreme outliers. That makes it the best choice for salt and pepper noise. <b>Bilateral</b> averages only neighbors with similar brightness (within about σ<sub>r</sub>), so it smooths flat regions while keeping edges sharp.</p></div>
+    <div class="math"><h3>Why they differ</h3><p><b>Gaussian</b> averages everything in the window, so it spreads noise around and blurs edges. <b>Median</b> takes the middle value of the window, which discards extreme outliers. That makes it the best choice for salt and pepper noise. <b>Bilateral</b> averages only neighbors with similar brightness (within about \(\sigma_r\)), so it smooths flat regions while keeping edges sharp.</p></div>
   </section>
 
   <section class="stage" aria-labelledby="h4">
@@ -93,7 +95,7 @@
     </div>
     <div class="three">
       <figure><canvas class="view" id="fIn"></canvas><figcaption>Image, 256×256</figcaption></figure>
-      <figure><canvas class="view" id="fSpec"></canvas><figcaption>log |F(u, v)| with the mask. Dimmed = removed.</figcaption></figure>
+      <figure><canvas class="view" id="fSpec"></canvas><figcaption>\(\log |F(u, v)|\) with the mask. Dimmed = removed.</figcaption></figure>
       <figure><canvas class="view" id="fOut"></canvas><figcaption>Inverse transform of the masked spectrum</figcaption></figure>
     </div>
     <div class="math"><h3>Things to notice</h3><p>A sharp low-pass mask causes ripples (ringing) next to edges, because its convolution kernel in the image domain is a sinc function with many side lobes. A smooth Gaussian mask avoids this, because a Gaussian transforms into another Gaussian. A high-pass mask keeps only edges and texture.</p></div>
@@ -105,7 +107,7 @@
 <script>
 (() => {
 "use strict";
-const { $, nav, footer, SAMPLES, picker, toGray, show, gaussKernel, sepConv, conv2, fft2, imgXY, hiDPI, onTheme, cssVar, seg, segVal, rng, fmt } = VB;
+const { $, nav, footer, SAMPLES, picker, toGray, show, gaussKernel, sepConv, conv2, fft2, imgXY, hiDPI, onTheme, cssVar, seg, segVal, rng, fmt, tex } = VB;
 nav("image-processing.html"); footer();
 const st = { w: 0, h: 0, g: null, src: null };
 
@@ -126,8 +128,8 @@ function runPP() {
   for (let i = 0; i < out.length; i++) out[i] = L[Math.round(st.g[i])];
   show("ppIn", st.w, st.h, st.g); show("ppOut", st.w, st.h, out);
   $("ppBo").value = B; $("ppCo").value = C.toFixed(2); $("ppGo").value = G.toFixed(2);
-  const base = eq ? "255·CDF(I)" : "I"; let e = `g = ${inv ? "255 − " : ""}255 · ( clamp(${C.toFixed(2)}·(${base} − 128) + 128 ${B < 0 ? "− " + (-B) : "+ " + B}) / 255 )^${G.toFixed(2)}`;
-  $("ppEqn").textContent = e;
+  const base = eq ? "255\\,\\mathrm{CDF}(I)" : "I"; const e = `g = ${inv ? "255 - " : ""}255 \\left( \\frac{\\mathrm{clamp}\\big(${C.toFixed(2)}\\,(${base} - 128) + 128 ${B < 0 ? "- " + (-B) : "+ " + B}\\big)}{255} \\right)^{${G.toFixed(2)}}`;
+  $("ppEqn").innerHTML = tex(e, { display: true });
   drawCurve(L); drawHists(st.g, out);
 }
 function drawCurve(L) {
@@ -162,7 +164,7 @@ function runConv() {
   ck.out = k.k1 ? sepConv(st.g, st.w, st.h, k.k1, k.k1) : conv2(st.g, st.w, st.h, k.K, 3, 3);
   const sum = k.K.reduce((a, b) => a + b, 0); ck.mode = Math.abs(sum) < 1e-6 ? "signed" : "clamp";
   show("cvIn", st.w, st.h, st.g); show("cvOut", st.w, st.h, ck.out, ck.mode);
-  $("cvCap").innerHTML = `Output <i>g</i> = <i>f</i> ∗ <i>h</i>${ck.mode === "signed" ? " (gray = 0)" : ""}. Click a pixel.`;
+  $("cvCap").innerHTML = `Output ${tex("g = f \\ast h")}${ck.mode === "signed" ? " (gray = 0)" : ""}. Click a pixel.`;
   renderKernel(k, sum); renderCalc();
 }
 function renderKernel(k, sum) {
@@ -174,7 +176,7 @@ function renderKernel(k, sum) {
   } else {
     const n = k.n, max = k.K[((n - 1) / 2) * n + (n - 1) / 2]; const cell = n > 25 ? 6 : n > 15 ? 9 : 14;
     el.innerHTML = `<div class="kgrid" style="grid-template-columns:repeat(${n},${cell}px)">${[...k.K].map(v => `<span style="min-width:0;background:color-mix(in srgb, var(--accent) ${Math.round(v / max * 100)}%, var(--bg))"></span>`).join("")}</div>`;
-    $("kNote").textContent = `${n}×${n} window (radius 3σ). Weights sum to 1. The Gaussian is separable, so it runs as a 1D blur along rows and then along columns.`;
+    $("kNote").innerHTML = `${n}×${n} window (radius ${tex("3\\sigma")}). Weights sum to 1. The Gaussian is separable, so it runs as a 1D blur along rows and then along columns.`;
   }
 }
 function renderCalc() {

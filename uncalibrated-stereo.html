@@ -7,7 +7,9 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,500;8..60,600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="vendor/katex/katex.min.css">
 <link rel="stylesheet" href="site.css">
+<script src="vendor/katex/katex.min.js"></script>
 <style>
 #view3d { height: 360px; }
 #base3d { font: 0.76rem var(--mono); color: var(--muted); margin: 4px 0 0; }
@@ -43,31 +45,31 @@ td.hi { background: color-mix(in srgb, var(--accent) 14%, transparent); }
     </div>
     <div class="main-side">
       <div><canvas class="plot" id="view3d"></canvas><p id="base3d"></p></div>
-      <div class="math"><h3>The true fundamental matrix</h3><p>With intrinsics K, K′ and a relative pose X′ = R X + t, a left pixel x and its right match x′ satisfy</p><p class="eq">x′ᵀ F x = 0,   F = K′⁻ᵀ [t]ₓ R K⁻¹</p><div id="trueF"></div><p class="note">The parallel pose makes epipolar lines horizontal. That is the rectified case used in Part 2.</p></div>
+      <div class="math"><h3>The true fundamental matrix</h3><p>With intrinsics \(K\), \(K'\) and a relative pose \(\mathbf{X}' = R\mathbf{X} + \mathbf{t}\), a left pixel \(\mathbf{x}\) and its right match \(\mathbf{x}'\) satisfy</p><div class="eqd">\[ \mathbf{x}'^\top F\, \mathbf{x} = 0, \qquad F = K'^{-\top} [\mathbf{t}]_\times R\, K^{-1} \]</div><div id="trueF"></div><p class="note">The parallel pose makes epipolar lines horizontal. That is the rectified case used in Part 2.</p></div>
     </div>
   </section>
 
   <section class="stage" aria-labelledby="h1">
-    <div class="stage-head"><span class="num">01</span><div><h2 id="h1">Estimate F with the 8-point algorithm</h2><p>Each match gives one linear equation in the nine entries of F. Add noise to the matched pixels and change how many matches you use. Then switch off normalization or the rank-2 step to see why each one matters.</p></div></div>
+    <div class="stage-head"><span class="num">01</span><div><h2 id="h1">Estimate \(F\) with the 8-point algorithm</h2><p>Each match gives one linear equation in the nine entries of \(F\). Add noise to the matched pixels and change how many matches you use. Then switch off normalization or the rank-2 step to see why each one matters.</p></div></div>
     <div class="controls">
-      <div class="ctl"><label for="noise">Pixel noise σ</label><input type="range" id="noise" min="0" max="3" step="0.1" value="0.5"><output id="noiseO">0.5</output></div>
+      <div class="ctl"><label for="noise">Pixel noise \(\sigma\)</label><input type="range" id="noise" min="0" max="3" step="0.1" value="0.5"><output id="noiseO">0.5</output></div>
       <div class="ctl"><label for="npts">Matches used</label><input type="range" id="npts" min="8" max="200" step="1" value="40"><output id="nptsO">40</output></div>
       <div class="ctl"><label>Normalize</label><div class="seg" id="norm"><button type="button" data-v="1" aria-pressed="true">On</button><button type="button" data-v="0" aria-pressed="false">Off</button></div></div>
       <div class="ctl"><label>Enforce rank 2</label><div class="seg" id="rank"><button type="button" data-v="1" aria-pressed="true">On</button><button type="button" data-v="0" aria-pressed="false">Off</button></div></div>
       <button type="button" class="btn" id="reseed">New noise sample</button>
     </div>
     <ol class="steps">
-      <li><b>Normalize.</b> Shift each image's points to zero mean and scale so the mean distance from the origin is √2. This gives transforms T and T′ and keeps the equations well conditioned.</li>
-      <li><b>Stack the equations.</b> Each match (x, y) ↔ (x′, y′) gives the row [x′x, x′y, x′, y′x, y′y, y′, x, y, 1]. Find the eigenvector of AᵀA with the smallest eigenvalue. That is F̂, reshaped to 3 × 3.</li>
-      <li><b>Enforce rank 2.</b> A true F is singular, so every epipolar line passes through one epipole. Noise makes the estimate full rank. Set its smallest singular value to zero: F̂ ← F̂ (I − v₃v₃ᵀ), where v₃ is the right singular vector for that value.</li>
-      <li><b>Denormalize.</b> F = T′ᵀ F̂ T.</li>
+      <li><b>Normalize.</b> Shift each image's points to zero mean and scale so the mean distance from the origin is \(\sqrt{2}\). This gives transforms \(T\) and \(T'\) and keeps the equations well conditioned.</li>
+      <li><b>Stack the equations.</b> Each match \((x, y) \leftrightarrow (x', y')\) gives the row \([x'x,\ x'y,\ x',\ y'x,\ y'y,\ y',\ x,\ y,\ 1]\). Find the eigenvector of \(A^\top A\) with the smallest eigenvalue. That is \(\hat F\), reshaped to \(3 \times 3\).</li>
+      <li><b>Enforce rank 2.</b> A true \(F\) is singular, so every epipolar line passes through one epipole. Noise makes the estimate full rank. Set its smallest singular value to zero: \(\hat F \leftarrow \hat F (I - \mathbf{v}_3\mathbf{v}_3^\top)\), where \(\mathbf{v}_3\) is the right singular vector for that value.</li>
+      <li><b>Denormalize.</b> \(F = T'^\top \hat F\, T\).</li>
     </ol>
     <div class="stats" id="fStats"></div>
     <div class="mats" id="fMats"></div>
   </section>
 
   <section class="stage" aria-labelledby="h2">
-    <div class="stage-head"><span class="num">02</span><div><h2 id="h2">Epipolar lines</h2><p>Click anywhere in the left image. The line F x appears in the right image: estimated in color, true dashed. If you click within a few pixels of a scene point, the click snaps to it and a ring marks its true match in the right image, which should sit on both lines.</p></div></div>
+    <div class="stage-head"><span class="num">02</span><div><h2 id="h2">Epipolar lines</h2><p>Click anywhere in the left image. The line \(F\mathbf{x}\) appears in the right image: estimated in color, true dashed. If you click within a few pixels of a scene point, the click snaps to it and a ring marks its true match in the right image, which should sit on both lines.</p></div></div>
     <div class="controls">
       <div class="ctl"><label>Also draw</label><div class="seg" id="fan"><button type="button" data-v="1" aria-pressed="true">Lines from 12 points</button><button type="button" data-v="0" aria-pressed="false">Only the clicked point</button></div></div>
     </div>
@@ -83,7 +85,7 @@ td.hi { background: color-mix(in srgb, var(--accent) 14%, transparent); }
   <div class="part">Part 2 · Dense matching on a rectified pair</div>
 
   <section class="stage" aria-labelledby="h3">
-    <div class="stage-head"><span class="num">03</span><div><h2 id="h3">A rectified pair with known disparity</h2><p>When the epipolar lines are horizontal, a point at (x, y) in the left image appears at (x − d, y) in the right image. The disparity d is large for near surfaces and small for far ones. This pair is a texture pasted onto a known disparity map. Holes left by occlusion are filled from neighboring pixels.</p></div></div>
+    <div class="stage-head"><span class="num">03</span><div><h2 id="h3">A rectified pair with known disparity</h2><p>When the epipolar lines are horizontal, a point at \((x, y)\) in the left image appears at \((x - d, y)\) in the right image. The disparity \(d\) is large for near surfaces and small for far ones. This pair is a texture pasted onto a known disparity map. Holes left by occlusion are filled from neighboring pixels.</p></div></div>
     <div class="controls">
       <div class="ctl"><label>Texture</label><div class="seg" id="tex"><button type="button" data-v="blobs" aria-pressed="true">Blobs</button><button type="button" data-v="dots" aria-pressed="false">Random dots</button><button type="button" data-v="bricks" aria-pressed="false">Bricks</button><button type="button" data-v="scene" aria-pressed="false">Scene</button></div></div>
       <div class="ctl"><label>Surfaces</label><div class="seg" id="dscene"><button type="button" data-v="sphere" aria-pressed="true">Sphere and box</button><button type="button" data-v="steps" aria-pressed="false">Steps</button><button type="button" data-v="slant" aria-pressed="false">Slanted floor</button></div></div>
@@ -113,10 +115,10 @@ td.hi { background: color-mix(in srgb, var(--accent) 14%, transparent); }
       <figure><canvas class="view click" id="mZ"></canvas><figcaption>Depth Z = f B / d (blue = far)</figcaption></figure>
       <figure><canvas class="view click" id="mE"></canvas><figcaption id="mEc">Disparity error (black = 0, white ≥ 3 px)</figcaption></figure>
     </div>
-    <div class="math"><h3>Match scores for a window W around (x, y)</h3>
-      <p class="eq">SSD(d) = Σ_W [ L(x+i, y+j) − R(x−d+i, y+j) ]²        SAD(d) = Σ_W | L − R |</p>
-      <p class="eq">NCC(d) = Σ_W (L − L̄)(R − R̄) / √( Σ_W (L − L̄)² · Σ_W (R − R̄)² )</p>
-      <p>SSD and SAD choose the smallest value. NCC chooses the largest and ignores gain and offset, so it survives a brighter right image. The page refines the winner to sub-pixel precision with a parabola through the three scores around it. With f = 300 px and baseline B = 8 cm, the depth in cm is Z = 2400 / d.</p></div>
+    <div class="math"><h3>Match scores for a window \(W\) around \((x, y)\)</h3>
+      <div class="eqd">\[ \mathrm{SSD}(d) = \sum_{W} \big[ L(x{+}i,\, y{+}j) - R(x{-}d{+}i,\, y{+}j) \big]^2 \qquad \mathrm{SAD}(d) = \sum_{W} \big| L - R \big| \]
+      \[ \mathrm{NCC}(d) = \frac{\sum_{W} (L - \bar L)(R - \bar R)}{\sqrt{\sum_{W} (L - \bar L)^2 \cdot \sum_{W} (R - \bar R)^2}} \]</div>
+      <p>SSD and SAD choose the smallest value. NCC chooses the largest and ignores gain and offset, so it survives a brighter right image. The page refines the winner to sub-pixel precision with a parabola through the three scores around it. With \(f = 300\) px and baseline \(B = 8\) cm, the depth in cm is \(Z = 2400 / d\).</p></div>
   </section>
 
   <section class="stage" aria-labelledby="h5">
@@ -138,7 +140,7 @@ td.hi { background: color-mix(in srgb, var(--accent) 14%, transparent); }
 <script>
 (() => {
 "use strict";
-const { $, nav, footer, hiDPI, onTheme, cssVar, seg, segVal, rng, fmt, imgXY, hsvToRgb, showRGB, toGray, gaussBlur, SAMPLES, sampleCanvas, bilinear, esc } = VB;
+const { $, nav, footer, hiDPI, onTheme, cssVar, seg, segVal, rng, fmt, imgXY, hsvToRgb, showRGB, toGray, gaussBlur, SAMPLES, sampleCanvas, bilinear, esc, tex } = VB;
 nav("uncalibrated-stereo.html"); footer();
 
 /*CORE*/
@@ -291,12 +293,12 @@ function stats() {
   const tag = ea < 1.5 * Math.max(st.sig, 0.1) + 0.05 ? "good" : ea < 4 ? "warn" : "bad";
   $("fStats").innerHTML = `<span class="chip">Mean epipolar error, matches used <b>${f2(eu, 3)} px</b></span><span class="chip">Mean epipolar error, all ${st.vis.length} matches <b>${f2(ea, 3)} px</b></span><span class="chip">True F, same points <b>${f2(et, 3)} px</b></span><span class="tag ${tag}">${tag === "good" ? "close to the noise floor" : tag === "warn" ? "noticeably off" : "badly off"}</span>`;
   const sv = r.sBefore; const det = (() => { const [[a, b, c], [d, e, f], [g, h, i]] = r.F; return a * (e * i - f * h) - b * (d * i - f * g) + c * (d * h - e * g); })();
-  $("fMats").innerHTML = `<div><h4>Estimated F (unit norm)</h4>${matTable(r.F)}</div><div><h4>True F (unit norm)</h4>${matTable(st.tFn)}</div>
-    <div><h4>Singular values of F̂ before the rank step</h4><table class="calc"><tr>${sv.map(v => `<td>${v.toExponential(2)}</td>`).join("")}</tr></table><p class="note" style="margin-top:6px">det F = ${det.toExponential(1)} (zero means rank 2).<br>Smallest eigenvalue of AᵀA: ${r.minEig.toExponential(2)}<br>Jacobi sweeps: ${r.sweeps}</p></div>`;
+  $("fMats").innerHTML = `<div><h4>Estimated ${tex("F")} (unit norm)</h4>${matTable(r.F)}</div><div><h4>True ${tex("F")} (unit norm)</h4>${matTable(st.tFn)}</div>
+    <div><h4>Singular values of ${tex("\\hat F")} before the rank step</h4><table class="calc"><tr>${sv.map(v => `<td>${v.toExponential(2)}</td>`).join("")}</tr></table><p class="note" style="margin-top:6px">${tex("\\det F")} = ${det.toExponential(1)} (zero means rank 2).<br>Smallest eigenvalue of ${tex("A^\\top A")}: ${r.minEig.toExponential(2)}<br>Jacobi sweeps: ${r.sweeps}</p></div>`;
   const x = st.sel, l = lineOf(r.F, x), lt = lineOf(st.tFn, x);
-  let note = ""; if (st.snapped >= 0) { const q = st.xr[st.snapped]; note = `<dt>Snapped to point</dt><dd>#${st.snapped + 1}, left (${f2(st.xl[st.snapped][0], 1)}, ${f2(st.xl[st.snapped][1], 1)}), right (${f2(q[0], 1)}, ${f2(q[1], 1)})</dd><dt>Distance of its match to estimated line</dt><dd>${f2(lineDist(l, q), 3)} px</dd><dt>Distance of its match to true line</dt><dd>${f2(lineDist(lt, q), 3)} px</dd><dt>Algebraic x′ᵀF x</dt><dd>${(l[0] * q[0] + l[1] * q[1] + l[2]).toExponential(2)}</dd>`; }
-  $("eRead").innerHTML = `<h3>Clicked left point (${f2(x[0], 0)}, ${f2(x[1], 0)})</h3><dl><dt>Estimated line l′ = F x</dt><dd>${f2(l[0], 4)} x′ + ${f2(l[1], 4)} y′ + ${f2(l[2], 3)} = 0</dd><dt>True line</dt><dd>${f2(lt[0], 4)} x′ + ${f2(lt[1], 4)} y′ + ${f2(lt[2], 3)} = 0</dd>${note}<dt>Estimated right epipole</dt><dd>${st.epiR ? "(" + f2(st.epiR[0], 0) + ", " + f2(st.epiR[1], 0) + ")" : "at infinity"}</dd></dl>`;
-  $("eStats").innerHTML = `<span class="chip">Mean epipolar error, all matches <b>${f2(ea, 3)} px</b></span><span class="chip">Noise σ <b>${f2(st.sig, 1)} px</b></span><span class="chip">Matches used <b>${n}</b></span>`;
+  let note = ""; if (st.snapped >= 0) { const q = st.xr[st.snapped]; note = `<dt>Snapped to point</dt><dd>#${st.snapped + 1}, left (${f2(st.xl[st.snapped][0], 1)}, ${f2(st.xl[st.snapped][1], 1)}), right (${f2(q[0], 1)}, ${f2(q[1], 1)})</dd><dt>Distance of its match to estimated line</dt><dd>${f2(lineDist(l, q), 3)} px</dd><dt>Distance of its match to true line</dt><dd>${f2(lineDist(lt, q), 3)} px</dd><dt>Algebraic ${tex("\\mathbf{x}'^\\top F\\mathbf{x}")}</dt><dd>${(l[0] * q[0] + l[1] * q[1] + l[2]).toExponential(2)}</dd>`; }
+  $("eRead").innerHTML = `<h3>Clicked left point (${f2(x[0], 0)}, ${f2(x[1], 0)})</h3><dl><dt>Estimated line ${tex("\\mathbf{l}' = F\\mathbf{x}")}</dt><dd>${tex(`${f2(l[0], 4)}\\,x' + ${f2(l[1], 4)}\\,y' + ${f2(l[2], 3)} = 0`)}</dd><dt>True line</dt><dd>${tex(`${f2(lt[0], 4)}\\,x' + ${f2(lt[1], 4)}\\,y' + ${f2(lt[2], 3)} = 0`)}</dd>${note}<dt>Estimated right epipole</dt><dd>${st.epiR ? "(" + f2(st.epiR[0], 0) + ", " + f2(st.epiR[1], 0) + ")" : "at infinity"}</dd></dl>`;
+  $("eStats").innerHTML = `<span class="chip">Mean epipolar error, all matches <b>${f2(ea, 3)} px</b></span><span class="chip">Noise ${tex("\\sigma")} <b>${f2(st.sig, 1)} px</b></span><span class="chip">Matches used <b>${n}</b></span>`;
   $("trueF").innerHTML = matTable(st.tFn);
 }
 function drawAll() { drawImages(); stats(); }
@@ -434,7 +436,7 @@ function curve() {
   const sortd = vals.map((v, d) => [v, d]).sort((a, b) => metric === "ncc" ? b[0] - a[0] : a[0] - b[0]); const second = sortd.find(([, d]) => Math.abs(d - bestInt) > 2), ratio = second ? (metric === "ncc" ? second[0] / sortd[0][0] : sortd[0][0] / Math.max(second[0], 1e-9)) : null;
   const unitName = metric === "ncc" ? "NCC" : metric.toUpperCase() + " (mean per pixel)";
   const amb = second && (metric === "ncc" ? sortd[0][0] - second[0] < 0.05 : second[0] - sortd[0][0] < 0.1 * Math.max(sortd[0][0], 5)) ? '<span class="tag warn">ambiguous: a second dip is nearly as good</span>' : '<span class="tag good">clear minimum</span>';
-  $("cRead").innerHTML = `<h3>Left pixel (${x}, ${y})</h3><dl><dt>Window</dt><dd>${2 * r + 1} × ${2 * r + 1} = ${n} pixels</dd><dt>Chosen disparity</dt><dd>${f2(de, 2)} px (integer winner ${bestInt})</dd><dt>${unitName} there</dt><dd>${f2(at(bestInt), metric === "ncc" ? 3 : 2)}</dd>${dt !== null ? `<dt>True disparity</dt><dd>${f2(dt, 2)} px${P2.mask[i] ? "" : " (occluded in the right image)"}</dd><dt>${unitName} at true d</dt><dd>${f2(at(dt), metric === "ncc" ? 3 : 2)}</dd><dt>Right pixel</dt><dd>x − d = ${f2(x - dt, 1)}</dd>` : ""}<dt>Depth Z = 2400 / d</dt><dd>${de >= 1 ? f2(FB / de, 1) + " cm" : "undefined"}${dt !== null ? ` (true ${f2(FB / dt, 1)} cm)` : ""}</dd></dl><p>${amb}</p>`;
+  $("cRead").innerHTML = `<h3>Left pixel (${x}, ${y})</h3><dl><dt>Window</dt><dd>${2 * r + 1} × ${2 * r + 1} = ${n} pixels</dd><dt>Chosen disparity</dt><dd>${f2(de, 2)} px (integer winner ${bestInt})</dd><dt>${unitName} there</dt><dd>${f2(at(bestInt), metric === "ncc" ? 3 : 2)}</dd>${dt !== null ? `<dt>True disparity</dt><dd>${f2(dt, 2)} px${P2.mask[i] ? "" : " (occluded in the right image)"}</dd><dt>${unitName} at true d</dt><dd>${f2(at(dt), metric === "ncc" ? 3 : 2)}</dd><dt>Right pixel</dt><dd>${tex("x - d")} = ${f2(x - dt, 1)}</dd>` : ""}<dt>Depth ${tex("Z = 2400 / d")}</dt><dd>${de >= 1 ? f2(FB / de, 1) + " cm" : "undefined"}${dt !== null ? ` (true ${f2(FB / dt, 1)} cm)` : ""}</dd></dl><p>${amb}</p>`;
   // patches
   const pr = Math.min(r, 15), side = 2 * pr + 1;
   const patch = (id, arr, cx) => { const c = $(id); c.width = side; c.height = side; const g = c.getContext("2d"), im = g.createImageData(side, side); for (let j = -pr; j <= pr; j++) for (let k = -pr; k <= pr; k++) { const xx = Math.max(0, Math.min(PW - 1, cx + k)), yy = Math.max(0, Math.min(PH - 1, y + j)), v = arr[yy * PW + xx], o = 4 * ((j + pr) * side + k + pr); im.data[o] = im.data[o + 1] = im.data[o + 2] = v; im.data[o + 3] = 255; } g.putImageData(im, 0, 0); };

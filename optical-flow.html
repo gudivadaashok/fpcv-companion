@@ -7,7 +7,9 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,500;8..60,600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="vendor/katex/katex.min.css">
 <link rel="stylesheet" href="site.css">
+<script src="vendor/katex/katex.min.js"></script>
 <style>#wheel { width: 84px; height: 84px; flex: none; }</style>
 </head>
 <body>
@@ -33,7 +35,7 @@
   </section>
 
   <section class="stage" aria-labelledby="h1">
-    <div class="stage-head"><span class="num">01</span><div><h2 id="h1">Two frames</h2><p>Brightness constancy assumes a moving point keeps its brightness: <i>I</i>(<i>x</i> + <i>u</i>, <i>y</i> + <i>v</i>, <i>t</i> + 1) = <i>I</i>(<i>x</i>, <i>y</i>, <i>t</i>). The flicker view swaps between frames so you can see the motion.</p></div></div>
+    <div class="stage-head"><span class="num">01</span><div><h2 id="h1">Two frames</h2><p>Brightness constancy assumes a moving point keeps its brightness: \(I(x + u,\, y + v,\, t + 1) = I(x, y, t)\). The flicker view swaps between frames so you can see the motion.</p></div></div>
     <div class="three">
       <figure><canvas class="view" id="f1"></canvas><figcaption>Frame 1, time t</figcaption></figure>
       <figure><canvas class="view" id="f2"></canvas><figcaption>Frame 2, time t + 1</figcaption></figure>
@@ -42,7 +44,7 @@
   </section>
 
   <section class="stage" aria-labelledby="h2">
-    <div class="stage-head"><span class="num">02</span><div><h2 id="h2">Estimated flow</h2><p>Lucas–Kanade assumes all pixels in a small window move together and solves for the single (<i>u</i>, <i>v</i>) that best fits them. A coarse-to-fine pyramid handles motions larger than a pixel or two. Click the arrows to look inside a window.</p></div></div>
+    <div class="stage-head"><span class="num">02</span><div><h2 id="h2">Estimated flow</h2><p>Lucas–Kanade assumes all pixels in a small window move together and solves for the single \((u, v)\) that best fits them. A coarse-to-fine pyramid handles motions larger than a pixel or two. Click the arrows to look inside a window.</p></div></div>
     <div class="controls">
       <div class="ctl"><label for="win">Window</label><input type="range" id="win" min="1" max="10" value="5"><output id="winO"></output></div>
       <div class="ctl"><label for="lev">Pyramid levels</label><input type="range" id="lev" min="1" max="5" value="4"><output id="levO"></output></div>
@@ -58,15 +60,14 @@
   </section>
 
   <section class="stage" aria-labelledby="h3">
-    <div class="stage-head"><span class="num">03</span><div><h2 id="h3">Inside one window</h2><p>Each pixel gives one equation, <i>I<sub>x</sub>u</i> + <i>I<sub>y</sub>v</i> + <i>I<sub>t</sub></i> = 0, which is a line in the (<i>u</i>, <i>v</i>) plane. One line alone cannot pin down the motion. Lucas–Kanade finds the point closest to all lines in the window.</p></div></div>
+    <div class="stage-head"><span class="num">03</span><div><h2 id="h3">Inside one window</h2><p>Each pixel gives one equation, \(I_x u + I_y v + I_t = 0\), which is a line in the \((u, v)\) plane. One line alone cannot pin down the motion. Lucas–Kanade finds the point closest to all lines in the window.</p></div></div>
     <div class="main-side">
       <figure><canvas class="plot" id="uv" style="height:380px"></canvas><figcaption><span class="legend"><span><i style="background:var(--accent)"></i>One line per pixel</span><span><i style="background:#16a34a"></i>True motion</span><span><i style="background:#e11d48"></i>Least-squares answer (one level)</span><span><i style="background:#f59e0b"></i>Pyramid answer</span></span></figcaption></figure>
       <div class="math" id="winRead"></div>
     </div>
     <div class="math"><h3>The least-squares solution</h3>
-      <p class="eq">[ ΣIₓ²   ΣIₓI_y ] [u]     [ ΣIₓI_t ]</p>
-      <p class="eq">[ ΣIₓI_y  ΣI_y² ] [v] = − [ ΣI_yI_t ]</p>
-      <p>The 2×2 matrix on the left describes the texture in the window. If both of its eigenvalues are large (a corner or texture), the lines cross at a clear point. If one is near zero (a straight edge), all lines are parallel and only motion across the edge can be measured. This is the <b>aperture problem</b>. If both are small (a flat region), nothing can be measured.</p></div>
+      <div class="eqd">\[ \begin{bmatrix} \sum I_x^2 & \sum I_x I_y \\ \sum I_x I_y & \sum I_y^2 \end{bmatrix} \begin{bmatrix} u \\ v \end{bmatrix} = - \begin{bmatrix} \sum I_x I_t \\ \sum I_y I_t \end{bmatrix} \]</div>
+      <p>The \(2 \times 2\) matrix on the left describes the texture in the window. If both of its eigenvalues are large (a corner or texture), the lines cross at a clear point. If one is near zero (a straight edge), all lines are parallel and only motion across the edge can be measured. This is the <b>aperture problem</b>. If both are small (a flat region), nothing can be measured.</p></div>
   </section>
 </main>
 <footer class="wrap site"></footer>
@@ -75,7 +76,7 @@
 <script>
 (() => {
 "use strict";
-const { $, nav, footer, SAMPLES, picker, toGray, show, showRGB, gaussBlur, boxSum, bilinear, imgXY, hiDPI, onTheme, cssVar, seg, segVal, rng, hsvToRgb, arrow, fmt } = VB;
+const { $, nav, footer, SAMPLES, picker, toGray, show, showRGB, gaussBlur, boxSum, bilinear, imgXY, hiDPI, onTheme, cssVar, seg, segVal, rng, hsvToRgb, arrow, fmt, tex } = VB;
 nav("optical-flow.html"); footer();
 const st = { w: 0, h: 0, a: null, b: null, tu: null, tv: null, u: null, v: null, l1: null, l2: null, sel: null };
 
@@ -181,7 +182,7 @@ function drawUV() {
   const t2 = (a + c) / 2, dq = Math.sqrt(((a - c) / 2) ** 2 + b * b); const l1 = t2 + dq, l2 = t2 - dq; let lm = 0; for (const l of st.l1) lm = Math.max(lm, l);
   const kind = l1 < lm * 0.01 ? ['<span class="tag bad">flat</span>', "Almost no texture: every equation is near zero and the motion can't be measured."] : l2 < l1 * 0.05 ? ['<span class="tag warn">edge</span>', "One strong direction: the lines are nearly parallel. Only motion across the edge is known. This is the aperture problem."] : ['<span class="tag good">corner / texture</span>', "Gradients in many directions: the lines cross at a well-defined point."];
   $("winRead").innerHTML = `<h3>Window at (${x0}, ${y0}) ${kind[0]}</h3><p>${kind[1]}</p>
-  <dl class="detail" style="display:grid;grid-template-columns:auto 1fr;gap:3px 12px;margin:0"><dt>Pixels (lines)</dt><dd class="mono">${rows.length}</dd><dt>Eigenvalues</dt><dd class="mono">λ₁ = ${fmt(l1, 0)}, λ₂ = ${fmt(l2, 0)}</dd><dt>True (u, v)</dt><dd class="mono">(${fmt(tr[0], 2)}, ${fmt(tr[1], 2)})</dd><dt>One level</dt><dd class="mono">${ls ? `(${fmt(ls[0], 2)}, ${fmt(ls[1], 2)})` : "can't be solved"}</dd><dt>Pyramid</dt><dd class="mono">(${fmt(py[0], 2)}, ${fmt(py[1], 2)})</dd></dl>
+  <dl class="detail" style="display:grid;grid-template-columns:auto 1fr;gap:3px 12px;margin:0"><dt>Pixels (lines)</dt><dd class="mono">${rows.length}</dd><dt>Eigenvalues</dt><dd class="mono">${tex(`\\lambda_1 = ${fmt(l1, 0)},\\; \\lambda_2 = ${fmt(l2, 0)}`)}</dd><dt>True ${tex("(u, v)")}</dt><dd class="mono">(${fmt(tr[0], 2)}, ${fmt(tr[1], 2)})</dd><dt>One level</dt><dd class="mono">${ls ? `(${fmt(ls[0], 2)}, ${fmt(ls[1], 2)})` : "can't be solved"}</dd><dt>Pyramid</dt><dd class="mono">(${fmt(py[0], 2)}, ${fmt(py[1], 2)})</dd></dl>
   <p class="note">The equation is a first-order Taylor approximation, so it only holds for motion of about a pixel. When the true motion is larger, the single-level answer misses badly and the lines scatter. The pyramid fixes this by solving on smaller copies of the image first, where the motion is smaller.</p>`;
   drawQuiver();
 }
