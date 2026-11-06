@@ -91,3 +91,7 @@ Keep notation and terminology consistent with the lectures.
 The concepts, notation and structure follow **First Principles of Computer Vision** by **Shree Nayar**, Columbia University. Watch the lectures at [fpcv.cs.columbia.edu](https://fpcv.cs.columbia.edu/) or on the [FPCV YouTube channel](https://www.youtube.com/channel/UCf0WB91t8Ky6AuYcQV0CcLw).
 
 This is an independent project, not affiliated with or endorsed by Columbia University or the FPCV team.
+
+## License
+
+The code in this repository is released under the [MIT License](LICENSE). The license covers the code only. The lectures, and the course's own materials and name, belong to their authors.
