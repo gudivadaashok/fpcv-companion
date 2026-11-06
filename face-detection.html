@@ -7,7 +7,9 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,500;8..60,600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="vendor/katex/katex.min.css">
 <link rel="stylesheet" href="site.css">
+<script src="vendor/katex/katex.min.js"></script>
 <style>
 .figbox { max-width: 340px; }
 .seg { flex-wrap: wrap; max-width: 100%; }
@@ -63,13 +65,13 @@ table.calc td.dim { color: var(--muted); }
       <div style="display:grid;gap:12px;align-content:start">
         <div class="stats" id="fStats"></div>
         <div class="calcl" id="fCalc"></div>
-        <div class="math"><h3>Why these three types</h3><p>A 2-rectangle feature measures an edge (eyes against cheeks). A 3-rectangle feature measures a bar (the bright nose bridge between two dark eyes). A 4-rectangle feature measures a diagonal pattern. Each is <i>f</i> = Σ<sub>white</sub> I − Σ<sub>black</sub> I, with equal white and black areas so a flat patch gives 0.</p><p>The normalized value divides by <i>s</i>²<i>σ</i>, where <i>s</i> is the window side and <i>σ</i> its standard deviation. That cancels the window's brightness and contrast, so a feature means the same in a dim or a bright photo. Windows with <i>σ</i> &lt; 2 are flat and report 0.</p></div>
+        <div class="math"><h3>Why these three types</h3><p>A 2-rectangle feature measures an edge (eyes against cheeks). A 3-rectangle feature measures a bar (the bright nose bridge between two dark eyes). A 4-rectangle feature measures a diagonal pattern. Each is \(f = \sum_{\text{white}} I - \sum_{\text{black}} I\), with equal white and black areas so a flat patch gives 0.</p><p>The normalized value divides by \(s^2\sigma\), where \(s\) is the window side and \(\sigma\) its standard deviation. That cancels the window's brightness and contrast, so a feature means the same in a dim or a bright photo. Windows with \(\sigma &lt; 2\) are flat and report 0.</p></div>
       </div>
     </div>
   </section>
 
   <section class="stage" aria-labelledby="h2">
-    <div class="stage-head"><span class="num">02</span><div><h2 id="h2">Integral image</h2><p>The integral image <i>S</i>(<i>x</i>,<i>y</i>) holds the sum of all pixels above and to the left. After one pass over the image, any rectangle sum costs four lookups: <i>A</i> + <i>D</i> − <i>B</i> − <i>C</i>. Drag on the small image, or use the sliders.</p></div></div>
+    <div class="stage-head"><span class="num">02</span><div><h2 id="h2">Integral image</h2><p>The integral image \(S(x,y) = \sum_{x'\le x,\,y'\le y} I(x',y')\) holds the sum of all pixels above and to the left. After one pass over the image, any rectangle sum costs four lookups: \(D - B - C + A\). Drag on the small image, or use the sliders.</p></div></div>
     <div class="controls">
       <div class="ctl"><label for="rx">Left</label><input type="range" id="rx" min="0" max="11" step="1" value="2"><output id="rxO">2</output></div>
       <div class="ctl"><label for="ry">Top</label><input type="range" id="ry" min="0" max="11" step="1" value="3"><output id="ryO">3</output></div>
@@ -77,8 +79,8 @@ table.calc td.dim { color: var(--muted); }
       <div class="ctl"><label for="rh">Height</label><input type="range" id="rh" min="1" max="12" step="1" value="4"><output id="rhO">4</output></div>
     </div>
     <div class="two">
-      <div><p class="note"><b>Image</b> <i>I</i> (12×12, values 0 to 9)</p><div class="tbl"><table class="calc tiny" id="toy" aria-label="Toy image, drag to select a rectangle"></table></div></div>
-      <div><p class="note"><b>Integral image</b> <i>S</i> (13×13, with a zero row and column)</p><div class="tbl"><table class="calc tiny" id="toyS" aria-label="Integral image of the toy image"></table></div></div>
+      <div><p class="note"><b>Image</b> \(I\) (12×12, values 0 to 9)</p><div class="tbl"><table class="calc tiny" id="toy" aria-label="Toy image, drag to select a rectangle"></table></div></div>
+      <div><p class="note"><b>Integral image</b> \(S\) (13×13, with a zero row and column)</p><div class="tbl"><table class="calc tiny" id="toyS" aria-label="Integral image of the toy image"></table></div></div>
     </div>
     <div class="stats" id="sStats"></div>
     <div class="calcl" id="sCalc"></div>
@@ -102,8 +104,8 @@ table.calc td.dim { color: var(--muted); }
     </div>
     <div class="calcl" id="ptRead" aria-live="polite">Click the plot, or use the sliders and Add test point.</div>
     <div class="two">
-      <div class="math"><h3>Nearest neighbor</h3><p>Standardize each feature, then find the <i>k</i> closest training windows of each class. With <i>d</i><sub>+</sub> the mean distance to the face neighbors and <i>d</i><sub>−</sub> to the non-face neighbors, the score is (<i>d</i><sub>−</sub> − <i>d</i><sub>+</sub>)/(<i>d</i><sub>−</sub> + <i>d</i><sub>+</sub>). Positive means face. It needs all 400 training vectors at test time.</p></div>
-      <div class="math"><h3>Linear SVM</h3><p>Find the line <i>w</i>·<i>x</i> + <i>b</i> = 0 that separates the classes with the widest margin by minimizing <i>λ</i>/2 |<i>w</i>|² + mean max(0, 1 − <i>y</i>(<i>w</i>·<i>x</i> + <i>b</i>)). Only the support vectors, which sit on or inside the margin lines, matter. Testing is one dot product.</p></div>
+      <div class="math"><h3>Nearest neighbor</h3><p>Standardize each feature, then find the \(k\) closest training windows of each class. With \(d_+\) the mean distance to the face neighbors and \(d_-\) to the non-face neighbors, the score is \(\dfrac{d_- - d_+}{d_- + d_+}\). Positive means face. It needs all 400 training vectors at test time.</p></div>
+      <div class="math"><h3>Linear SVM</h3><p>Find the line \(\mathbf{w}^\top\mathbf{x}+b=0\) that separates the classes with the widest margin by minimizing \(\tfrac{\lambda}{2}\lVert\mathbf{w}\rVert^2 + \operatorname{mean}\max\!\big(0,\,1 - y(\mathbf{w}^\top\mathbf{x}+b)\big)\). Only the support vectors, which sit on or inside the margin lines, matter. Testing is one dot product.</p></div>
     </div>
   </section>
 
@@ -119,14 +121,16 @@ table.calc td.dim { color: var(--muted); }
     <div class="controls">
       <div class="ctl"><label for="scaleIdx">View scale</label><input type="range" id="scaleIdx" min="0" max="0" step="1" value="0"><output id="scaleIdxO"></output></div>
       <div class="ctl"><label for="pos">Window along scan order</label><input type="range" id="pos" min="0" max="0" step="1" value="0"><output id="posO"></output></div>
+      <div class="ctl"><button type="button" class="btn" id="playScan" aria-pressed="false">Play scan</button></div>
     </div>
     <div class="two">
-      <figure><canvas class="scan" id="scanView" role="img" aria-label="The image with the current scan window outlined"></canvas><figcaption>The scanned window (amber outline).</figcaption></figure>
+      <figure><canvas class="scan" id="scanView" role="img" aria-label="The image with the current scan window outlined"></canvas><figcaption>The scanned window (amber outline). Hover or drag over either image to move the window; scroll to change scale; click to pin.</figcaption></figure>
       <figure><canvas class="scan" id="heatView" role="img" aria-label="Heat map of window scores at the selected scale"></canvas><figcaption>Score of every window at this scale. <b style="color:#e08a1e">Warm</b>: face-like. <b style="color:#5b8fd9">Cool</b>: not.</figcaption></figure>
     </div>
+    <p class="note" id="ptrRead" role="status" aria-live="polite"></p>
     <div class="winl" id="winRead"></div>
     <div class="stats" id="cntStats"></div>
-    <div class="math"><h3>How many windows</h3><p>With image width <i>W</i>, height <i>H</i>, window side <i>s</i> and stride <i>t</i>, the window can start at <i>n<sub>x</sub></i> = ⌊(<i>W</i> − <i>s</i>)/<i>t</i>⌋ + 1 columns and <i>n<sub>y</sub></i> = ⌊(<i>H</i> − <i>s</i>)/<i>t</i>⌋ + 1 rows. The sizes are <i>s<sub>i</sub></i> = round(base · step<sup><i>i</i></sup>) while <i>s<sub>i</sub></i> ≤ min(<i>W</i>, <i>H</i>). The total is Σ<sub><i>i</i></sub> <i>n<sub>x</sub></i><i>n<sub>y</sub></i>.</p><div class="tbl" id="cntTable"></div></div>
+    <div class="math"><h3>How many windows</h3><p>With image width \(W\), height \(H\), window side \(s\) and stride \(t\), the window can start at \(n_x = \lfloor (W-s)/t \rfloor + 1\) columns and \(n_y = \lfloor (H-s)/t \rfloor + 1\) rows. The sizes are \(s_i = \operatorname{round}(\text{base}\cdot\text{step}^{i})\) while \(s_i \le \min(W,H)\). The total is \(\sum_i n_x n_y\).</p><div class="tbl" id="cntTable"></div></div>
   </section>
 
   <section class="stage" aria-labelledby="h5">
@@ -140,7 +144,7 @@ table.calc td.dim { color: var(--muted); }
     <div class="stats" id="detStats"></div>
     <div class="two">
       <div class="math"><h3>Threshold and neighbors</h3><p>A low threshold catches faces that fit the window poorly but admits false alarms. A high one is clean but can miss faces. A real face fires several windows (neighbors in position and scale) while a false alarm is usually isolated, so a cluster needs at least the minimum number of neighbors to survive.</p></div>
-      <div class="math"><h3>Merging and cost</h3><p>Hits whose boxes overlap with intersection over union ≥ 0.3 join the cluster of the best-scoring hit, and the output box is the score-weighted average. The integral image makes each window cost a few dozen reads regardless of size. As a one-line early rejection note: most windows can be dismissed after the first feature alone, and the chip below counts how many.</p></div>
+      <div class="math"><h3>Merging and cost</h3><p>Hits whose boxes overlap with intersection over union \(\ge 0.3\) join the cluster of the best-scoring hit, and the output box is the score-weighted average. The integral image makes each window cost a few dozen reads regardless of size. As a one-line early rejection note: most windows can be dismissed after the first feature alone, and the chip below counts how many.</p></div>
     </div>
   </section>
 </main>
@@ -150,7 +154,7 @@ table.calc td.dim { color: var(--muted); }
 <script>
 (() => {
 "use strict";
-const { $, nav, footer, picker, SAMPLES, sampleCanvas, rng, toGray, show, sized, hiDPI, onTheme, seg, setSeg, segVal, fmt, esc, cssVar } = VB;
+const { $, nav, footer, picker, SAMPLES, sampleCanvas, rng, toGray, show, sized, hiDPI, onTheme, seg, setSeg, segVal, fmt, esc, cssVar, tex, mathRows } = VB;
 nav("face-detection.html"); footer();
 const deb = (f, ms = 50) => { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => f(...a), ms); }; };
 const clamp = (v, lo, hi) => v < lo ? lo : v > hi ? hi : v;
@@ -388,7 +392,10 @@ function drawPatch() {
   for (const q of featRects()) { c.fillStyle = q[4] > 0 ? "rgba(255,255,255,0.6)" : "rgba(0,0,0,0.6)"; c.fillRect(q[0] * PZ, q[1] * PZ, (q[2] - q[0]) * PZ, (q[3] - q[1]) * PZ); c.strokeStyle = q[4] > 0 ? "#fff" : "#000"; c.lineWidth = 1.5; c.strokeRect(q[0] * PZ + 0.5, q[1] * PZ + 0.5, (q[2] - q[0]) * PZ - 1, (q[3] - q[1]) * PZ - 1); }
   const f = featValue();
   $("fStats").innerHTML = `<span class="chip">White sum <b>${fmt(f.white, 0)}</b></span><span class="chip">Black sum <b>${fmt(f.black, 0)}</b></span><span class="chip">Value <b>${fmt(f.value, 0)}</b></span><span class="chip">Normalized <b>${fmt(f.norm, 3)}</b></span>`;
-  $("fCalc").innerHTML = `white − black = <b>${fmt(f.white, 0)}</b> − <b>${fmt(f.black, 0)}</b> = <b>${fmt(f.value, 0)}</b><br>normalized = value / (24² · σ) = ${fmt(f.value, 0)} / (576 · ${fmt(f.sigma, 1)}) = <b>${fmt(f.norm, 3)}</b>` + (f.sigma < 2 ? "<br>The patch is flat (σ &lt; 2), so the value is reported as 0." : "");
+  mathRows($("fCalc"), [
+    { label: "Feature value", tex: `f = \\sum_{\\text{white}} I - \\sum_{\\text{black}} I = ${fmt(f.white, 0)} - ${fmt(f.black, 0)}`, value: fmt(f.value, 0) },
+    { label: "Normalized", tex: `\\frac{f}{24^2\\,\\sigma} = \\frac{${fmt(f.value, 0)}}{576 \\cdot ${fmt(f.sigma, 1)}}`, value: fmt(f.norm, 3) },
+  ], f.sigma < 2 ? `The patch is flat (${tex("\\sigma < 2")}), so the value is reported as 0.` : "");
 }
 function syncFeat() {
   const f = st.f; f.w = clamp(f.w, 2, 24); f.h = clamp(f.h, 2, 24); f.x = clamp(f.x, 0, 24 - 2); f.y = clamp(f.y, 0, 24 - 2);
@@ -427,7 +434,10 @@ function drawToy() {
   let direct = 0; for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) direct += toy.a[y * 12 + x];
   const viaI = D - B - C + A, ok = viaI === direct, n = sel.w * sel.h;
   $("sStats").innerHTML = `<span class="chip">Rectangle <b>${sel.w} × ${sel.h}</b></span><span class="chip">Integral-image sum <b>${viaI}</b></span><span class="chip">Brute-force sum <b>${direct}</b></span><span class="tag ${ok ? "good" : "bad"}">${ok ? "match" : "mismatch"}</span><span class="chip">${sel.w} × ${sel.h} = <b>${n}</b> reads vs <b>4</b></span>`;
-  $("sCalc").innerHTML = `<i>A</i> = S(${x0},${y0}) = <b>${A}</b>, <i>B</i> = S(${x1},${y0}) = <b>${B}</b>, <i>C</i> = S(${x0},${y1}) = <b>${C}</b>, <i>D</i> = S(${x1},${y1}) = <b>${D}</b> (the highlighted cells)<br><i>D</i> − <i>B</i> − <i>C</i> + <i>A</i> = ${D} − ${B} − ${C} + ${A} = <b>${viaI}</b>. Any rectangle: 4 reads, regardless of size.`;
+  mathRows($("sCalc"), [
+    { label: "Corners", tex: `A = S(${x0},${y0}) = ${A},\\; B = S(${x1},${y0}) = ${B},\\; C = S(${x0},${y1}) = ${C},\\; D = S(${x1},${y1}) = ${D}` },
+    { label: "Rectangle sum", tex: `D - B - C + A = ${D} - ${B} - ${C} + ${A}`, value: `${viaI}` },
+  ], "The corners are the highlighted cells. Any rectangle: 4 reads, regardless of size.");
 }
 for (const [id, k] of [["rx", "x"], ["ry", "y"], ["rw", "w"], ["rh", "h"]]) $(id).addEventListener("input", e => { sel[k] = +e.target.value; drawToy(); });
 {
@@ -509,7 +519,7 @@ function drawScatter() {
   const last = st.pts[st.pts.length - 1];
   if (last) {
     const s = scoreAt2(m, last.a, last.b), v = new Float32Array(NF); v[st.fa] = last.a; v[st.fb] = last.b;
-    $("ptRead").innerHTML = `Test point (${fmt(last.a, 3)}, ${fmt(last.b, 3)}) is labeled <b>${s > 0 ? "face" : "non-face"}</b> by ${m.kind === "svm" ? "the linear SVM" : "nearest neighbor (k = " + st.k + ")"}, score <b>${fmt(s, 3)}</b>` + (m.kind === "svm" ? `, margin <i>w</i>·<i>x</i> + <i>b</i> = <b>${fmt(margin(m, v), 3)}</b>` : "") + `. ${st.pts.length} test point${st.pts.length > 1 ? "s" : ""} on the plot.`;
+    $("ptRead").innerHTML = `Test point (${fmt(last.a, 3)}, ${fmt(last.b, 3)}) is labeled <b>${s > 0 ? "face" : "non-face"}</b> by ${m.kind === "svm" ? "the linear SVM" : "nearest neighbor (k = " + st.k + ")"}, score <b>${fmt(s, 3)}</b>` + (m.kind === "svm" ? `, margin ${tex("\\mathbf{w}^\\top\\mathbf{x}+b")} = <b>${fmt(margin(m, v), 3)}</b>` : "") + `. ${st.pts.length} test point${st.pts.length > 1 ? "s" : ""} on the plot.`;
   }
   $("kBox").style.display = st.clf === "nn" ? "" : "none";
   cv._geom = { ax, ay, pw, ph };
@@ -594,7 +604,7 @@ function draw04() {
   $("winMinO").textContent = $("winMin").value + " px"; $("stepO").textContent = (+$("step").value).toFixed(2); $("strideO").textContent = $("stride").value + " px" + (res.raised ? ` (used ${res.stride})` : "");
   if (!nsc) { paintBase($("scanView")); paintBase($("heatView")); $("cntStats").innerHTML = `<span class="chip">Base window is larger than the image: <b>0</b> windows</span>`; $("cntTable").innerHTML = ""; $("winRead").textContent = ""; $("scaleIdxO").textContent = "-"; $("posO").textContent = "-"; return; }
   const sc = res.scales[st.view.scale], cnt = sc.nx * sc.ny; st.view.pos = clamp(st.view.pos, 0, cnt - 1);
-  $("pos").max = cnt - 1; $("pos").value = st.view.pos; $("scaleIdxO").textContent = `${st.view.scale + 1} of ${nsc} (${sc.s} px)`; $("posO").textContent = `${st.view.pos + 1} of ${cnt}`;
+  $("pos").max = cnt - 1; $("pos").value = st.view.pos; $("scaleIdx").value = st.view.scale; $("scaleIdxO").textContent = `${st.view.scale + 1} of ${nsc} (${sc.s} px)`; $("posO").textContent = `${st.view.pos + 1} of ${cnt}`;
   const ix = st.view.pos % sc.nx, iy = Math.floor(st.view.pos / sc.nx), x = ix * res.stride, y = iy * res.stride;
   let c = paintBase($("scanView")); c.strokeStyle = AMBER; c.lineWidth = 2; c.strokeRect(x * Z + 1, y * Z + 1, sc.s * Z - 2, sc.s * Z - 2);
   c.fillStyle = AMBER; c.fillRect((x + sc.s / 2) * Z - 2, (y + sc.s / 2) * Z - 2, 4, 4);
@@ -605,13 +615,49 @@ function draw04() {
   c.strokeStyle = AMBER; c.lineWidth = 1; c.strokeRect((x + sc.s / 2) * Z - 2, (y + sc.s / 2) * Z - 2, 4, 4);
   // window readout
   const sc0 = sc.score[st.view.pos], vv = featureVector(st.I, st.I2, st.w + 1, x, y, sc.s);
+  $("ptrRead").textContent = `Window ${st.view.pos + 1} of ${cnt} at scale ${st.view.scale + 1} (${sc.s} px): score ${fmt(sc0, 3)}, ${sc0 > 0 ? "face" : "not a face"}${st.view.pinned ? " (pinned; hover to release)" : ""}`;
   $("winRead").innerHTML = `Window at (<b>${x}</b>, <b>${y}</b>), side <b>${sc.s}</b> px. Features: ${[...vv].map((q, j) => `<b>${fmt(q, 2)}</b>`).join(" ")}. Score <b>${fmt(sc0, 3)}</b>${sc0 === -1 ? " (rejected early or flat)" : ""}`;
   $("cntStats").innerHTML = `<span class="chip">Image <b>${st.w} × ${st.h}</b></span><span class="chip">Scales <b>${nsc}</b></span><span class="chip">Total windows <b>${res.total.toLocaleString()}</b></span><span class="chip">Stride <b>${res.stride} px</b></span>`;
-  $("cntTable").innerHTML = `<table class="calc"><tbody><tr><td class="dim">scale</td><td class="dim"><i>s</i></td><td class="dim"><i>n<sub>x</sub></i> = ⌊(${st.w} − <i>s</i>)/${res.stride}⌋ + 1</td><td class="dim"><i>n<sub>y</sub></i> = ⌊(${st.h} − <i>s</i>)/${res.stride}⌋ + 1</td><td class="dim">windows</td></tr>` + res.scales.map((q, i) => `<tr${i === st.view.scale ? ' class="sel"' : ""}><td>${i + 1}</td><td>${q.s}</td><td>${q.nx}</td><td>${q.ny}</td><td>${(q.nx * q.ny).toLocaleString()}</td></tr>`).join("") + `<tr><td colspan="4"><b>total</b></td><td><b>${res.total.toLocaleString()}</b></td></tr></tbody></table>`;
+  $("cntTable").innerHTML = `<table class="calc"><tbody><tr><td class="dim">scale</td><td class="dim">${tex("s")}</td><td class="dim">${tex(`n_x = \\lfloor (${st.w} - s)/${res.stride} \\rfloor + 1`)}</td><td class="dim">${tex(`n_y = \\lfloor (${st.h} - s)/${res.stride} \\rfloor + 1`)}</td><td class="dim">windows</td></tr>` + res.scales.map((q, i) => `<tr${i === st.view.scale ? ' class="sel"' : ""}><td>${i + 1}</td><td>${q.s}</td><td>${q.nx}</td><td>${q.ny}</td><td>${(q.nx * q.ny).toLocaleString()}</td></tr>`).join("") + `<tr><td colspan="4"><b>total</b></td><td><b>${res.total.toLocaleString()}</b></td></tr></tbody></table>`;
 }
 for (const id of ["winMin", "step", "stride"]) $(id).addEventListener("input", () => { $("winMinO").textContent = $("winMin").value + " px"; $("stepO").textContent = (+$("step").value).toFixed(2); $("strideO").textContent = $("stride").value + " px"; st.view.pos = 0; requestScan(); });
 $("scaleIdx").addEventListener("input", e => { st.view.scale = +e.target.value; st.view.pos = 0; draw04(); });
 $("pos").addEventListener("input", e => { st.view.pos = +e.target.value; draw04(); });
+
+// direct manipulation: hover/drag moves the window, wheel changes scale, click pins
+{
+  const cvs = [$("scanView"), $("heatView")]; let raf = 0, want = null, down = false, wheelAcc = 0, playT = 0;
+  const reduce = window.matchMedia("(prefers-reduced-motion: reduce)");
+  const setCenter = (cx, cy) => { const res = st.sc; if (!res || !res.scales.length) return; const sc = res.scales[st.view.scale];
+    const ix = clamp(Math.round((cx - sc.s / 2) / res.stride), 0, sc.nx - 1), iy = clamp(Math.round((cy - sc.s / 2) / res.stride), 0, sc.ny - 1); st.view.pos = iy * sc.nx + ix; };
+  const sched = () => { if (!raf) raf = requestAnimationFrame(() => { raf = 0; if (want) { setCenter(want[0], want[1]); want = null; } draw04(); }); };
+  const stopPlay = () => { if (playT) { clearInterval(playT); playT = 0; } $("playScan").textContent = "Play scan"; $("playScan").setAttribute("aria-pressed", "false"); };
+  const at = (e, cv) => VB.imgXY(e, cv, st.w, st.h);
+  for (const cv of cvs) {
+    cv.style.cursor = "crosshair"; cv.style.touchAction = "none";
+    cv.addEventListener("pointerenter", e => { if (e.pointerType === "mouse" && !down) { st.view.pinned = false; } });
+    cv.addEventListener("pointerdown", e => { down = true; stopPlay(); st.view.pinned = false; try { cv.setPointerCapture(e.pointerId); } catch (_) {} want = at(e, cv); sched(); });
+    cv.addEventListener("pointermove", e => { if (st.view.pinned && !down) return; want = at(e, cv); sched(); });
+    const up = () => { if (down) { down = false; st.view.pinned = true; sched(); } };
+    cv.addEventListener("pointerup", up); cv.addEventListener("pointercancel", up);
+    cv.addEventListener("wheel", e => {
+      const res = st.sc; if (!res || res.scales.length < 2) return; e.preventDefault(); stopPlay();
+      wheelAcc += e.deltaY; if (Math.abs(wheelAcc) < 40) return; const dir = wheelAcc < 0 ? 1 : -1; wheelAcc = 0;
+      const old = res.scales[st.view.scale], ix = st.view.pos % old.nx, iy = Math.floor(st.view.pos / old.nx);
+      const cx = ix * res.stride + old.s / 2, cy = iy * res.stride + old.s / 2, ns = clamp(st.view.scale + dir, 0, res.scales.length - 1);
+      if (ns === st.view.scale) return; st.view.scale = ns; setCenter(cx, cy); sched();
+    }, { passive: false });
+  }
+  const play = $("playScan");
+  if (reduce.matches) { play.disabled = true; play.title = "Disabled because reduced motion is requested"; }
+  play.addEventListener("click", () => {
+    if (playT) { stopPlay(); return; }
+    st.view.pinned = false; play.textContent = "Pause scan"; play.setAttribute("aria-pressed", "true");
+    playT = setInterval(() => { const res = st.sc; if (!res || !res.scales.length) return; const sc = res.scales[st.view.scale], cnt = sc.nx * sc.ny; st.view.pos = (st.view.pos + Math.max(1, Math.ceil(cnt / 240))) % cnt; sched(); }, 50);
+  });
+  for (const id of ["winMin", "step", "stride", "scaleIdx", "pos", "clf4"]) $(id).addEventListener("input", stopPlay);
+  $("clf4").addEventListener("click", stopPlay);
+}
 
 /* ================= 05: detections ================= */
 function iou(a, b) { const x0 = Math.max(a.x, b.x), y0 = Math.max(a.y, b.y), x1 = Math.min(a.x + a.s, b.x + b.s), y1 = Math.min(a.y + a.s, b.y + b.s), i = Math.max(0, x1 - x0) * Math.max(0, y1 - y0); return i / (a.s * a.s + b.s * b.s - i); }
