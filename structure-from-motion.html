@@ -10,7 +10,6 @@
 <link rel="stylesheet" href="site.css">
 <style>
 #vid { background: var(--stage); cursor: crosshair; touch-action: none; }
-#view3d { cursor: grab; touch-action: none; }
 .scrub { width: 220px; }
 .mx { display: inline-grid; grid-template-columns: repeat(3, auto); gap: 2px 10px; font: 0.82rem var(--mono); font-variant-numeric: tabular-nums; }
 .pair { display: flex; flex-wrap: wrap; gap: 18px; align-items: flex-start; }
@@ -75,14 +74,14 @@
   </section>
 
   <section class="stage" aria-labelledby="h4">
-    <div class="stage-head"><span class="num">04</span><div><h2 id="h4">Recovered shape against the truth</h2><p>The recovered shape lives in its own arbitrary frame. A Procrustes step finds the best rotation to line it up with the true shape. Drag to rotate the view. Click a point to select it.</p></div></div>
+    <div class="stage-head"><span class="num">04</span><div><h2 id="h4">Recovered shape against the truth</h2><p>The recovered shape lives in its own arbitrary frame. A Procrustes step finds the best rotation to line it up with the true shape. Drag to rotate the view, scroll or pinch to zoom. Click a point to select it.</p></div></div>
     <div class="controls">
       <div class="ctl"><label>Depth flip</label><div class="seg" id="mirror"><button type="button" data-v="any" aria-pressed="true">Best of shape or mirror</button><button type="button" data-v="rot" aria-pressed="false">As computed (rotation only)</button></div></div>
       <div class="ctl"><label>Error lines</label><div class="seg" id="errl"><button type="button" data-v="on" aria-pressed="true">On</button><button type="button" data-v="off" aria-pressed="false">Off</button></div></div>
     </div>
     <div class="stats" id="shStats"></div>
-    <canvas class="plot" id="view3d" style="height:440px" aria-label="3D view of true and recovered points. Drag to rotate."></canvas>
-    <div class="legend"><span><i style="background:var(--muted)"></i>True shape (rings)</span><span><i style="background:var(--accent)"></i>Recovered shape (dots)</span><span><i style="background:#e11d48"></i>Error</span><span><i style="background:#f59e0b"></i>Selected point</span></div>
+    <canvas class="plot" id="view3d" style="height:440px"></canvas>
+    <div class="legend"><span><i style="background:var(--muted)"></i>True shape (grey discs)</span><span><i style="background:var(--accent)"></i>Recovered shape (dots)</span><span><i style="background:#e11d48"></i>Error</span><span><i style="background:#f59e0b"></i>Selected point</span></div>
     <p class="note" id="mirNote"></p>
     <div class="math"><h3>Try this</h3><p>Set noise to 0 and check that the error is almost exactly zero. Raise the noise to 2 px and watch the fourth singular value rise and the error grow. Then cut the frames to 4 and see how much worse noise hurts when there is less data to average. With few frames the camera barely moves, so depth is poorly determined.</p>
     <p class="note">Simplifications: the camera is orthographic (no perspective), every point is visible in every frame, and tracks are given, not detected.</p></div>
@@ -198,7 +197,7 @@ let randSeed = 5;
 function randomShape() { const r = rng(randSeed), pts = []; for (let i = 0; i < 36; i++) pts.push([(r() - 0.5) * 110, (r() - 0.5) * 90, (r() - 0.5) * 90]); return { pts, edges: [], note: "<b>Random points:</b> 36 points scattered in a box. There is no outline, so only the tracks tell the story." }; }
 const NZ = (() => { const r = rng(77), g = () => Math.sqrt(-2 * Math.log(r() || 1e-9)) * Math.cos(2 * Math.PI * r()); return Array.from({ length: 80 }, () => Array.from({ length: 40 }, g)); })();
 
-const st = { shape: SHAPES.house, F: 16, sigma: 0, cams: null, X: null, W: null, fac: null, al: null, T: null, sel: 8, cur: 0, rot: [0.7, 0.28], playing: false, tmr: 0 };
+const st = { shape: SHAPES.house, F: 16, sigma: 0, cams: null, X: null, W: null, fac: null, al: null, T: null, sel: 8, cur: 0, playing: false, tmr: 0 };
 
 /* ---------- pipeline ---------- */
 function compute() {
@@ -282,31 +281,30 @@ function drawRowN() {
 }
 
 /* ---------- recovered shape ---------- */
-function project(p) { const [ry, rx] = st.rot; const x1 = Math.cos(ry) * p[0] + Math.sin(ry) * p[2], z1 = -Math.sin(ry) * p[0] + Math.cos(ry) * p[2]; const y2 = Math.cos(rx) * p[1] - Math.sin(rx) * z1, z2 = Math.sin(rx) * p[1] + Math.cos(rx) * z1; return [x1, y2, z2]; }
-let proj3 = [];
+// World for view3d: (x, -z, -y) keeps the old look (image y points down, depth toward the viewer); the first view is yaw 0.7, elevation -0.28 as before.
+const w3 = p => [p[0], -p[2], -p[1]];
+const v3 = VB.view3d($("view3d"), { height: 440, fit: 95, yaw: 0.7, pitch: -0.28, pitchRange: [-1.5, 1.5], label: "3D view of the true and recovered points. Drag or use the arrow keys to rotate, scroll, pinch or plus and minus to zoom, 0 to reset. Click a point to select it." });
+let recW = [];
 function drawShape() {
-  const cv = $("view3d"); const { ctx, W, H } = hiDPI(cv, 440); ctx.clearRect(0, 0, W, H); const P = st.X.length; const al = st.al; const sc = Math.min(W, H) / 190;
-  const tp = [], rp = []; for (let p = 0; p < P; p++) { tp.push(project([st.T[0][p], st.T[1][p], st.T[2][p]])); rp.push(project([al.A[0][p], al.A[1][p], al.A[2][p]])); }
-  const X = q => W / 2 + q[0] * sc, Y = q => H / 2 + q[1] * sc;
-  // floor axes cue
-  ctx.strokeStyle = cssVar("--line"); ctx.lineWidth = 1; const ax = [[[-70, 0, 0], [70, 0, 0]], [[0, -70, 0], [0, 70, 0]], [[0, 0, -70], [0, 0, 70]]]; for (const [a, b] of ax) { const A = project(a), B = project(b); ctx.beginPath(); ctx.moveTo(X(A), Y(A)); ctx.lineTo(X(B), Y(B)); ctx.stroke(); }
-  const edges = (pts, col, dash, lw) => { ctx.strokeStyle = col; ctx.setLineDash(dash); ctx.lineWidth = lw; for (const [a, b] of st.shape.edges) { ctx.beginPath(); ctx.moveTo(X(pts[a]), Y(pts[a])); ctx.lineTo(X(pts[b]), Y(pts[b])); ctx.stroke(); } ctx.setLineDash([]); };
-  edges(tp, cssVar("--muted"), [4, 3], 1.2); edges(rp, cssVar("--accent"), [], 1.8);
-  if (segVal("errl") === "on") { ctx.strokeStyle = "#e11d48"; ctx.lineWidth = 1.5; for (let p = 0; p < P; p++) { ctx.beginPath(); ctx.moveTo(X(tp[p]), Y(tp[p])); ctx.lineTo(X(rp[p]), Y(rp[p])); ctx.stroke(); } }
-  const order = [...Array(P).keys()].sort((a, b) => rp[a][2] - rp[b][2]);
-  for (const p of order) { const dz = 0.75 + 0.25 * (rp[p][2] / 70); const s = p === st.sel;
-    ctx.beginPath(); ctx.arc(X(tp[p]), Y(tp[p]), s ? 7 : 5, 0, 7); ctx.strokeStyle = s ? "#f59e0b" : cssVar("--muted"); ctx.lineWidth = s ? 2.2 : 1.4; ctx.stroke();
-    ctx.beginPath(); ctx.arc(X(rp[p]), Y(rp[p]), s ? 5 : 3.4 * dz + 0.6, 0, 7); ctx.fillStyle = s ? "#f59e0b" : cssVar("--accent"); ctx.fill(); }
-  proj3 = rp.map(q => [X(q), Y(q)]);
-  ctx.fillStyle = cssVar("--muted"); ctx.font = "11px " + ff(); ctx.fillText("drag to rotate · click a point", 10, H - 10);
+  const P = st.X.length, al = st.al, items = [], tp = [], rp = [];
+  for (let p = 0; p < P; p++) { tp.push(w3([st.T[0][p], st.T[1][p], st.T[2][p]])); rp.push(w3([al.A[0][p], al.A[1][p], al.A[2][p]])); }
+  recW = rp;
+  for (const [a, b] of [[[-70, 0, 0], [70, 0, 0]], [[0, -70, 0], [0, 70, 0]], [[0, 0, -70], [0, 0, 70]]]) items.push({ p: [w3(a), w3(b)], color: "--line", w: 1 });
+  for (const [a, b] of st.shape.edges) items.push({ p: [tp[a], tp[b]], color: "--muted", w: 1.2, dash: [4, 3] }, { p: [rp[a], rp[b]], color: "--accent", w: 1.8 });
+  if (segVal("errl") === "on") for (let p = 0; p < P; p++) items.push({ p: [tp[p], rp[p]], color: "#e11d48", w: 1.5 });
+  for (let p = 0; p < P; p++) { const s = p === st.sel;
+    items.push({ p: [tp[p]], r: s ? 7 : 5.5, color: s ? "rgba(245,158,11,.5)" : "rgba(128,134,146,.5)" }, { p: [rp[p]], r: s ? 5 : 3.6, color: s ? "#f59e0b" : "--accent" }); }
+  v3.draw({ items });
   const sizeRMS = Math.sqrt(Array.from({ length: P }, (_, p) => st.T[0][p] ** 2 + st.T[1][p] ** 2 + st.T[2][p] ** 2).reduce((a, b) => a + b, 0) / P);
   const good = al.rel < 0.01;
   $("shStats").innerHTML = `<span class="chip">RMS error <b>${al.rms < 0.01 ? al.rms.toExponential(1) : fmt(al.rms, 2)} px</b></span><span class="chip">Relative to object size <b>${fmt(100 * al.rel, 2)}%</b></span><span class="chip">Object RMS radius <b>${fmt(sizeRMS, 1)} px</b></span><span class="chip">Alignment <b>${al.mirrored ? "rotation + mirror" : "rotation"}</b></span> ${good ? '<span class="tag good">shape recovered</span>' : al.rel < 0.08 ? '<span class="tag warn">noisy but close</span>' : '<span class="tag bad">large error</span>'}`;
   $("mirNote").innerHTML = al.wasMirror ? (al.mirrored ? "The best fit needs a <b>mirror</b>. Under orthographic projection the mirror image of a scene (depth flipped) produces the same images, so the factorization cannot tell them apart. Switch to <b>As computed</b> to see the large error you get if you insist on a proper rotation." : "With rotation only, the fit is worse than the mirrored one because the depth ambiguity went the other way. Try <b>Best of shape or mirror</b>.") : "The recovered orientation happened to match without a mirror. The depth flip ambiguity of orthographic cameras is always present, so the algorithm cannot choose between a shape and its mirror image.";
 }
-(() => { const cv = $("view3d"); let last = null, moved = 0; cv.addEventListener("pointerdown", e => { last = [e.clientX, e.clientY]; moved = 0; cv.setPointerCapture(e.pointerId); cv.style.cursor = "grabbing"; });
-  cv.addEventListener("pointermove", e => { if (!last) return; const dx = e.clientX - last[0], dy = e.clientY - last[1]; moved += Math.abs(dx) + Math.abs(dy); st.rot[0] += dx * 0.01; st.rot[1] = Math.max(-1.5, Math.min(1.5, st.rot[1] + dy * 0.01)); last = [e.clientX, e.clientY]; drawShape(); });
-  cv.addEventListener("pointerup", e => { if (moved < 5) { const r = cv.getBoundingClientRect(); const x = e.clientX - r.left, y = e.clientY - r.top; let b = -1, bd = 14; proj3.forEach((q, p) => { const d = Math.hypot(q[0] - x, q[1] - y); if (d < bd) { bd = d; b = p; } }); if (b >= 0) { st.sel = b; render(); } } last = null; cv.style.cursor = "grab"; }); })();
+(() => { const cv = $("view3d"); let down = null; // a click (not a drag) selects the nearest recovered point
+  cv.addEventListener("pointerdown", e => { down = [e.clientX, e.clientY]; });
+  cv.addEventListener("pointerup", e => { if (!down || Math.hypot(e.clientX - down[0], e.clientY - down[1]) > 4) { down = null; return; } down = null;
+    const r = cv.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top; let b = -1, bd = 14;
+    recW.forEach((q, p) => { const s = v3.project(q), d = Math.hypot(s[0] - x, s[1] - y); if (d < bd) { bd = d; b = p; } }); if (b >= 0) { st.sel = b; render(); } }); })();
 
 /* ---------- selected point ---------- */
 function detail() {

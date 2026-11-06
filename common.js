@@ -240,5 +240,94 @@ function arrow(ctx, x0, y0, x1, y1, color, lw = 1.5, head = 4) {
 }
 const fmt = (v, d = 1) => (Object.is(v, -0) ? 0 : v).toLocaleString(undefined, { minimumFractionDigits: d, maximumFractionDigits: d });
 
-window.VB = { $, CHAPTERS, TOPICS, nav, footer, rng, addNoise, cssVar, hslToRgb, hsvToRgb, seg, setSeg, segVal, SAMPLES, sampleCanvas, picker, esc, toGray, sized, show, showRGB, gaussKernel, sepConv, gaussBlur, conv2, boxSum, bilinear, fft1, fft2, imgXY, hiDPI, onTheme, arrow, fmt };
+/* ---------- VB.view3d: shared orbit/zoom 3D view on a 2D canvas ----------
+ World axes: x right, y away, z up, scene centred on the origin; `fit` = scene radius in world units.
+ const v = VB.view3d(canvas, { height: 380, fit: 80, yaw: 0.6, pitch: 0.9, pitchRange: [0.05, 1.5], label, onChange(view) });
+ v.draw({ items, light: [x,y,z], ambient: 0.15 })   store the scene and redraw (coalesced with requestAnimationFrame)
+ v.setView({ yaw, pitch, zoom }) / v.reset() / v.project([x,y,z]) -> [sx, sy, depth] / v.view {yaw,pitch,zoom} / v.ms (last render time)
+ Each item is drawn in one back-to-front depth sort (mean depth of its points). Item shapes, by item.p.length:
+   1 point: { p:[P], r, color }     2 line: { p:[A,B], color, w, dash:[4,3] }     3+ polygon: { p:[...], fill, stroke, w }
+   text: { p:[P], text, color, font }
+   shaded polygon: add n:[[nx,ny,nz],...] (one unit normal per vertex) and rgb:[r,g,b] 0..255. Lambert from the averaged
+   vertex normals (smooth, two-sided), so a mesh looks smooth; light is fixed in world space.
+ Colors are CSS colors, or a custom property name such as "--accent", re-read on every redraw (theme-aware).
+ VB.view3d.surface(z, w, h, { step: 2, mask, rgb: i => [r,g,b], zscale: 1 }) -> items for a height field (x = col - w/2, y = h/2 - row,
+ z minus its mean), with central-difference vertex normals; cells with any masked-out corner are skipped.
+ Input: drag orbits (mouse, touch), wheel and two-finger pinch zoom, arrows rotate, + / - zoom, 0 resets. */
+function view3d(cv, o = {}) {
+  const pr = o.pitchRange || [0.05, 1.5], R = o.fit || 1, def = { yaw: o.yaw ?? 0.6, pitch: o.pitch ?? 0.9, zoom: 1 };
+  const v = { ...def }, ptr = new Map(); let scene = null, raf = 0, W = 0, H = 0, sc = 1, c = null, pd = 0;
+  const api = { view: v, ms: 0 };
+  const clamp = () => { v.pitch = Math.max(pr[0], Math.min(pr[1], v.pitch)); v.zoom = Math.max(0.3, Math.min(8, v.zoom)); };
+  const project = p => { const x1 = p[0] * c.cy - p[1] * c.sy, y1 = p[0] * c.sy + p[1] * c.cy; return [W / 2 + x1 * sc, H / 2 - (p[2] * c.ce + y1 * c.se) * sc, y1 * c.ce - p[2] * c.se]; };
+  function render() {
+    raf = 0; if (!scene) return; const t0 = performance.now();
+    const h = hiDPI(cv, o.height || 380), ctx = h.ctx; W = h.W; H = h.H; sc = Math.min(W, H) / (2 * R) * v.zoom;
+    c = { cy: Math.cos(v.yaw), sy: Math.sin(v.yaw), ce: Math.cos(v.pitch), se: Math.sin(v.pitch) };
+    const memo = {}, col = k => typeof k === "string" && k.startsWith("--") ? (memo[k] ??= cssVar(k)) : k;
+    const L = scene.light || [-0.4, -0.5, 0.77], ll = Math.hypot(...L) || 1, amb = scene.ambient ?? 0.15;
+    ctx.clearRect(0, 0, W, H);
+    const list = scene.items.map(it => { const P = it.p.map(project); let d = 0; for (const q of P) d += q[2]; return [d / P.length, it, P]; });
+    list.sort((a, b) => b[0] - a[0]);
+    for (const [, it, P] of list) {
+      if (it.text) { ctx.fillStyle = col(it.color); ctx.font = it.font || "11px sans-serif"; ctx.fillText(it.text, P[0][0] + 4, P[0][1] - 4); continue; }
+      if (P.length === 1) { ctx.fillStyle = col(it.color); ctx.beginPath(); ctx.arc(P[0][0], P[0][1], it.r || 2, 0, 7); ctx.fill(); continue; }
+      ctx.beginPath(); P.forEach((q, j) => j ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1]));
+      if (P.length === 2) { ctx.strokeStyle = col(it.color); ctx.lineWidth = it.w || 1; ctx.setLineDash(it.dash || []); ctx.stroke(); ctx.setLineDash([]); continue; }
+      ctx.closePath(); let fill = col(it.fill), stroke = col(it.stroke);
+      if (it.n) {
+        let nx = 0, ny = 0, nz = 0; for (const q of it.n) { nx += q[0]; ny += q[1]; nz += q[2]; }
+        const away = (nx * c.sy + ny * c.cy) * c.ce - nz * c.se > 0, s = (away ? -1 : 1) / (Math.hypot(nx, ny, nz) || 1);
+        const I = amb + (1 - amb) * Math.max(0, (nx * L[0] + ny * L[1] + nz * L[2]) * s / ll);
+        fill = stroke = `rgb(${it.rgb.map(k => Math.round(k * I)).join(",")})`;
+      }
+      if (fill) { ctx.fillStyle = fill; ctx.fill(); }
+      if (stroke) { ctx.strokeStyle = stroke; ctx.lineWidth = it.w || 0.6; ctx.stroke(); }
+    }
+    api.ms = performance.now() - t0;
+  }
+  const schedule = () => { if (!raf) raf = requestAnimationFrame(render); };
+  const change = () => { clamp(); schedule(); o.onChange && o.onChange(v); };
+  const dist = () => { const [a, b] = [...ptr.values()]; return Math.hypot(a[0] - b[0], a[1] - b[1]); };
+  cv.tabIndex = 0; cv.style.touchAction = "none"; cv.style.cursor = "grab"; if (o.label) cv.setAttribute("aria-label", o.label);
+  cv.addEventListener("pointerdown", e => { cv.setPointerCapture(e.pointerId); ptr.set(e.pointerId, [e.clientX, e.clientY]); if (ptr.size === 2) pd = dist(); cv.style.cursor = "grabbing"; });
+  cv.addEventListener("pointermove", e => {
+    const old = ptr.get(e.pointerId); if (!old) return; ptr.set(e.pointerId, [e.clientX, e.clientY]);
+    if (ptr.size === 1) { v.yaw += (e.clientX - old[0]) * 0.01; v.pitch += (e.clientY - old[1]) * 0.01; }
+    else if (ptr.size === 2) { const d = dist(); if (pd) v.zoom *= d / pd; pd = d; }
+    change();
+  });
+  const up = e => { ptr.delete(e.pointerId); pd = 0; if (!ptr.size) cv.style.cursor = "grab"; };
+  cv.addEventListener("pointerup", up); cv.addEventListener("pointercancel", up);
+  cv.addEventListener("wheel", e => { e.preventDefault(); v.zoom *= Math.exp(-e.deltaY * 0.0015); change(); }, { passive: false });
+  cv.addEventListener("keydown", e => {
+    const k = e.key, d = { ArrowLeft: [-0.1, 0], ArrowRight: [0.1, 0], ArrowUp: [0, -0.1], ArrowDown: [0, 0.1] }[k];
+    if (d) { v.yaw += d[0]; v.pitch += d[1]; } else if (k === "+" || k === "=") v.zoom *= 1.15; else if (k === "-" || k === "_") v.zoom /= 1.15; else if (k === "0") Object.assign(v, def); else return;
+    e.preventDefault(); change();
+  });
+  onTheme(schedule);
+  return Object.assign(api, {
+    draw(s) { scene = s; schedule(); }, render, project: p => { if (!c) { sc = 1; c = { cy: 1, sy: 0, ce: 1, se: 0 }; } return project(p); },
+    setView(s) { Object.assign(v, s); change(); }, reset() { Object.assign(v, def); change(); },
+  });
+}
+view3d.surface = (z, w, h, o = {}) => {
+  const step = o.step || 2, zs = o.zscale || 1, mask = o.mask, gw = Math.floor((w - 1) / step), gh = Math.floor((h - 1) / step), P = [], Nn = [];
+  let mean = 0, cnt = 0; for (let i = 0; i < w * h; i++) if (!mask || mask[i]) { mean += z[i]; cnt++; } mean /= Math.max(1, cnt);
+  const Z = (x, y) => z[Math.max(0, Math.min(h - 1, y)) * w + Math.max(0, Math.min(w - 1, x))];
+  for (let b = 0; b <= gh; b++) for (let a = 0; a <= gw; a++) {
+    const x = a * step, y = b * step, zx = (Z(x + 1, y) - Z(x - 1, y)) / 2 * zs, zy = (Z(x, y + 1) - Z(x, y - 1)) / 2 * zs, l = Math.hypot(zx, zy, 1);
+    P.push([x - w / 2, h / 2 - y, ((mask && !mask[y * w + x] ? mean : Z(x, y)) - mean) * zs]); Nn.push([-zx / l, zy / l, 1 / l]);
+  }
+  const items = [], rgb = o.rgb || (() => [235, 235, 235]);
+  for (let b = 0; b < gh; b++) for (let a = 0; a < gw; a++) {
+    const i = Math.min(h - 1, b * step + 1) * w + Math.min(w - 1, a * step + 1);
+    const ids = [b * (gw + 1) + a, b * (gw + 1) + a + 1, (b + 1) * (gw + 1) + a + 1, (b + 1) * (gw + 1) + a];
+    if (mask && ![[0, 0], [1, 0], [1, 1], [0, 1]].every(([dx, dy]) => mask[(b + dy) * step * w + (a + dx) * step])) continue; // all 4 corners on the object: no skirts
+    items.push({ p: ids.map(t => P[t]), n: ids.map(t => Nn[t]), rgb: rgb(i) });
+  }
+  return items;
+};
+
+window.VB = { $, CHAPTERS, TOPICS, nav, footer, rng, addNoise, cssVar, hslToRgb, hsvToRgb, seg, setSeg, segVal, SAMPLES, sampleCanvas, picker, esc, toGray, sized, show, showRGB, gaussKernel, sepConv, gaussBlur, conv2, boxSum, bilinear, fft1, fft2, imgXY, hiDPI, onTheme, arrow, fmt, view3d };
 })();

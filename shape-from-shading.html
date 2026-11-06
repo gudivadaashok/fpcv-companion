@@ -12,7 +12,7 @@
 #dial { width: 190px; height: 190px; touch-action: none; cursor: grab; border-radius: 50%; display: block; }
 #pq { height: 420px; }
 canvas.view { max-width: 100%; }
-.v3 { cursor: grab; touch-action: none; height: 330px; }
+.v3 { height: 330px; }
 #hist { height: 150px; cursor: default; }
 .lightbox { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 20px; align-items: center; }
 @media (max-width: 760px) { .lightbox { grid-template-columns: 1fr; justify-items: center; } }
@@ -77,8 +77,8 @@ canvas.view { max-width: 100%; }
     </div>
     <div class="stats" id="sStats"></div>
     <div class="two">
-      <figure><canvas class="plot v3" id="v3r" aria-label="Recovered surface, drag to rotate"></canvas><figcaption>Recovered height (drag to rotate both views)</figcaption></figure>
-      <figure><canvas class="plot v3" id="v3t" aria-label="True surface, drag to rotate"></canvas><figcaption>True height</figcaption></figure>
+      <figure><canvas class="plot v3" id="v3r" ></canvas><figcaption>Recovered height (drag to rotate both views, scroll or pinch to zoom)</figcaption></figure>
+      <figure><canvas class="plot v3" id="v3t"></canvas><figcaption>True height</figcaption></figure>
     </div>
     <div class="three">
       <figure><canvas class="view" id="hR"></canvas><figcaption>Recovered height, bright = high</figcaption></figure>
@@ -101,7 +101,7 @@ canvas.view { max-width: 100%; }
 const { $, nav, footer, picker, toGray, show, showRGB, gaussBlur, imgXY, hiDPI, onTheme, cssVar, fmt } = VB;
 nav("shape-from-shading.html"); footer();
 const N = 96, N2 = N * N, mono = () => cssVar("--mono") || "monospace", f2 = (v, d = 3) => fmt(v, d);
-const st = { z: null, I: null, L: [-0.45, -0.4], sel: [30, 30], Z: null, it: 0, hist: [], run: false, rot: [0.5, -0.9], kind: "bumps" };
+const st = { z: null, I: null, L: [-0.45, -0.4], sel: [30, 30], Z: null, it: 0, hist: [], run: false, kind: "bumps" };
 const lightVec = () => { const [x, y] = st.L, z = Math.sqrt(Math.max(0.02, 1 - x * x - y * y)); return [x, y, z]; };
 const Rmap = (p, q, s) => Math.max(0, (s[2] - p * s[0] - q * s[1]) / Math.sqrt(1 + p * p + q * q));
 
@@ -244,7 +244,7 @@ function drawSolver() {
   show("hI", N, N, m.Ir.map(v => v * 255));
   const r = m.rms / m.range, tag = r < 0.06 ? '<span class="tag good">close</span>' : r < 0.2 ? '<span class="tag warn">rough</span>' : '<span class="tag bad">far off</span>';
   $("sStats").innerHTML = `<span class="chip">Iteration <b>${st.it}</b> at <b>${SIZES[st.lv]}×${SIZES[st.lv]}</b></span><span class="chip">RMS height error <b>${fmt(m.rms, 2)}</b> px (${fmt(100 * r, 1)}% of the ${fmt(m.range, 0)} px range)</span><span class="chip">Mean abs error <b>${fmt(m.mae, 2)}</b></span><span class="chip">Image residual (RMS) <b>${fmt(m.irms, 3)}</b></span>${tag}`;
-  drawViews(lo, hi); drawHist();
+  drawViews(); drawHist();
 }
 function drawHist() {
   const cv = $("hist"); const { ctx, W, H } = hiDPI(cv, 150); ctx.clearRect(0, 0, W, H); const h = st.hist; if (!h.length) return;
@@ -262,29 +262,21 @@ $("spd").addEventListener("input", e => { $("spdO").value = e.target.value; });
 $("lam").addEventListener("input", e => { $("lamO").value = e.target.value; stop(); resetSolver(true); });
 
 /* ---------- 3D ---------- */
-function draw3d(cv, z, lo, hi) {
-  const { ctx, W, H } = hiDPI(cv, 330); ctx.clearRect(0, 0, W, H);
-  const [yaw, pitch] = st.rot, cy = Math.cos(yaw), sy = Math.sin(yaw), cp = Math.cos(pitch), sp = Math.sin(pitch), sc = Math.min(W, H) / (N * 1.25), step = 2, G = N / step, mid = (lo + hi) / 2, V = new Float32Array((G + 1) * (G + 1) * 3);
-  for (let b = 0; b <= G; b++) for (let a = 0; a <= G; a++) { const x = Math.min(N - 1, a * step), y = Math.min(N - 1, b * step), X = x - N / 2, Y = y - N / 2, Z = z[y * N + x] - mid; const x1 = X * cy - Y * sy, y1 = X * sy + Y * cy, y2 = y1 * cp - Z * sp, z2 = y1 * sp + Z * cp, k = 3 * (b * (G + 1) + a); V[k] = x1; V[k + 1] = y2; V[k + 2] = z2; }
-  const quads = []; for (let b = 0; b < G; b++) for (let a = 0; a < G; a++) { const ids = [b * (G + 1) + a, b * (G + 1) + a + 1, (b + 1) * (G + 1) + a + 1, (b + 1) * (G + 1) + a]; let d = 0; for (const t of ids) d += V[3 * t + 2]; quads.push([d, ids]); }
-  quads.sort((p, q) => q[0] - p[0]); const Ld = [-0.35, -0.55, -0.76], ln = Math.hypot(...Ld);
-  for (const [, ids] of quads) {
-    const p = ids.map(t => [V[3 * t], V[3 * t + 1], V[3 * t + 2]]); const ux = p[2][0] - p[0][0], uy = p[2][1] - p[0][1], uz = p[2][2] - p[0][2], vx = p[3][0] - p[1][0], vy = p[3][1] - p[1][1], vz = p[3][2] - p[1][2];
-    const nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx, nl = Math.hypot(nx, ny, nz) || 1; const sh = Math.abs(nx * Ld[0] + ny * Ld[1] + nz * Ld[2]) / nl / ln, v = Math.round((0.2 + 0.8 * sh) * 225);
-    ctx.fillStyle = `rgb(${v},${v},${Math.min(255, v + 12)})`; ctx.strokeStyle = ctx.fillStyle; ctx.lineWidth = 0.6; ctx.beginPath(); p.forEach(([x, y], j) => j ? ctx.lineTo(W / 2 + x * sc, H / 2 + y * sc) : ctx.moveTo(W / 2 + x * sc, H / 2 + y * sc)); ctx.closePath(); ctx.fill(); ctx.stroke();
-  }
+const V3 = { height: 330, fit: N * 0.7, yaw: 0.5, pitch: 0.8 };
+let linking = false;
+const link = other => view => { if (linking) return; linking = true; other().setView({ yaw: view.yaw, pitch: view.pitch, zoom: view.zoom }); linking = false; };
+const v3r = VB.view3d($("v3r"), { ...V3, label: "Recovered surface. Drag or use the arrow keys to rotate both views, scroll, pinch or plus and minus to zoom, 0 to reset.", onChange: link(() => v3t) });
+const v3t = VB.view3d($("v3t"), { ...V3, label: "True surface. Drag or use the arrow keys to rotate both views, scroll, pinch or plus and minus to zoom, 0 to reset.", onChange: link(() => v3r) });
+function drawViews() { // image y points down, world y points away
+  const [lx, ly, lz] = lightVec(), light = [lx, -ly, lz], rgb = () => [215, 215, 228];
+  v3r.draw({ items: VB.view3d.surface(st.Z, N, N, { rgb }), light }); v3t.draw({ items: VB.view3d.surface(st.z, N, N, { rgb }), light });
 }
-function drawViews(lo, hi) {
-  if (lo === undefined) { lo = Infinity; hi = -Infinity; for (const v of st.z) { lo = Math.min(lo, v); hi = Math.max(hi, v); } for (const v of st.Z) { lo = Math.min(lo, v); hi = Math.max(hi, v); } }
-  draw3d($("v3r"), st.Z, lo, hi); draw3d($("v3t"), st.z, lo, hi);
-}
-for (const id of ["v3r", "v3t"]) { const cv = $(id); let last = null; cv.addEventListener("pointerdown", e => { last = [e.clientX, e.clientY]; cv.setPointerCapture(e.pointerId); cv.style.cursor = "grabbing"; }); cv.addEventListener("pointermove", e => { if (!last) return; st.rot[0] += (e.clientX - last[0]) * 0.01; st.rot[1] = Math.max(-1.5, Math.min(0, st.rot[1] + (e.clientY - last[1]) * 0.01)); last = [e.clientX, e.clientY]; drawViews(); }); cv.addEventListener("pointerup", () => { last = null; cv.style.cursor = "grab"; }); }
 
 /* ---------- start ---------- */
 const pk = picker({ el: "pick", samples, noteEl: "pickNote", onImage: (src, sw, sh, info) => {
   if (info.sample) setSurface(info.sample.key); else { setSurface(null, src, sw, sh); $("pickNote").innerHTML = `<b>${VB.esc(info.name)}</b> is used as a height map: smoothed slightly, tapered to zero at the border, white is 34 pixels high.`; }
 } });
-onTheme(() => { if (st.I) { drawDial(); drawPQ(); drawSolver(); } });
+onTheme(() => { if (st.I) { drawDial(); drawPQ(); drawHist(); } });
 pk.pick(samples[1]);
 window.__metrics = metrics; window.__pick = pk.pick; window.__samples = samples;
 })();

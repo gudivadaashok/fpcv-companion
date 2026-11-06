@@ -9,7 +9,8 @@
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,500;8..60,600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="site.css">
 <style>
-#view3d { cursor: grab; touch-action: none; height: 360px; }
+#view3d { height: 360px; }
+#base3d { font: 0.76rem var(--mono); color: var(--muted); margin: 4px 0 0; }
 .mats { display: flex; flex-wrap: wrap; gap: 18px; align-items: flex-start; }
 .mats h4 { margin: 0 0 4px; font: 600 0.82rem var(--body); color: var(--muted); }
 .steps { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; counter-reset: s; }
@@ -36,12 +37,12 @@ td.hi { background: color-mix(in srgb, var(--accent) 14%, transparent); }
   <div class="part">Part 1 · Epipolar geometry</div>
 
   <section class="stage" aria-labelledby="h0">
-    <div class="stage-head"><span class="num">00</span><div><h2 id="h0">Two cameras, one scene</h2><p>A cloud of 3D points sits in front of two cameras. The left camera defines the world frame. The right camera is moved and turned. Drag the view to rotate it. The algorithm below never sees the 3D points or the cameras. It sees only the two images.</p></div></div>
+    <div class="stage-head"><span class="num">00</span><div><h2 id="h0">Two cameras, one scene</h2><p>A cloud of 3D points sits in front of two cameras. The left camera defines the world frame. The right camera is moved and turned. Drag the view to rotate it, scroll or pinch to zoom. The algorithm below never sees the 3D points or the cameras. It sees only the two images.</p></div></div>
     <div class="controls">
       <div class="ctl"><label>Right camera</label><div class="seg" id="pose"><button type="button" data-v="toe" aria-pressed="true">Sideways, turned in</button><button type="button" data-v="par" aria-pressed="false">Sideways, parallel</button><button type="button" data-v="fwd" aria-pressed="false">Forward and sideways</button></div></div>
     </div>
     <div class="main-side">
-      <canvas class="plot" id="view3d" aria-label="3D view of the point cloud and both cameras. Drag to rotate."></canvas>
+      <div><canvas class="plot" id="view3d"></canvas><p id="base3d"></p></div>
       <div class="math"><h3>The true fundamental matrix</h3><p>With intrinsics K, K′ and a relative pose X′ = R X + t, a left pixel x and its right match x′ satisfy</p><p class="eq">x′ᵀ F x = 0,   F = K′⁻ᵀ [t]ₓ R K⁻¹</p><div id="trueF"></div><p class="note">The parallel pose makes epipolar lines horizontal. That is the rectified case used in Part 2.</p></div>
     </div>
   </section>
@@ -216,7 +217,7 @@ const POINTS = (() => {
   for (let i = 0; i < 3000 && out.length < 400; i++) { const k = kinds[i % kinds.length]; const p = gen[k](); out.push({ X: p.slice(0, 3), col: p[3], kind: k }); }
   return out;
 })();
-const st = { pose: "toe", seed: 1, sel: [180, 135], snapped: -1, rot: [0.9, 0.5], cams: null, vis: [], xl: [], xr: [], tF: null, fit: null };
+const st = { pose: "toe", seed: 1, sel: [180, 135], snapped: -1, cams: null, vis: [], xl: [], xr: [], tF: null, fit: null };
 
 function setupPose() {
   const c = POSES[st.pose](); st.cams = c; st.tF = trueF(KM, KM, c.R, c.t);
@@ -245,22 +246,20 @@ const f2 = (v, d = 2) => fmt(v, d), fe = v => Math.abs(v) < 1e-3 && v !== 0 ? v.
 function matTable(M, f = fe) { return `<table class="calc">${M.map(r => `<tr>${r.map(v => `<td>${f(v)}</td>`).join("")}</tr>`).join("")}</table>`; }
 
 /* ---------- 3D view ---------- */
-function draw3d() {
-  const cv = $("view3d"); const { ctx, W, H } = hiDPI(cv, 360); ctx.clearRect(0, 0, W, H);
-  const [yaw, pit] = st.rot, cy = Math.cos(yaw), sy = Math.sin(yaw), cp = Math.cos(pit), sp = Math.sin(pit), ctr = [0.3, 0.2, 5.2], sc = Math.min(W, H) / 11;
-  const tf = X => { const x = X[0] - ctr[0], y = X[1] - ctr[1], z = X[2] - ctr[2]; const x1 = x * cy + z * sy, z1 = -x * sy + z * cy; return [W / 2 + x1 * sc, H / 2 + (y * cp - z1 * sp) * sc, y * sp + z1 * cp]; };
-  const pts = st.vis.map(p => { const q = tf(p.X); return [q, p.col]; }).sort((a, b) => b[0][2] - a[0][2]);
-  for (const [q, c] of pts) { ctx.fillStyle = `rgb(${c})`; ctx.beginPath(); ctx.arc(q[0], q[1], 2.4, 0, 7); ctx.fill(); }
-  const ink = cssVar("--ink"), c = st.cams;
+// World for view3d: (x, z, -y) about the scene centre (camera looks along +z, image y points down); first view yaw -0.9, elevation 0.5 as before.
+const CTR3 = [0.3, 0.2, 5.2], w3 = X => [X[0] - CTR3[0], X[2] - CTR3[2], CTR3[1] - X[1]];
+const v3 = VB.view3d($("view3d"), { height: 360, fit: 5.5, yaw: -0.9, pitch: 0.5, label: "3D view of the point cloud and both cameras. Drag or use the arrow keys to rotate, scroll, pinch or plus and minus to zoom, 0 to reset." });
+function draw3d() { // the 3D scene only changes with the pose, so this is not called when sliders move
+  const items = st.vis.map(p => ({ p: [w3(p.X)], r: 2.4, color: `rgb(${p.col})` })), c = st.cams;
   const cam = (R, t, C, label) => {
-    const dd = 0.9, cs = [[0, 0], [IW, 0], [IW, IH], [0, IH]].map(([u, v]) => tf(matVec(T3(R), sub([(u - IW / 2) / FOC * dd, (v - IH / 2) / FOC * dd, dd], t)))); const cc = tf(C);
-    ctx.strokeStyle = ink; ctx.lineWidth = 1.5; ctx.fillStyle = "rgba(31,86,209,.15)"; ctx.beginPath(); cs.forEach((q, k) => k ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1])); ctx.closePath(); ctx.fill(); ctx.stroke();
-    cs.forEach(q => { ctx.beginPath(); ctx.moveTo(cc[0], cc[1]); ctx.lineTo(q[0], q[1]); ctx.stroke(); }); ctx.fillStyle = ink; ctx.beginPath(); ctx.arc(cc[0], cc[1], 3.5, 0, 7); ctx.fill(); ctx.font = "12px " + cssVar("--body"); ctx.fillText(label, cc[0] + 7, cc[1] - 7);
+    const dd = 0.9, cs = [[0, 0], [IW, 0], [IW, IH], [0, IH]].map(([u, v]) => w3(matVec(T3(R), sub([(u - IW / 2) / FOC * dd, (v - IH / 2) / FOC * dd, dd], t)))), cc = w3(C);
+    items.push({ p: cs, fill: "rgba(31,86,209,.15)", stroke: "--ink", w: 1.5 }); cs.forEach(q => items.push({ p: [cc, q], color: "--ink", w: 1.5 }));
+    items.push({ p: [cc], r: 3.5, color: "--ink" }, { p: [cc], text: label, color: "--ink", font: "12px sans-serif" });
   };
   cam([[1, 0, 0], [0, 1, 0], [0, 0, 1]], [0, 0, 0], [0, 0, 0], "left"); cam(c.R, c.t, c.C, "right");
-  ctx.fillStyle = cssVar("--muted"); ctx.font = "11px " + cssVar("--mono"); ctx.fillText("baseline " + f2(Math.hypot(...c.C), 2) + " units", 10, H - 10);
+  $("base3d").textContent = "baseline " + f2(Math.hypot(...c.C), 2) + " units";
+  v3.draw({ items });
 }
-(() => { const cv = $("view3d"); let last = null; cv.addEventListener("pointerdown", e => { last = [e.clientX, e.clientY]; cv.setPointerCapture(e.pointerId); cv.style.cursor = "grabbing"; }); cv.addEventListener("pointermove", e => { if (!last) return; st.rot[0] += (e.clientX - last[0]) * 0.01; st.rot[1] = Math.max(-1.4, Math.min(1.4, st.rot[1] + (e.clientY - last[1]) * 0.01)); last = [e.clientX, e.clientY]; draw3d(); }); cv.addEventListener("pointerup", () => { last = null; cv.style.cursor = "grab"; }); })();
 
 /* ---------- images with epipolar lines ---------- */
 function clipLine(l, w, h) {
@@ -300,14 +299,14 @@ function stats() {
   $("eStats").innerHTML = `<span class="chip">Mean epipolar error, all matches <b>${f2(ea, 3)} px</b></span><span class="chip">Noise σ <b>${f2(st.sig, 1)} px</b></span><span class="chip">Matches used <b>${n}</b></span>`;
   $("trueF").innerHTML = matTable(st.tFn);
 }
-function drawAll() { draw3d(); drawImages(); stats(); }
+function drawAll() { drawImages(); stats(); }
 $("imL").addEventListener("click", e => {
   const [x, y] = imgXY(e, e.currentTarget, IW, IH); let best = 8, bi = -1; st.xl.forEach((q, i) => { const d = Math.hypot(q[0] - x, q[1] - y); if (d < best) { best = d; bi = i; } });
   st.snapped = bi; st.sel = bi >= 0 ? st.xl[bi].slice() : [x, y]; drawImages(); stats();
 });
 $("noise").addEventListener("input", schedule); $("npts").addEventListener("input", schedule); seg("norm", computeF); seg("rank", computeF); seg("fan", drawImages);
 $("reseed").addEventListener("click", () => { st.seed++; computeF(); });
-seg("pose", v => { st.pose = v; setupPose(); st.sel = [180, 135]; st.snapped = -1; pickDefault(); computeF(); });
+seg("pose", v => { st.pose = v; setupPose(); draw3d(); st.sel = [180, 135]; st.snapped = -1; pickDefault(); computeF(); });
 function pickDefault() { let bi = 0, best = 1e9; st.cleanL.forEach((q, i) => { const d = Math.hypot(q[0] - 150, q[1] - 120); if (d < best) { best = d; bi = i; } }); st.snapped = bi; st.sel = st.cleanL[bi].slice(); }
 
 /* ================= Part 2: rectified pair and block matching ================= */
@@ -446,7 +445,7 @@ seg("tex", () => pairNow()); seg("dscene", () => pairNow()); seg("expo", () => p
 $("pnoise").addEventListener("input", () => { $("pnoiseO").value = $("pnoise").value; later(pairNow); }); $("win").addEventListener("input", () => later(matchNow)); $("dmax").addEventListener("input", () => later(matchNow));
 
 onTheme(() => { if (st.fit) { drawAll(); } if (P2.res) curve(); });
-setupPose(); pickDefault(); computeF(); pairNow();
+setupPose(); draw3d(); pickDefault(); computeF(); pairNow();
 window.__st = { st, P2, eightPoint, epiErr };
 })();
 </script>

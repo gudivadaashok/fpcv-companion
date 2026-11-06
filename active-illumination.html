@@ -20,6 +20,7 @@ td.hi { background: color-mix(in srgb, var(--accent) 24%, transparent); font-wei
 .ctl input[type="checkbox"] { width: 18px; height: 18px; accent-color: var(--accent); }
 .ctl.chk label { color: var(--ink); }
 #geo, #relief { height: 340px; }
+#relief { background: #12151a; }
 #profile { height: 240px; }
 #strip { width: 100%; height: auto; }
 .tablebox table.calc { width: 100%; }
@@ -140,11 +141,7 @@ td.hi { background: color-mix(in srgb, var(--accent) 24%, transparent); font-wei
       <figure><canvas class="view" id="gtView" aria-label="Ground truth depth map"></canvas><figcaption>Ground truth</figcaption></figure>
     </div>
     <p class="legend lg"><span>Near<span class="ramp" id="ramp"></span>Far</span><span><span class="hatch"></span>Invalid: in shadow, outside the projector, or too dark to decode</span></p>
-    <div class="controls">
-      <div class="ctl"><label for="ryaw">Relief yaw</label><input type="range" id="ryaw" min="-80" max="80" step="1" value="30"><output id="ryawO"></output></div>
-      <div class="ctl"><label for="rpitch">Relief pitch</label><input type="range" id="rpitch" min="-60" max="60" step="1" value="-15"><output id="rpitchO"></output></div>
-    </div>
-    <figure><canvas class="plot drag" id="relief" tabindex="0" aria-label="3-D point cloud of the recovered depth. Drag to rotate, or use the arrow keys or the sliders."></canvas><figcaption>Recovered surface as a point cloud (64 × 48 samples). Drag to rotate.</figcaption></figure>
+    <figure><canvas class="plot" id="relief"></canvas><figcaption>Recovered surface as a point cloud (64 × 48 samples), seen from the camera at first. Drag to rotate, scroll or pinch to zoom, arrow keys rotate, 0 resets. Gaps are shadow or undecodable pixels.</figcaption></figure>
     <div class="math">
       <h3>Baseline: resolution against shadow</h3>
       <p>A one-column error in the decoded position changes the depth by Δ<i>z</i> ≈ <i>z</i><sup>2</sup> / (<i>f</i> <i>b</i>). A larger baseline therefore gives finer depth, but it also tilts the projector's view further from the camera's, so more of the scene is hidden from one of them. Drag the baseline up and watch the depth resolution number fall while the shadow percentage grows, especially on the Steps scene.</p>
@@ -169,7 +166,7 @@ const HEAT = [[0, [14, 8, 52]], [0.25, [96, 24, 128]], [0.5, [204, 56, 96]], [0.
 const heat = VB.heat || (v => { v = clamp(v); for (let i = 1; i < HEAT.length; i++) if (v <= HEAT[i][0]) { const [t0, a] = HEAT[i - 1], [t1, b] = HEAT[i], t = (v - t0) / (t1 - t0); return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t]; } return HEAT[4][1]; });
 const BG = [18, 21, 26], NODATA = [70, 74, 82], ZLO = 1.0, ZHI = 2.6;
 const depthColor = z => heat((ZHI - z) / (ZHI - ZLO));
-const st = { scene: "plane", dark: false, b: 0.40, gz: 1.5, pcol: 140, pcol2: 110, nbits: 8, bit: 8, kind: "gray", noise: 12, blur: 1.5, yaw: 30, pitch: -15, model: null, geo: null, stats: null, r6: null, sweep: { k: 0, timer: 0, acc: null } };
+const st = { scene: "plane", dark: false, b: 0.40, gz: 1.5, pcol: 140, pcol2: 110, nbits: 8, bit: 8, kind: "gray", noise: 12, blur: 1.5, model: null, geo: null, stats: null, r6: null, sweep: { k: 0, timer: 0, acc: null } };
 
 /* ---------- model: scene, projector, camera, decoder ---------- */
 function buildScene(name, dark) {
@@ -467,27 +464,14 @@ function r6() {
   chips("depStats", [["Median depth error", isNaN(med) ? "–" : fmt(med * 100, 2) + "%"], ["Valid pixels", fmt(nv / N * 100, 1) + "%"], ["In shadow", fmt(sh / N * 100, 1) + "%"], ["Depth step per column at 1.5 m", fmt(dz * 1000, 1) + " mm"]]);
   drawRelief();
 }
-function drawRelief() {
-  const cv = $("relief"), { ctx, W: w, H: h } = hiDPI(cv, 340), r = st.r6; ctx.fillStyle = "#12151a"; ctx.fillRect(0, 0, w, h); if (!r) return;
-  // TODO VB.orbit: local orbit view, to be replaced when the shared helper exists
-  const th = st.yaw * Math.PI / 180, ph = st.pitch * Math.PI / 180, cy = Math.cos(th), sy = Math.sin(th), cp = Math.cos(ph), sp = Math.sin(ph), D = 3.4, fl = Math.min(w, h * 1.3) * 1.15, pts = [];
+const v3 = VB.view3d($("relief"), { height: 340, fit: 130, yaw: 0.5, pitch: 0.3, label: "3-D point cloud of the recovered depth. Drag or use the arrow keys to rotate, scroll, pinch or plus and minus to zoom, 0 to reset." });
+function drawRelief() { // x right, y = depth away from the camera, z up (image rows flip); 100 world units per metre
+  const r = st.r6; if (!r) return; const items = [];
   for (let y = 0; y < H; y += 4) for (let x = 0; x < W; x += 4) {
-    const Z = r.Zr[y * W + x]; if (isNaN(Z)) continue;
-    const px = (x - 128) / F * Z, py = (y - 96) / F * Z, pz = Z - 1.75;
-    const x1 = px * cy + pz * sy, z1 = -px * sy + pz * cy, y2 = py * cp - z1 * sp, z2 = py * sp + z1 * cp, d = z2 + D;
-    pts.push([w / 2 + fl * x1 / d, h / 2 + fl * y2 / d, d, Z]);
+    const Z = r.Zr[y * W + x]; if (isNaN(Z)) continue; const c = depthColor(Z);
+    items.push({ p: [[(x - 128) / F * Z * 100, (Z - 1.75) * 100, -(y - 96) / F * Z * 100]], r: 2.6, color: `rgb(${c[0] | 0},${c[1] | 0},${c[2] | 0})` });
   }
-  pts.sort((a, b) => b[2] - a[2]);
-  for (const [sx, sy2, d, Z] of pts) { const c = depthColor(Z); ctx.fillStyle = `rgb(${c[0] | 0},${c[1] | 0},${c[2] | 0})`; const s = Math.max(2, 17 / d); ctx.fillRect(sx - s / 2, sy2 - s / 2, s, s); }
-}
-function setView(yaw, pitch) { st.yaw = clamp(yaw, -80, 80); st.pitch = clamp(pitch, -60, 60); $("ryaw").value = st.yaw; $("rpitch").value = st.pitch; $("ryawO").value = Math.round(st.yaw) + "°"; $("rpitchO").value = Math.round(st.pitch) + "°"; drawRelief(); }
-$("ryaw").addEventListener("input", e => setView(+e.target.value, st.pitch)); $("rpitch").addEventListener("input", e => setView(st.yaw, +e.target.value));
-{
-  const cv = $("relief"); let on = false, lx = 0, ly = 0;
-  cv.addEventListener("pointerdown", e => { on = true; lx = e.clientX; ly = e.clientY; cv.setPointerCapture(e.pointerId); });
-  cv.addEventListener("pointermove", e => { if (!on) return; setView(st.yaw + (e.clientX - lx) * 0.5, st.pitch + (e.clientY - ly) * 0.5); lx = e.clientX; ly = e.clientY; });
-  cv.addEventListener("pointerup", () => { on = false; }); cv.addEventListener("pointercancel", () => { on = false; });
-  cv.addEventListener("keydown", e => { const d = { ArrowLeft: [-5, 0], ArrowRight: [5, 0], ArrowUp: [0, -5], ArrowDown: [0, 5] }[e.key]; if (!d) return; e.preventDefault(); setView(st.yaw + d[0], st.pitch + d[1]); });
+  v3.draw({ items });
 }
 
 /* ---------- pipeline ---------- */
@@ -499,8 +483,8 @@ function rebuild() {
   r0(); r1(); r2(); sweepReset(); renderHeavy();
 }
 $("ramp").style.background = "linear-gradient(90deg," + [0, 0.25, 0.5, 0.75, 1].map(t => { const c = heat(t); return `rgb(${c[0] | 0},${c[1] | 0},${c[2] | 0})`; }).join(",") + ")";
-setNB(12, 1.5); setB(0.40); setView(30, -15);
-onTheme(() => { if (st.geo) { drawGeo(); drawProfile(); drawRelief(); } });
+setNB(12, 1.5); setB(0.40);
+onTheme(() => { if (st.geo) { drawGeo(); drawProfile(); } });
 window.AI = { buildScene, project, pattern, capture, decode, toDepth, runDecode, st, W, H, F, rebuild };
 rebuild();
 })();
