@@ -1,0 +1,665 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Face Detection, Interactively</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,500;8..60,600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="site.css">
+<style>
+.figbox { max-width: 340px; }
+.seg { flex-wrap: wrap; max-width: 100%; }
+.ctl { min-width: 0; }
+canvas.drag { cursor: grab; touch-action: none; }
+canvas.drag:active { cursor: grabbing; }
+canvas.scan { width: 100%; height: auto; display: block; background: var(--stage); border-radius: 6px; image-rendering: pixelated; }
+.btnrow { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.tbl { overflow-x: auto; }
+table.calc.tiny { font-size: 0.68rem; }
+table.calc.tiny td { padding: 2px 3px; min-width: 18px; }
+table.calc td.hi { background: color-mix(in srgb, var(--accent) 24%, transparent); color: var(--ink); font-weight: 600; }
+table.calc td.sel { background: color-mix(in srgb, var(--accent) 28%, transparent); }
+table.calc td.dim { color: var(--muted); }
+#toy { touch-action: none; user-select: none; cursor: crosshair; }
+.calcl { font: 0.82rem var(--mono); line-height: 1.6; color: var(--muted); }
+.calcl b { color: var(--ink); font-weight: 500; }
+.dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 5px; vertical-align: -1px; }
+.winl { font: 0.8rem var(--mono); color: var(--muted); }
+.winl b { color: var(--ink); font-weight: 500; }
+</style>
+</head>
+<body>
+<header class="site"></header>
+<main class="wrap">
+  <div class="intro">
+    <h1>Face Detection, Interactively</h1>
+    <p class="lead">A face is a pattern of light and dark patches. Slide a small window over the image, measure a few cheap rectangle contrasts, and let a classifier say face or not face.</p>
+    <p>Everything here is trained on small generated face drawings, so the detector finds the drawn faces in the samples. It will mostly miss photographs of real faces. Follows the Face Detection lecture in the Features chapter of First Principles of Computer Vision: Haar features, the integral image, nearest neighbor and SVM classifiers, and a sliding window.</p>
+  </div>
+
+  <section class="stage" aria-labelledby="h0">
+    <div class="stage-head"><span class="num">00</span><div><h2 id="h0">Choose an image</h2><p>Pick a sample or upload your own. Large images are scaled so the longer side is 240 px, and everything runs in your browser.</p></div></div>
+    <div id="pick"></div>
+    <p class="note" id="pickNote"></p>
+  </section>
+
+  <section class="stage" aria-labelledby="h1">
+    <div class="stage-head"><span class="num">01</span><div><h2 id="h1">Haar features</h2><p>A Haar feature is the sum of the pixels under the white rectangles minus the sum under the black ones. Drag the rectangle over the 24×24 patch, or use the sliders. On the mean face, put a black band on the eyes and a white band on the cheeks and the value is large and positive.</p></div></div>
+    <div class="controls">
+      <div class="ctl"><label>Feature type</label><div class="seg" id="ftype" role="group" aria-label="Feature type"><button type="button" data-v="2v" aria-pressed="true">2-rect (top/bottom)</button><button type="button" data-v="2h" aria-pressed="false">2-rect (left/right)</button><button type="button" data-v="3" aria-pressed="false">3-rect</button><button type="button" data-v="4" aria-pressed="false">4-rect</button></div></div>
+      <div class="ctl"><label>Patch</label><div class="seg" id="patchSrc" role="group" aria-label="Patch"><button type="button" data-v="mean" aria-pressed="true">Mean face</button><button type="button" data-v="flat" aria-pressed="false">Flat</button><button type="button" data-v="noise" aria-pressed="false">Noise</button></div></div>
+    </div>
+    <div class="controls">
+      <div class="ctl"><label for="fx">Left</label><input type="range" id="fx" min="0" max="23" step="1" value="3"><output id="fxO">3</output></div>
+      <div class="ctl"><label for="fy">Top</label><input type="range" id="fy" min="0" max="23" step="1" value="5"><output id="fyO">5</output></div>
+      <div class="ctl"><label for="fw">Width</label><input type="range" id="fw" min="2" max="24" step="1" value="18"><output id="fwO">18</output></div>
+      <div class="ctl"><label for="fh">Height</label><input type="range" id="fh" min="2" max="24" step="1" value="10"><output id="fhO">10</output></div>
+      <div class="ctl"><button type="button" class="btn" id="swapBW">Swap black and white</button></div>
+    </div>
+    <div class="two">
+      <figure class="figbox"><canvas class="view drag" id="patchView" width="288" height="288" role="img" aria-label="24 by 24 patch with the Haar feature rectangles drawn on it. Drag to move the feature."></canvas><figcaption>The patch with the feature on top. <b>White</b> boxes add, <b>black</b> boxes subtract. Drag to move.</figcaption></figure>
+      <div style="display:grid;gap:12px;align-content:start">
+        <div class="stats" id="fStats"></div>
+        <div class="calcl" id="fCalc"></div>
+        <div class="math"><h3>Why these three types</h3><p>A 2-rectangle feature measures an edge (eyes against cheeks). A 3-rectangle feature measures a bar (the bright nose bridge between two dark eyes). A 4-rectangle feature measures a diagonal pattern. Each is <i>f</i> = Σ<sub>white</sub> I − Σ<sub>black</sub> I, with equal white and black areas so a flat patch gives 0.</p><p>The normalized value divides by <i>s</i>²<i>σ</i>, where <i>s</i> is the window side and <i>σ</i> its standard deviation. That cancels the window's brightness and contrast, so a feature means the same in a dim or a bright photo. Windows with <i>σ</i> &lt; 2 are flat and report 0.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="stage" aria-labelledby="h2">
+    <div class="stage-head"><span class="num">02</span><div><h2 id="h2">Integral image</h2><p>The integral image <i>S</i>(<i>x</i>,<i>y</i>) holds the sum of all pixels above and to the left. After one pass over the image, any rectangle sum costs four lookups: <i>A</i> + <i>D</i> − <i>B</i> − <i>C</i>. Drag on the small image, or use the sliders.</p></div></div>
+    <div class="controls">
+      <div class="ctl"><label for="rx">Left</label><input type="range" id="rx" min="0" max="11" step="1" value="2"><output id="rxO">2</output></div>
+      <div class="ctl"><label for="ry">Top</label><input type="range" id="ry" min="0" max="11" step="1" value="3"><output id="ryO">3</output></div>
+      <div class="ctl"><label for="rw">Width</label><input type="range" id="rw" min="1" max="12" step="1" value="5"><output id="rwO">5</output></div>
+      <div class="ctl"><label for="rh">Height</label><input type="range" id="rh" min="1" max="12" step="1" value="4"><output id="rhO">4</output></div>
+    </div>
+    <div class="two">
+      <div><p class="note"><b>Image</b> <i>I</i> (12×12, values 0 to 9)</p><div class="tbl"><table class="calc tiny" id="toy" aria-label="Toy image, drag to select a rectangle"></table></div></div>
+      <div><p class="note"><b>Integral image</b> <i>S</i> (13×13, with a zero row and column)</p><div class="tbl"><table class="calc tiny" id="toyS" aria-label="Integral image of the toy image"></table></div></div>
+    </div>
+    <div class="stats" id="sStats"></div>
+    <div class="calcl" id="sCalc"></div>
+    <div class="btnrow"><button type="button" class="btn" id="chk">Check on the loaded image</button><span class="note" id="chkOut" aria-live="polite"></span></div>
+  </section>
+
+  <section class="stage" aria-labelledby="h3">
+    <div class="stage-head"><span class="num">03</span><div><h2 id="h3">Classifier</h2><p>Each 24×24 window becomes a vector of ten Haar feature values. A classifier maps that vector to face or not face. The plot shows 150 face and 250 non-face training windows by two of the ten features. Switch classifiers, then click the plot to test a point.</p></div></div>
+    <div class="controls">
+      <div class="ctl"><label>Classifier</label><div class="seg" id="clf" role="group" aria-label="Classifier"><button type="button" data-v="nn" aria-pressed="false">Nearest neighbor</button><button type="button" data-v="svm" aria-pressed="true">Linear SVM</button></div></div>
+      <div class="ctl"><label for="fa">x feature</label><select id="fa"></select></div>
+      <div class="ctl"><label for="fb">y feature</label><select id="fb"></select></div>
+      <div class="ctl" id="kBox"><label for="kk">Neighbors k</label><input type="range" id="kk" min="1" max="5" step="2" value="3"><output id="kkO">3</output></div>
+    </div>
+    <canvas class="plot click" id="scatter" role="img" aria-label="Scatter plot of face and non-face training windows with the classifier's decision regions. Click to add a test point."></canvas>
+    <div class="legend"><span><span class="dot" style="background:var(--accent)"></span>face</span><span><span class="dot" style="background:#d9822b"></span>non-face</span><span>diamond: your test point</span><span>ring: support vector</span></div>
+    <div class="controls">
+      <div class="ctl"><label for="ptx">Test point x</label><input type="range" id="ptx" min="0" max="100" step="1" value="50"><output id="ptxO">50%</output></div>
+      <div class="ctl"><label for="pty">Test point y</label><input type="range" id="pty" min="0" max="100" step="1" value="50"><output id="ptyO">50%</output></div>
+      <div class="ctl"><button type="button" class="btn" id="addPt">Add test point</button> <button type="button" class="btn" id="clrPt">Clear points</button></div>
+    </div>
+    <div class="calcl" id="ptRead" aria-live="polite">Click the plot, or use the sliders and Add test point.</div>
+    <div class="two">
+      <div class="math"><h3>Nearest neighbor</h3><p>Standardize each feature, then find the <i>k</i> closest training windows of each class. With <i>d</i><sub>+</sub> the mean distance to the face neighbors and <i>d</i><sub>−</sub> to the non-face neighbors, the score is (<i>d</i><sub>−</sub> − <i>d</i><sub>+</sub>)/(<i>d</i><sub>−</sub> + <i>d</i><sub>+</sub>). Positive means face. It needs all 400 training vectors at test time.</p></div>
+      <div class="math"><h3>Linear SVM</h3><p>Find the line <i>w</i>·<i>x</i> + <i>b</i> = 0 that separates the classes with the widest margin by minimizing <i>λ</i>/2 |<i>w</i>|² + mean max(0, 1 − <i>y</i>(<i>w</i>·<i>x</i> + <i>b</i>)). Only the support vectors, which sit on or inside the margin lines, matter. Testing is one dot product.</p></div>
+    </div>
+  </section>
+
+  <section class="stage" aria-labelledby="h4">
+    <div class="stage-head"><span class="num">04</span><div><h2 id="h4">Sliding window</h2><p>To find faces of unknown size and position, classify every window at every position and scale. The window grows by a constant factor, and the integral image means no image pyramid is needed: the same four lookups work at any size.</p></div></div>
+    <div class="controls">
+      <div class="ctl"><label>Classifier</label><div class="seg" id="clf4" role="group" aria-label="Classifier for the scan"><button type="button" data-v="nn" aria-pressed="false">Nearest neighbor</button><button type="button" data-v="svm" aria-pressed="true">Linear SVM</button></div></div>
+      <div class="ctl"><label for="winMin">Base window</label><input type="range" id="winMin" min="24" max="64" step="4" value="24"><output id="winMinO">24 px</output></div>
+      <div class="ctl"><label for="step">Scale step</label><input type="range" id="step" min="1.1" max="1.5" step="0.05" value="1.25"><output id="stepO">1.25</output></div>
+      <div class="ctl"><label for="stride">Stride</label><input type="range" id="stride" min="1" max="8" step="1" value="2"><output id="strideO">2 px</output></div>
+    </div>
+    <p class="note" id="scanMsg" aria-live="polite"></p>
+    <div class="controls">
+      <div class="ctl"><label for="scaleIdx">View scale</label><input type="range" id="scaleIdx" min="0" max="0" step="1" value="0"><output id="scaleIdxO"></output></div>
+      <div class="ctl"><label for="pos">Window along scan order</label><input type="range" id="pos" min="0" max="0" step="1" value="0"><output id="posO"></output></div>
+    </div>
+    <div class="two">
+      <figure><canvas class="scan" id="scanView" role="img" aria-label="The image with the current scan window outlined"></canvas><figcaption>The scanned window (amber outline).</figcaption></figure>
+      <figure><canvas class="scan" id="heatView" role="img" aria-label="Heat map of window scores at the selected scale"></canvas><figcaption>Score of every window at this scale. <b style="color:#e08a1e">Warm</b>: face-like. <b style="color:#5b8fd9">Cool</b>: not.</figcaption></figure>
+    </div>
+    <div class="winl" id="winRead"></div>
+    <div class="stats" id="cntStats"></div>
+    <div class="math"><h3>How many windows</h3><p>With image width <i>W</i>, height <i>H</i>, window side <i>s</i> and stride <i>t</i>, the window can start at <i>n<sub>x</sub></i> = ⌊(<i>W</i> − <i>s</i>)/<i>t</i>⌋ + 1 columns and <i>n<sub>y</sub></i> = ⌊(<i>H</i> − <i>s</i>)/<i>t</i>⌋ + 1 rows. The sizes are <i>s<sub>i</sub></i> = round(base · step<sup><i>i</i></sup>) while <i>s<sub>i</sub></i> ≤ min(<i>W</i>, <i>H</i>). The total is Σ<sub><i>i</i></sub> <i>n<sub>x</sub></i><i>n<sub>y</sub></i>.</p><div class="tbl" id="cntTable"></div></div>
+  </section>
+
+  <section class="stage" aria-labelledby="h5">
+    <div class="stage-head"><span class="num">05</span><div><h2 id="h5">Detections</h2><p>One face fires many overlapping windows at nearby positions and scales. Keep the windows that score above the threshold, then merge the overlapping ones into a single box.</p></div></div>
+    <div class="controls">
+      <div class="ctl"><label for="thr">Threshold</label><input type="range" id="thr" min="-0.9" max="1" step="0.05" value="0.8"><output id="thrO">0.80</output></div>
+      <div class="ctl"><label for="minN">Minimum neighbors</label><input type="range" id="minN" min="0" max="10" step="1" value="3"><output id="minNO">3</output></div>
+      <div class="ctl"><label>Merge overlapping hits</label><div class="seg" id="merge" role="group" aria-label="Merge overlapping hits"><button type="button" data-v="off" aria-pressed="false">Off</button><button type="button" data-v="on" aria-pressed="true">On</button></div></div>
+    </div>
+    <figure><canvas class="scan" id="detView" role="img" aria-label="The image with raw hits in amber and merged detection boxes in the accent color"></canvas><figcaption><span style="color:#f59e0b">Amber</span>: every window above the threshold. <b style="color:var(--accent)">Thick</b>: merged detections.</figcaption></figure>
+    <div class="stats" id="detStats"></div>
+    <div class="two">
+      <div class="math"><h3>Threshold and neighbors</h3><p>A low threshold catches faces that fit the window poorly but admits false alarms. A high one is clean but can miss faces. A real face fires several windows (neighbors in position and scale) while a false alarm is usually isolated, so a cluster needs at least the minimum number of neighbors to survive.</p></div>
+      <div class="math"><h3>Merging and cost</h3><p>Hits whose boxes overlap with intersection over union ≥ 0.3 join the cluster of the best-scoring hit, and the output box is the score-weighted average. The integral image makes each window cost a few dozen reads regardless of size. As a one-line early rejection note: most windows can be dismissed after the first feature alone, and the chip below counts how many.</p></div>
+    </div>
+  </section>
+</main>
+<footer class="wrap site"></footer>
+
+<script src="common.js"></script>
+<script>
+(() => {
+"use strict";
+const { $, nav, footer, picker, SAMPLES, sampleCanvas, rng, toGray, show, sized, hiDPI, onTheme, seg, setSeg, segVal, fmt, esc, cssVar } = VB;
+nav("face-detection.html"); footer();
+const deb = (f, ms = 50) => { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => f(...a), ms); }; };
+const clamp = (v, lo, hi) => v < lo ? lo : v > hi ? hi : v;
+const FACE = () => cssVar("--accent") || "#1f56d1", NONF = "#d9822b", AMBER = "#f59e0b";
+
+/* ================= integral image ================= */
+function integral(a, w, h) {
+  const W = w + 1, I = new Float64Array(W * (h + 1));
+  for (let y = 0; y < h; y++) { let row = 0; for (let x = 0; x < w; x++) { row += a[y * w + x]; I[(y + 1) * W + x + 1] = I[y * W + x + 1] + row; } }
+  return I;
+}
+const rectSum = (I, w, x0, y0, x1, y1) => { const W = w + 1; return I[y1 * W + x1] - I[y0 * W + x1] - I[y1 * W + x0] + I[y0 * W + x0]; };
+
+/* ================= synthetic faces ================= */
+function drawFace(c, cx, cy, s, r) {
+  const g = v => { v = Math.max(0, Math.min(255, Math.round(v))); return `rgb(${v},${v},${v})`; };
+  const J = () => (r() - 0.5) * 0.08;
+  const skin = 150 + r() * 50;
+  const el = (x, y, rx, ry, col) => { c.fillStyle = col; c.beginPath(); c.ellipse(cx + x * s, cy + y * s, rx * s, ry * s, 0, 0, 7); c.fill(); };
+  el(J(), -0.30 + J(), 0.49, 0.27, g(35 + r() * 35));            // hair
+  el(J() * 0.5, 0.04 + J() * 0.5, 0.44, 0.47, g(skin));          // face
+  el(0, -0.04, 0.045, 0.17, g(skin + 22));                        // nose bridge
+  el(J() * 0.5, 0.14, 0.07, 0.03, g(skin - 35));                  // under the nose
+  for (const sg of [-1, 1]) el(sg * 0.19 + J(), -0.12 + J(), 0.10, 0.07, g(15 + r() * 35)); // eyes
+  el(J(), 0.25 + J(), 0.16, 0.045, g(40 + r() * 35));            // mouth
+}
+const BG = {
+  two(c, w, h) {
+    const r = rng(41), gr = c.createLinearGradient(0, 0, w, h); gr.addColorStop(0, "#8a8a8a"); gr.addColorStop(1, "#767676"); c.fillStyle = gr; c.fillRect(0, 0, w, h);
+    for (let i = 0; i < 9; i++) { const v = 105 + r() * 40; c.fillStyle = `rgb(${v},${v},${v})`; c.beginPath(); c.arc(r() * w, r() * h, 8 + r() * 22, 0, 7); c.fill(); }
+    for (let i = 0; i < 4; i++) { const v = 100 + r() * 40; c.fillStyle = `rgb(${v},${v},${v})`; c.fillRect(r() * w, r() * h, 20 + r() * 50, 8 + r() * 24); }
+    VB.addNoise(c, w, h, 8, 3);
+  },
+  texture(c, w, h) {
+    SAMPLES.bricks.draw(c, w, h);
+    const r = rng(77); c.save(); c.beginPath(); c.rect(w * 0.5, 0, w * 0.5, h); c.clip();
+    c.fillStyle = "#808080"; c.fillRect(w * 0.5, 0, w * 0.5, h);
+    for (let i = 0; i < 70; i++) { const v = Math.round(r() * 255); c.fillStyle = `rgb(${v},${v},${v})`; c.beginPath(); c.arc(w * 0.5 + r() * w * 0.5, r() * h, 5 + r() * 20, 0, 7); c.fill(); }
+    c.restore(); VB.addNoise(c, w, h, 6, 9);
+  },
+  mixed(c, w, h) {
+    c.fillStyle = "#8d8d8d"; c.fillRect(0, 0, w, h);
+    c.fillStyle = "#2c2c2c"; for (let x = 250; x < 480; x += 30) c.fillRect(x, 20, 14, 90);
+    c.fillStyle = "#3a3a3a"; c.fillRect(20, 250, 120, 36); c.beginPath(); c.arc(250, 300, 34, 0, 7); c.fill();
+    c.lineWidth = 12; c.strokeStyle = "#333"; c.beginPath(); c.arc(420, 260, 40, 0, 7); c.stroke();
+    c.fillStyle = "#b4b4b4"; c.beginPath(); c.arc(40, 40, 24, 0, 7); c.fill(); c.fillRect(190, 20, 60, 22);
+    VB.addNoise(c, w, h, 8, 5);
+  },
+};
+// faces in 480x360 sample coordinates: [cx, cy, size, seed]
+const SAMPLE_DEFS = [
+  { name: "Two faces", bg: "two", faces: [[140, 170, 94, 11], [345, 200, 118, 12]], note: "Two drawn faces of different sizes on a gray background with mild clutter. The detector was trained on drawn faces like these, so photos of real faces will mostly not be detected." },
+  { name: "Texture", bg: "texture", faces: [], note: "No faces at all, only bricks and random blobs. A good detector finds nothing here. Lower the threshold in section 05 to see false alarms appear." },
+  { name: "Mixed", bg: "mixed", faces: [[120, 130, 76, 21], [335, 205, 110, 22]], note: "Two faces among stripes, bars and rings. Clutter that vaguely resembles a face is the hard case for a threshold." },
+];
+for (const d of SAMPLE_DEFS) d.draw = (c, w, h) => { BG[d.bg](c, w, h); for (const [x, y, s, sd] of d.faces) drawFace(c, x, y, s, rng(sd)); };
+
+/* ================= Haar features ================= */
+// rects as fractions of the window: [x0, y0, x1, y1, weight]; value = sum(white, +) - sum(black, -)
+const FEATS = [
+  { name: "eyes / cheeks", rects: [[0.12, 0.47, 0.88, 0.61, 1], [0.12, 0.31, 0.88, 0.45, -1]] },
+  { name: "forehead / eyes", rects: [[0.3, 0.15, 0.7, 0.29, 1.4], [0.22, 0.31, 0.78, 0.45, -1]] },
+  { name: "eye | nose | eye", rects: [[0.20, 0.31, 0.40, 0.45, -1], [0.40, 0.31, 0.60, 0.45, 2], [0.60, 0.31, 0.80, 0.45, -1]] },
+  { name: "mouth band", rects: [[0.2, 0.55, 0.8, 0.65, 1], [0.2, 0.65, 0.8, 0.85, -1], [0.2, 0.85, 0.8, 0.95, 1]] },
+  { name: "eyes / cheeks (4-rect)", rects: [[0.18, 0.47, 0.42, 0.61, 1], [0.58, 0.47, 0.82, 0.61, 1], [0.18, 0.31, 0.42, 0.45, -1], [0.58, 0.31, 0.82, 0.45, -1]] },
+  { name: "top / bottom half", rects: [[0, 0, 1, 0.5, -1], [0, 0.5, 1, 1, 1]] },
+  { name: "left eye / cheek", rects: [[0.18, 0.47, 0.42, 0.61, 1], [0.18, 0.31, 0.42, 0.45, -1]] },
+  { name: "right eye / cheek", rects: [[0.58, 0.47, 0.82, 0.61, 1], [0.58, 0.31, 0.82, 0.45, -1]] },
+  { name: "nose bridge / left eye", rects: [[0.42, 0.31, 0.58, 0.45, 1.5], [0.18, 0.31, 0.42, 0.45, -1]] },
+  { name: "mouth / mouth corners", rects: [[0.12, 0.65, 0.3, 0.85, 1.1], [0.3, 0.65, 0.7, 0.85, -1], [0.7, 0.65, 0.88, 0.85, 1.1]] },
+];
+const NF = FEATS.length, ALL = Array.from({ length: NF }, (_, i) => i);
+// value of feature f on window (x, y, side s); W = image width + 1 (integral image stride)
+function haar(I, I2, W, x, y, s, f) {
+  const n = s * s, x1 = x + s, y1 = y + s;
+  const S = I[y1 * W + x1] - I[y * W + x1] - I[y1 * W + x] + I[y * W + x];
+  const S2 = I2[y1 * W + x1] - I2[y * W + x1] - I2[y1 * W + x] + I2[y * W + x];
+  const sigma = Math.sqrt(Math.max(1e-6, S2 / n - (S / n) * (S / n)));
+  if (sigma < 2) return 0;
+  let raw = 0;
+  for (const q of f.rects) { const a = Math.round(x + s * q[0]), b = Math.round(y + s * q[1]), c = Math.round(x + s * q[2]), d = Math.round(y + s * q[3]); raw += q[4] * (I[d * W + c] - I[b * W + c] - I[d * W + a] + I[b * W + a]); }
+  return raw / (s * s * sigma);
+}
+function featureVector(I, I2, W, x, y, s) { const v = new Float32Array(NF); for (let j = 0; j < NF; j++) v[j] = haar(I, I2, W, x, y, s, FEATS[j]); return v; }
+const squares = a => { const o = new Float64Array(a.length); for (let i = 0; i < a.length; i++) o[i] = a[i] * a[i]; return o; };
+
+/* ================= training data (150 faces, 250 non-faces, 24x24) ================= */
+const DATA = (() => {
+  const r = rng(101), N = 24;
+  const cv = document.createElement("canvas"); cv.width = cv.height = N; const c = cv.getContext("2d", { willReadFrequently: true });
+  const srcs = [];
+  for (const k of ["scene", "shapes", "text", "bricks", "stripes", "blobs"]) srcs.push(sampleCanvas(SAMPLES[k]));
+  const bgs = ["two", "texture", "mixed"].map(k => sampleCanvas({ draw: BG[k] }));
+  const gray = () => { const d = c.getImageData(0, 0, N, N).data, p = new Float32Array(N * N); for (let i = 0; i < p.length; i++) p[i] = 0.299 * d[4 * i] + 0.587 * d[4 * i + 1] + 0.114 * d[4 * i + 2]; return p; };
+  const finish = p => { const ct = 0.7 + r() * 0.6, br = (r() - 0.5) * 60, nz = r() < 0.4 ? 0.3 : 3 + r() * 6; for (let i = 0; i < p.length; i++) p[i] = Math.round(clamp((p[i] - 128) * ct + 128 + br + (r() - 0.5) * 2 * nz, 0, 255)); return p; };
+  const bgFill = () => { const a = 70 + r() * 110, b = a + (r() - 0.5) * (r() < 0.5 ? 12 : 50), gr = c.createLinearGradient(r() * N, r() * N, r() * N, r() * N); gr.addColorStop(0, `rgb(${a},${a},${a})`); gr.addColorStop(1, `rgb(${b},${b},${b})`); c.fillStyle = gr; c.fillRect(0, 0, N, N); };
+  const face = (dx, dy, sc) => { bgFill(); drawFace(c, 12 + dx, 12 + dy, N * sc, r); };
+  const pos = [], neg = [];
+  for (let i = 0; i < 150; i++) { face((r() - 0.5) * 2.4, (r() - 0.5) * 2.4, 0.93 + r() * 0.17); pos.push(finish(gray())); }
+  for (let i = 0; i < 250; i++) {
+    const t = i % 10;
+    if (t === 0 || t === 3) {
+      if (r() < 0.55) { // straight edges and bars at any angle and offset
+        bgFill(); c.save(); c.translate(12 + (r() - 0.5) * 14, 12 + (r() - 0.5) * 14); c.rotate(r() * 6.28); const v = r() * 255; c.fillStyle = `rgb(${v},${v},${v})`;
+        if (r() < 0.5) c.fillRect(0, -30, 30, 60); else c.fillRect(-30, -(1 + r() * 5), 60, 2 + r() * 10); c.restore();
+      } else bgFill();
+    }
+    else if (t === 1) { bgFill(); for (let j = 0, m = 2 + (r() * 5 | 0); j < m; j++) { const v = r() * 255, x = r() * N, y = r() * N, a = 2 + r() * 12, b = 2 + r() * 12; c.fillStyle = `rgb(${v},${v},${v})`; c.beginPath(); if (r() < 0.5) c.ellipse(x, y, a, b, r() * 3, 0, 7); else c.rect(x - a, y - b, 2 * a, 2 * b); c.fill(); } }
+    else if (t === 7 || t === 8 || t === 2) { // hard negatives: the same face drawn off-center or at the wrong scale
+      const u = r();
+      if (u < 0.4) { const a = r() * 6.28, d = 4.5 + r() * 8; face(Math.cos(a) * d, Math.sin(a) * d, 0.9 + r() * 0.25); }
+      else if (u < 0.7) face((r() - 0.5) * 5, (r() - 0.5) * 5, 1.32 + r() * 1.0);
+      else face((r() - 0.5) * 5, (r() - 0.5) * 5, 0.35 + r() * 0.43);
+    } else {
+      const src = t === 6 ? bgs[r() * bgs.length | 0] : t === 9 ? bgs[r() * bgs.length | 0] : srcs[r() * srcs.length | 0];
+      const cs = 48 + r() * 230; c.drawImage(src, r() * (480 - cs), r() * (360 - cs), cs, cs, 0, 0, N, N);
+    }
+    const p = gray();
+    if ((t === 0 || t === 3) && r() < 0.5) { const A = 1 + r() * 30; for (let k = 0; k < p.length; k++) p[k] = (t === 3 && r() < 0.5 ? 128 : p[k]) + (r() - 0.5) * 2 * A * 0.6; }
+    neg.push(finish(p));
+  }
+  // hard-negative mining: crops of the scene images that a first SVM still calls a face replace the easy random crops
+  const fvOf = p => featureVector(integral(p, N, N), integral(squares(p), N, N), N + 1, 0, 0, N);
+  const build = () => { const ps = [...pos, ...neg], fv = new Float32Array(ps.length * NF); ps.forEach((p, i) => fv.set(fvOf(p), i * NF)); return { fv, y: Int8Array.from(ps, (_, i) => i < pos.length ? 1 : -1), n: ps.length }; };
+  const slots = []; for (let i = 0; i < neg.length; i++) if ([4, 5, 6, 9].includes(i % 10)) slots.push(i);
+  const pool = [...srcs, ...bgs, ...bgs, ...bgs];
+  for (let round = 0; round < 2; round++) {
+    const m0 = train("svm", ALL, build()); let got = 0;
+    for (let tries = 0; tries < 5000 && got < slots.length; tries++) {
+      const src = pool[r() * pool.length | 0], cs = 48 + r() * 230; c.drawImage(src, r() * (480 - cs), r() * (360 - cs), cs, cs, 0, 0, N, N);
+      const p = finish(gray()), v = fvOf(p); let mg = m0.b; for (let j = 0; j < NF; j++) mg += m0.w[j] * clamp((v[j] - m0.mu[j]) / m0.sd[j], -3, 3);
+      if (mg > -0.5) neg[slots[got++]] = p;
+    }
+  }
+  const patches = [...pos, ...neg].map(p => Float32Array.from(p)), y = new Int8Array(patches.length);
+  for (let i = 0; i < patches.length; i++) y[i] = i < 150 ? 1 : -1;
+  const fv = new Float32Array(patches.length * NF);
+  patches.forEach((p, i) => { const I = integral(p, N, N), I2 = integral(squares(p), N, N); fv.set(featureVector(I, I2, N + 1, 0, 0, N), i * NF); });
+  return { patches, y, fv, n: patches.length, N };
+})();
+// stage-1 rejection threshold: only about 3 percent of training faces fall below it on feature 0
+const REJ = (() => { const v = []; for (let i = 0; i < 150; i++) v.push(DATA.fv[i * NF]); v.sort((a, b) => a - b); return Math.max(0.01, v[Math.floor(v.length * 0.03)]); })();
+
+/* ================= classifiers ================= */
+const modelCache = {};
+function train(kind, dims, D) {
+  D = D || DATA;
+  const d = dims.length, n = D.n, mu = new Float64Array(d), sd = new Float64Array(d);
+  dims.forEach((f, j) => { let s = 0; for (let i = 0; i < n; i++) s += D.fv[i * NF + f]; mu[j] = s / n; let q = 0; for (let i = 0; i < n; i++) q += (D.fv[i * NF + f] - mu[j]) ** 2; sd[j] = Math.sqrt(q / n) || 1; });
+  const X = new Float32Array(n * d); for (let i = 0; i < n; i++) for (let j = 0; j < d; j++) X[i * d + j] = (D.fv[i * NF + dims[j]] - mu[j]) / sd[j];
+  const m = { kind, dims: dims.slice(), d, n, mu, sd, X, y: D.y, tmp: new Float64Array(d), bp: new Float64Array(5), bn: new Float64Array(5) };
+  if (kind === "svm") { // Pegasos with the bias folded into w; averages the second half of the iterates
+    const lam = 0.01, T = 3000, r = rng(55), w = new Float64Array(d + 1), avg = new Float64Array(d + 1); let cnt = 0;
+    for (let t = 1; t <= T; t++) {
+      const i = Math.floor(r() * n), eta = 1 / (lam * t); let dot = w[d]; for (let j = 0; j < d; j++) dot += w[j] * X[i * d + j];
+      const yi = D.y[i], sh = 1 - eta * lam; for (let j = 0; j <= d; j++) w[j] *= sh;
+      if (yi * dot < 1) { for (let j = 0; j < d; j++) w[j] += eta * yi * X[i * d + j]; w[d] += eta * yi; }
+      if (t > T / 2) { for (let j = 0; j <= d; j++) avg[j] += w[j]; cnt++; }
+    }
+    m.w = Float64Array.from(avg.subarray(0, d), v => v / cnt); m.b = avg[d] / cnt;
+  }
+  return m;
+}
+function getModel(kind, dims) { const k = kind + ":" + dims.join(","); return modelCache[k] || (modelCache[k] = train(kind, dims)); }
+function margin(m, v) { let s = m.b; for (let j = 0; j < m.d; j++) s += m.w[j] * clamp((v[m.dims[j]] - m.mu[j]) / m.sd[j], -3, 3); return s; }
+function scoreNN(m, v, k) {
+  const { X, y, d, n, dims, mu, sd, tmp, bp, bn } = m;
+  for (let j = 0; j < d; j++) tmp[j] = clamp((v[dims[j]] - mu[j]) / sd[j], -3, 3);
+  for (let j = 0; j < k; j++) { bp[j] = Infinity; bn[j] = Infinity; }
+  for (let i = 0, o = 0; i < n; i++, o += d) {
+    let q = 0; for (let j = 0; j < d; j++) { const e = X[o + j] - tmp[j]; q += e * e; }
+    const T = y[i] > 0 ? bp : bn;
+    if (q < T[k - 1]) { let j = k - 1; while (j > 0 && T[j - 1] > q) { T[j] = T[j - 1]; j--; } T[j] = q; }
+  }
+  let dp = 0, dn = 0; for (let j = 0; j < k; j++) { dp += Math.sqrt(bp[j]); dn += Math.sqrt(bn[j]); }
+  return (dn - dp) / (dn + dp + 1e-9);
+}
+// score in -1..1, positive = face
+function classify(m, v, k) { return m.kind === "svm" ? Math.tanh(margin(m, v)) : scoreNN(m, v, k || st.k); }
+
+/* ================= state ================= */
+const st = { w: 0, h: 0, g: null, I: null, I2: null, id: 0, base: null, Z: 2, faces: [], clf: "svm", k: 3, fa: 0, fb: 2,
+  f: { type: "2v", x: 3, y: 5, w: 18, h: 10, swap: false, patch: "mean" }, pts: [], sc: null, scKey: "", thr: 0.8, minN: 3, merge: true, hits: [], boxes: [], view: { scale: 0, pos: 0 } };
+const THR_DEF = { svm: 0.8, nn: 0.2 }, CAP = 120000;
+
+/* ================= 00: image ================= */
+function setImage(src, sw, sh, info) {
+  const t = toGray(src, sw, sh, 240);
+  const g = new Float32Array(t.g.length); for (let i = 0; i < g.length; i++) g[i] = Math.round(t.g[i]); // integers keep every sum exact
+  st.w = t.w; st.h = t.h; st.g = g; st.I = integral(g, t.w, t.h); st.I2 = integral(squares(g), t.w, t.h); st.id++;
+  st.base = document.createElement("canvas"); show(st.base, t.w, t.h, g);
+  st.Z = Math.max(1, Math.round(480 / Math.max(t.w, t.h)));
+  const k = t.w / sw;
+  st.faces = info && info.sample ? info.sample.faces.map(([cx, cy, s]) => ({ x: (cx - s / 2) * k, y: (cy - s / 2) * k, s: s * k })) : [];
+  st.sc = null; $("chkOut").textContent = "";
+  requestScan(true);
+}
+
+/* ================= 01: Haar features on a patch ================= */
+const PZ = 12;
+function patchArr() {
+  const p = st.f.patch;
+  if (p === "flat") return new Float32Array(576).fill(128);
+  if (p === "noise") { const r = rng(9), a = new Float32Array(576); for (let i = 0; i < 576; i++) a[i] = Math.round(128 + (r() + r() + r() - 1.5) * 60); return a; }
+  if (!patchArr.mean) { // mean of the standardized face patches, rescaled to a visible contrast
+    const a = new Float32Array(576);
+    for (let i = 0; i < 150; i++) { const q = DATA.patches[i]; let m = 0, s = 0; for (const v of q) m += v; m /= 576; for (const v of q) s += (v - m) ** 2; s = Math.sqrt(s / 576) || 1; for (let j = 0; j < 576; j++) a[j] += (q[j] - m) / s / 150; }
+    for (let j = 0; j < 576; j++) a[j] = Math.round(clamp(128 + a[j] * 70, 0, 255));
+    patchArr.mean = a;
+  }
+  return patchArr.mean;
+}
+function featRects() { // rects in patch pixels: [x0, y0, x1, y1, weight]
+  const { type, x, y, w, h, swap } = st.f, sg = swap ? -1 : 1;
+  const X1 = Math.min(24, x + w), Y1 = Math.min(24, y + h), mx = Math.round((x + X1) / 2), my = Math.round((y + Y1) / 2);
+  let r;
+  if (type === "2v") r = [[x, y, X1, my, -1], [x, my, X1, Y1, 1]];
+  else if (type === "2h") r = [[x, y, mx, Y1, -1], [mx, y, X1, Y1, 1]];
+  else if (type === "3") { const a = x + Math.round((X1 - x) / 4), b = x + Math.round((X1 - x) * 3 / 4); r = [[x, y, a, Y1, -1], [a, y, b, Y1, 1], [b, y, X1, Y1, -1]]; }
+  else r = [[x, y, mx, my, -1], [mx, y, X1, my, 1], [x, my, mx, Y1, 1], [mx, my, X1, Y1, -1]];
+  return r.map(q => [q[0], q[1], q[2], q[3], q[4] * sg]);
+}
+function featValue() {
+  const a = patchArr(), I = integral(a, 24, 24), I2 = integral(squares(a), 24, 24), rs = featRects();
+  let wh = 0, bl = 0; for (const q of rs) { const v = rectSum(I, 24, q[0], q[1], q[2], q[3]); if (q[4] > 0) wh += v; else bl += v; }
+  const S = rectSum(I, 24, 0, 0, 24, 24), S2 = rectSum(I2, 24, 0, 0, 24, 24), sg = Math.sqrt(Math.max(1e-6, S2 / 576 - (S / 576) ** 2));
+  const value = wh - bl, norm = sg < 2 ? 0 : value / (576 * sg);
+  return { white: wh, black: bl, value, norm, sigma: sg };
+}
+function drawPatch() {
+  const cv = $("patchView"), c = cv.getContext("2d"), a = patchArr();
+  const im = c.createImageData(288, 288);
+  for (let y = 0; y < 288; y++) for (let x = 0; x < 288; x++) { const v = a[((y / PZ) | 0) * 24 + ((x / PZ) | 0)], o = (y * 288 + x) * 4; im.data[o] = im.data[o + 1] = im.data[o + 2] = v; im.data[o + 3] = 255; }
+  c.putImageData(im, 0, 0);
+  for (const q of featRects()) { c.fillStyle = q[4] > 0 ? "rgba(255,255,255,0.6)" : "rgba(0,0,0,0.6)"; c.fillRect(q[0] * PZ, q[1] * PZ, (q[2] - q[0]) * PZ, (q[3] - q[1]) * PZ); c.strokeStyle = q[4] > 0 ? "#fff" : "#000"; c.lineWidth = 1.5; c.strokeRect(q[0] * PZ + 0.5, q[1] * PZ + 0.5, (q[2] - q[0]) * PZ - 1, (q[3] - q[1]) * PZ - 1); }
+  const f = featValue();
+  $("fStats").innerHTML = `<span class="chip">White sum <b>${fmt(f.white, 0)}</b></span><span class="chip">Black sum <b>${fmt(f.black, 0)}</b></span><span class="chip">Value <b>${fmt(f.value, 0)}</b></span><span class="chip">Normalized <b>${fmt(f.norm, 3)}</b></span>`;
+  $("fCalc").innerHTML = `white − black = <b>${fmt(f.white, 0)}</b> − <b>${fmt(f.black, 0)}</b> = <b>${fmt(f.value, 0)}</b><br>normalized = value / (24² · σ) = ${fmt(f.value, 0)} / (576 · ${fmt(f.sigma, 1)}) = <b>${fmt(f.norm, 3)}</b>` + (f.sigma < 2 ? "<br>The patch is flat (σ &lt; 2), so the value is reported as 0." : "");
+}
+function syncFeat() {
+  const f = st.f; f.w = clamp(f.w, 2, 24); f.h = clamp(f.h, 2, 24); f.x = clamp(f.x, 0, 24 - 2); f.y = clamp(f.y, 0, 24 - 2);
+  for (const [id, k] of [["fx", "x"], ["fy", "y"], ["fw", "w"], ["fh", "h"]]) { $(id).value = f[k]; $(id + "O").textContent = f[k]; }
+  drawPatch();
+}
+seg("ftype", v => { st.f.type = v; syncFeat(); });
+seg("patchSrc", v => { st.f.patch = v; drawPatch(); });
+for (const [id, k] of [["fx", "x"], ["fy", "y"], ["fw", "w"], ["fh", "h"]]) $(id).addEventListener("input", e => { st.f[k] = +e.target.value; syncFeat(); });
+$("swapBW").addEventListener("click", () => { st.f.swap = !st.f.swap; drawPatch(); });
+{
+  const cv = $("patchView"); let drag = false;
+  const move = e => { const r = cv.getBoundingClientRect(), px = (e.clientX - r.left) / r.width * 24, py = (e.clientY - r.top) / r.height * 24; st.f.x = clamp(Math.round(px - st.f.w / 2), 0, 24 - st.f.w); st.f.y = clamp(Math.round(py - st.f.h / 2), 0, 24 - st.f.h); syncFeat(); };
+  cv.addEventListener("pointerdown", e => { drag = true; cv.setPointerCapture(e.pointerId); move(e); });
+  cv.addEventListener("pointermove", e => { if (drag) move(e); });
+  cv.addEventListener("pointerup", () => { drag = false; });
+  cv.addEventListener("pointercancel", () => { drag = false; });
+}
+
+/* ================= 02: integral image ================= */
+const toy = (() => { const r = rng(6), a = new Float64Array(144); for (let i = 0; i < 144; i++) a[i] = Math.floor(r() * 10); return { a, I: integral(a, 12, 12) }; })();
+const sel = { x: 2, y: 3, w: 5, h: 4 };
+{
+  $("toy").innerHTML = "<tbody>" + Array.from({ length: 12 }, (_, y) => "<tr>" + Array.from({ length: 12 }, (_, x) => `<td data-x="${x}" data-y="${y}">${toy.a[y * 12 + x]}</td>`).join("") + "</tr>").join("") + "</tbody>";
+  $("toyS").innerHTML = "<tbody>" + Array.from({ length: 13 }, (_, y) => "<tr>" + Array.from({ length: 13 }, (_, x) => `<td id="s${x}_${y}"${x === 0 || y === 0 ? ' class="dim"' : ""}>${toy.I[y * 13 + x]}</td>`).join("") + "</tr>").join("") + "</tbody>";
+}
+function drawToy() {
+  sel.x = clamp(sel.x, 0, 11); sel.y = clamp(sel.y, 0, 11); sel.w = clamp(sel.w, 1, 12 - sel.x); sel.h = clamp(sel.h, 1, 12 - sel.y);
+  for (const [id, k] of [["rx", "x"], ["ry", "y"], ["rw", "w"], ["rh", "h"]]) { $(id).value = sel[k]; $(id + "O").textContent = sel[k]; }
+  $("rw").max = 12 - sel.x; $("rh").max = 12 - sel.y;
+  const x0 = sel.x, y0 = sel.y, x1 = x0 + sel.w, y1 = y0 + sel.h;
+  for (const td of $("toy").querySelectorAll("td")) { const x = +td.dataset.x, y = +td.dataset.y; td.className = x >= x0 && x < x1 && y >= y0 && y < y1 ? "sel" : ""; }
+  for (const td of $("toyS").querySelectorAll("td")) td.className = td.className.replace("hi", "").trim();
+  for (const [x, y] of [[x0, y0], [x1, y0], [x0, y1], [x1, y1]]) $(`s${x}_${y}`).classList.add("hi");
+  const A = toy.I[y0 * 13 + x0], B = toy.I[y0 * 13 + x1], C = toy.I[y1 * 13 + x0], D = toy.I[y1 * 13 + x1];
+  let direct = 0; for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) direct += toy.a[y * 12 + x];
+  const viaI = D - B - C + A, ok = viaI === direct, n = sel.w * sel.h;
+  $("sStats").innerHTML = `<span class="chip">Rectangle <b>${sel.w} × ${sel.h}</b></span><span class="chip">Integral-image sum <b>${viaI}</b></span><span class="chip">Brute-force sum <b>${direct}</b></span><span class="tag ${ok ? "good" : "bad"}">${ok ? "match" : "mismatch"}</span><span class="chip">${sel.w} × ${sel.h} = <b>${n}</b> reads vs <b>4</b></span>`;
+  $("sCalc").innerHTML = `<i>A</i> = S(${x0},${y0}) = <b>${A}</b>, <i>B</i> = S(${x1},${y0}) = <b>${B}</b>, <i>C</i> = S(${x0},${y1}) = <b>${C}</b>, <i>D</i> = S(${x1},${y1}) = <b>${D}</b> (the highlighted cells)<br><i>D</i> − <i>B</i> − <i>C</i> + <i>A</i> = ${D} − ${B} − ${C} + ${A} = <b>${viaI}</b>. Any rectangle: 4 reads, regardless of size.`;
+}
+for (const [id, k] of [["rx", "x"], ["ry", "y"], ["rw", "w"], ["rh", "h"]]) $(id).addEventListener("input", e => { sel[k] = +e.target.value; drawToy(); });
+{
+  const t = $("toy"); let a = null;
+  const cell = e => { const el = document.elementFromPoint(e.clientX, e.clientY), td = el && el.closest && el.closest("#toy td"); return td ? [+td.dataset.x, +td.dataset.y] : null; };
+  const apply = c => { sel.x = Math.min(a[0], c[0]); sel.y = Math.min(a[1], c[1]); sel.w = Math.abs(a[0] - c[0]) + 1; sel.h = Math.abs(a[1] - c[1]) + 1; drawToy(); };
+  t.addEventListener("pointerdown", e => { const c = cell(e); if (c) { a = c; apply(c); } });
+  t.addEventListener("pointermove", e => { if (!a) return; const c = cell(e); if (c) apply(c); });
+  window.addEventListener("pointerup", () => { a = null; });
+}
+$("chk").addEventListener("click", () => {
+  const r = rng(7), { w, h, g, I } = st; let worst = 0;
+  for (let i = 0; i < 2000; i++) {
+    let x0 = Math.floor(r() * w), x1 = Math.floor(r() * w) + 1, y0 = Math.floor(r() * h), y1 = Math.floor(r() * h) + 1;
+    if (x0 >= x1) [x0, x1] = [x1 - 1, x0 + 1]; if (y0 >= y1) [y0, y1] = [y1 - 1, y0 + 1];
+    let d = 0; for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) d += g[y * w + x];
+    worst = Math.max(worst, Math.abs(d - rectSum(I, w, x0, y0, x1, y1)));
+  }
+  $("chkOut").innerHTML = `2000 random rectangles on the ${w}×${h} image: largest difference <b>${worst}</b> <span class="tag ${worst === 0 ? "good" : "bad"}">${worst === 0 ? "exact" : "differs"}</span>`;
+});
+
+/* ================= 03: classifier ================= */
+const FNAMES = FEATS.map((f, i) => `${i}: ${f.name}`);
+for (const id of ["fa", "fb"]) $(id).innerHTML = FNAMES.map((n, i) => `<option value="${i}">${esc(n)}</option>`).join("");
+$("fa").value = st.fa; $("fb").value = st.fb;
+const PL = 40, PR = 12, PT = 12, PB = 34;
+function axes() { // plot ranges per chosen features
+  const rg = f => { let lo = Infinity, hi = -Infinity; for (let i = 0; i < DATA.n; i++) { const v = DATA.fv[i * NF + f]; if (v < lo) lo = v; if (v > hi) hi = v; } const p = (hi - lo) * 0.06 || 0.1; return [lo - p, hi + p]; };
+  return { ax: rg(st.fa), ay: rg(st.fb) };
+}
+const rgbOf = col => { const t = document.createElement("canvas").getContext("2d"); t.fillStyle = col; t.fillRect(0, 0, 1, 1); const d = t.getImageData(0, 0, 1, 1).data; return [d[0], d[1], d[2]]; };
+let rasterCv = null;
+function scoreAt2(m, a, b) { const v = new Float32Array(NF); v[st.fa] = a; v[st.fb] = b; return classify(m, v, st.k); }
+function drawScatter() {
+  const cv = $("scatter"), { ctx: c, W, H } = hiDPI(cv, Math.round(Math.min(380, Math.max(260, (cv.clientWidth || 600) * 0.62))));
+  const { ax, ay } = axes(), pw = W - PL - PR, ph = H - PT - PB;
+  const X = v => PL + (v - ax[0]) / (ax[1] - ax[0]) * pw, Y = v => PT + (1 - (v - ay[0]) / (ay[1] - ay[0])) * ph;
+  const m = getModel(st.clf, [st.fa, st.fb]);
+  c.clearRect(0, 0, W, H); c.fillStyle = cssVar("--surface"); c.fillRect(0, 0, W, H);
+  // decision regions
+  const GW = 96, GH = 72; rasterCv = rasterCv || document.createElement("canvas"); rasterCv.width = GW; rasterCv.height = GH;
+  const rc = rasterCv.getContext("2d"), im = rc.createImageData(GW, GH), cf = rgbOf(FACE()), cn = rgbOf(NONF);
+  for (let j = 0; j < GH; j++) for (let i = 0; i < GW; i++) {
+    const a = ax[0] + (i + 0.5) / GW * (ax[1] - ax[0]), b = ay[1] - (j + 0.5) / GH * (ay[1] - ay[0]), s = scoreAt2(m, a, b), col = s > 0 ? cf : cn, o = (j * GW + i) * 4;
+    im.data[o] = col[0]; im.data[o + 1] = col[1]; im.data[o + 2] = col[2]; im.data[o + 3] = 64;
+  }
+  rc.putImageData(im, 0, 0); c.imageSmoothingEnabled = false; c.drawImage(rasterCv, PL, PT, pw, ph);
+  // axes
+  c.strokeStyle = cssVar("--line"); c.lineWidth = 1; c.strokeRect(PL + 0.5, PT + 0.5, pw, ph);
+  c.fillStyle = cssVar("--muted"); c.font = "11px " + cssVar("--mono"); c.textAlign = "center";
+  for (let i = 0; i <= 4; i++) { const v = ax[0] + i / 4 * (ax[1] - ax[0]); c.fillText(fmt(v, 2), X(v), PT + ph + 14); const u = ay[0] + i / 4 * (ay[1] - ay[0]); c.textAlign = "right"; c.fillText(fmt(u, 2), PL - 5, Y(u) + 4); c.textAlign = "center"; }
+  c.fillText(FEATS[st.fa].name, PL + pw / 2, H - 5); c.save(); c.translate(11, PT + ph / 2); c.rotate(-Math.PI / 2); c.fillText(FEATS[st.fb].name, 0, 0); c.restore();
+  c.save(); c.beginPath(); c.rect(PL, PT, pw, ph); c.clip();
+  // SVM boundary and margins
+  if (m.kind === "svm") {
+    const [w1, w2] = m.w, mu = m.mu, sd = m.sd;
+    for (const lv of [-1, 0, 1]) {
+      c.strokeStyle = cssVar("--ink"); c.lineWidth = lv === 0 ? 2 : 1; c.setLineDash(lv === 0 ? [] : [5, 4]); c.globalAlpha = lv === 0 ? 0.9 : 0.55; c.beginPath();
+      if (Math.abs(w2) * (ay[1] - ay[0]) / sd[1] > Math.abs(w1) * (ax[1] - ax[0]) / sd[0] * 0.2 + 1e-9 && Math.abs(w2) > 1e-9) {
+        for (const a of ax) { const z1 = (a - mu[0]) / sd[0], z2 = (lv - m.b - w1 * z1) / w2, b = mu[1] + sd[1] * z2; a === ax[0] ? c.moveTo(X(a), Y(b)) : c.lineTo(X(a), Y(b)); }
+      } else { for (const b of ay) { const z2 = (b - mu[1]) / sd[1], z1 = (lv - m.b - w2 * z2) / w1, a = mu[0] + sd[0] * z1; b === ay[0] ? c.moveTo(X(a), Y(b)) : c.lineTo(X(a), Y(b)); } }
+      c.stroke();
+    }
+    c.setLineDash([]); c.globalAlpha = 1;
+  }
+  // training points
+  for (let i = 0; i < DATA.n; i++) {
+    const a = DATA.fv[i * NF + st.fa], b = DATA.fv[i * NF + st.fb];
+    c.globalAlpha = 0.75; c.fillStyle = DATA.y[i] > 0 ? FACE() : NONF; c.beginPath(); c.arc(X(a), Y(b), 2.6, 0, 7); c.fill(); c.globalAlpha = 1;
+    if (m.kind === "svm") { const z1 = m.X[i * 2], z2 = m.X[i * 2 + 1]; if (DATA.y[i] * (m.w[0] * z1 + m.w[1] * z2 + m.b) <= 1 + 1e-3) { c.strokeStyle = cssVar("--ink"); c.lineWidth = 1; c.beginPath(); c.arc(X(a), Y(b), 5, 0, 7); c.stroke(); } }
+  }
+  // test points
+  for (const p of st.pts) {
+    const s = scoreAt2(m, p.a, p.b), px = X(p.a), py = Y(p.b);
+    c.fillStyle = s > 0 ? FACE() : NONF; c.strokeStyle = "#fff"; c.lineWidth = 2; c.beginPath(); c.moveTo(px, py - 8); c.lineTo(px + 8, py); c.lineTo(px, py + 8); c.lineTo(px - 8, py); c.closePath(); c.stroke(); c.fill();
+    c.strokeStyle = cssVar("--ink"); c.lineWidth = 1; c.stroke();
+  }
+  c.restore();
+  const last = st.pts[st.pts.length - 1];
+  if (last) {
+    const s = scoreAt2(m, last.a, last.b), v = new Float32Array(NF); v[st.fa] = last.a; v[st.fb] = last.b;
+    $("ptRead").innerHTML = `Test point (${fmt(last.a, 3)}, ${fmt(last.b, 3)}) is labeled <b>${s > 0 ? "face" : "non-face"}</b> by ${m.kind === "svm" ? "the linear SVM" : "nearest neighbor (k = " + st.k + ")"}, score <b>${fmt(s, 3)}</b>` + (m.kind === "svm" ? `, margin <i>w</i>·<i>x</i> + <i>b</i> = <b>${fmt(margin(m, v), 3)}</b>` : "") + `. ${st.pts.length} test point${st.pts.length > 1 ? "s" : ""} on the plot.`;
+  }
+  $("kBox").style.display = st.clf === "nn" ? "" : "none";
+  cv._geom = { ax, ay, pw, ph };
+}
+function addPoint(a, b) { st.pts.push({ a, b }); drawScatter(); }
+function setClf(v) { st.clf = v; setSeg("clf", v); setSeg("clf4", v); if (!st.thrTouched) { st.thr = THR_DEF[v]; syncThr(); } drawScatter(); requestScan(); }
+seg("clf", setClf); seg("clf4", setClf);
+for (const id of ["fa", "fb"]) $(id).addEventListener("change", e => { st[id] = +e.target.value; st.pts = []; $("ptRead").textContent = "Click the plot, or use the sliders and Add test point."; drawScatter(); });
+$("kk").addEventListener("input", e => { st.k = +e.target.value; $("kkO").textContent = st.k; drawScatter(); requestScan(); });
+$("scatter").addEventListener("click", e => {
+  const cv = e.currentTarget, g = cv._geom; if (!g) return; const r = cv.getBoundingClientRect(), px = e.clientX - r.left, py = (e.clientY - r.top) * (cv.height / (window.devicePixelRatio || 1)) / r.height;
+  const u = (px - PL) / g.pw, v = 1 - (py - PT) / g.ph; if (u < 0 || u > 1 || v < 0 || v > 1) return;
+  addPoint(g.ax[0] + u * (g.ax[1] - g.ax[0]), g.ay[0] + v * (g.ay[1] - g.ay[0]));
+});
+for (const [id, o] of [["ptx", "ptxO"], ["pty", "ptyO"]]) $(id).addEventListener("input", e => { $(o).textContent = e.target.value + "%"; });
+$("addPt").addEventListener("click", () => { const { ax, ay } = axes(); addPoint(ax[0] + $("ptx").value / 100 * (ax[1] - ax[0]), ay[0] + $("pty").value / 100 * (ay[1] - ay[0])); });
+$("clrPt").addEventListener("click", () => { st.pts = []; $("ptRead").textContent = "Click the plot, or use the sliders and Add test point."; drawScatter(); });
+
+/* ================= 04: sliding window scan ================= */
+function windowSizes(w, h, winMin, step) { const out = [], lim = Math.min(w, h); for (let i = 0; i < 80; i++) { const s = Math.round(winMin * Math.pow(step, i)); if (s > lim) break; if (!out.length || s > out[out.length - 1]) out.push(s); } return out; }
+const gridOf = (w, h, s, t) => [Math.floor((w - s) / t) + 1, Math.floor((h - s) / t) + 1];
+function prepScale(s) {
+  return FEATS.map(f => { const n = f.rects.length, r = new Int32Array(4 * n), wt = new Float64Array(n); f.rects.forEach((q, i) => { for (let j = 0; j < 4; j++) r[4 * i + j] = Math.round(s * q[j]); wt[i] = q[4]; }); return { r, wt, n }; });
+}
+function scan(opts) {
+  const o = Object.assign({ clf: st.clf, winMin: +$("winMin").value, step: +$("step").value, stride: +$("stride").value, k: st.k }, opts || {});
+  const t0 = performance.now(), { w, h, I, I2 } = st, W = w + 1, sizes = windowSizes(w, h, o.winMin, o.step);
+  let stride = o.stride, total = sizes.reduce((a, s) => { const [nx, ny] = gridOf(w, h, s, stride); return a + nx * ny; }, 0), raised = false;
+  while (total > CAP && stride < 64) { stride++; raised = true; total = sizes.reduce((a, s) => { const [nx, ny] = gridOf(w, h, s, stride); return a + nx * ny; }, 0); }
+  const m = getModel(o.clf, ALL), v = new Float32Array(NF), scales = []; let rejected = 0;
+  for (const s of sizes) {
+    const [nx, ny] = gridOf(w, h, s, stride), score = new Float32Array(nx * ny), fs = prepScale(s), n = s * s;
+    for (let iy = 0; iy < ny; iy++) for (let ix = 0; ix < nx; ix++) {
+      const x = ix * stride, y = iy * stride, x1 = x + s, y1 = y + s;
+      const S = I[y1 * W + x1] - I[y * W + x1] - I[y1 * W + x] + I[y * W + x], S2 = I2[y1 * W + x1] - I2[y * W + x1] - I2[y1 * W + x] + I2[y * W + x];
+      const sig = Math.sqrt(Math.max(1e-6, S2 / n - (S / n) * (S / n)));
+      let ok = sig >= 2, inv = ok ? 1 / (n * sig) : 0;
+      if (ok) { v[0] = fOne(I, W, x, y, fs[0], inv); if (v[0] < REJ) ok = false; }
+      if (!ok) { score[iy * nx + ix] = -1; rejected++; continue; }
+      for (let j = 1; j < NF; j++) v[j] = fOne(I, W, x, y, fs[j], inv);
+      score[iy * nx + ix] = classify(m, v, o.k);
+    }
+    scales.push({ s, nx, ny, score });
+  }
+  return { scales, total, stride, raised, rejected, ms: performance.now() - t0, opts: o, id: st.id };
+}
+function fOne(I, W, x, y, o, inv) {
+  let t = 0; for (let i = 0; i < o.n; i++) { const a = 4 * i, x0 = x + o.r[a], y0 = y + o.r[a + 1], x1 = x + o.r[a + 2], y1 = y + o.r[a + 3]; t += o.wt[i] * (I[y1 * W + x1] - I[y0 * W + x1] - I[y1 * W + x0] + I[y0 * W + x0]); }
+  return t * inv;
+}
+// time 300 random windows computed from raw pixels (all ten features, no early rejection), scaled to the full count
+function naiveEstimate(res) {
+  const { w, g } = st, r = rng(3), N = 300, picks = [];
+  for (let i = 0; i < N; i++) { let q = Math.floor(r() * res.total); for (const sc of res.scales) { if (q < sc.nx * sc.ny) { picks.push([sc.s, (q % sc.nx) * res.stride, Math.floor(q / sc.nx) * res.stride]); break; } q -= sc.nx * sc.ny; } }
+  let sink = 0; const t0 = performance.now();
+  for (const [s, x, y] of picks) {
+    let S = 0, S2 = 0; for (let j = 0; j < s; j++) for (let i = 0; i < s; i++) { const p = g[(y + j) * w + x + i]; S += p; S2 += p * p; }
+    const sig = Math.sqrt(Math.max(1e-6, S2 / (s * s) - (S / (s * s)) ** 2));
+    for (const f of FEATS) { let t = 0; for (const q of f.rects) { const a = Math.round(s * q[0]), b = Math.round(s * q[1]), c = Math.round(s * q[2]), d = Math.round(s * q[3]); let u = 0; for (let j = b; j < d; j++) for (let i = a; i < c; i++) u += g[(y + j) * w + x + i]; t += q[4] * u; } sink += t / (s * s * sig); }
+  }
+  const dt = performance.now() - t0; naiveEstimate.sink = sink;
+  return dt / Math.max(1, picks.length) * res.total;
+}
+let scanTimer = 0;
+const runScan = () => {
+  const o = { clf: st.clf, winMin: +$("winMin").value, step: +$("step").value, stride: +$("stride").value, k: st.k };
+  const key = [st.id, o.clf, o.winMin, o.step, o.stride, o.clf === "nn" ? o.k : 0].join("|");
+  if (st.scKey !== key || !st.sc) { st.sc = scan(o); st.sc.naive = null; st.scKey = key; }
+  $("scanMsg").textContent = st.sc.raised ? `That many windows is too slow, so the stride was raised from ${o.stride} to ${st.sc.stride} px to stay under ${CAP.toLocaleString()} windows.` : "";
+  const ns = st.sc.scales.length; $("scaleIdx").max = Math.max(0, ns - 1); st.view.scale = clamp(st.view.scale, 0, Math.max(0, ns - 1)); $("scaleIdx").value = st.view.scale;
+  draw04(); draw05();
+};
+function requestScan(now) { $("scanMsg").textContent = "Scanning..."; clearTimeout(scanTimer); scanTimer = setTimeout(runScan, now ? 0 : 100); }
+function heatRGB(v) { // -1..1: cool blue, neutral dark, warm amber
+  v = clamp(v, -1, 1); if (v < 0) { const t = -v; return [Math.round(40 + 20 * t), Math.round(50 + 70 * t), Math.round(70 + 150 * t)]; }
+  return [Math.round(60 + 190 * v), Math.round(55 + 120 * v), Math.round(55 - 25 * v)];
+}
+function paintBase(cv) { const ctx = sized(cv, st.w * st.Z, st.h * st.Z); ctx.imageSmoothingEnabled = false; ctx.drawImage(st.base, 0, 0, st.w * st.Z, st.h * st.Z); return ctx; }
+function draw04() {
+  const res = st.sc; if (!res) return;
+  const { Z } = st, nsc = res.scales.length;
+  $("winMinO").textContent = $("winMin").value + " px"; $("stepO").textContent = (+$("step").value).toFixed(2); $("strideO").textContent = $("stride").value + " px" + (res.raised ? ` (used ${res.stride})` : "");
+  if (!nsc) { paintBase($("scanView")); paintBase($("heatView")); $("cntStats").innerHTML = `<span class="chip">Base window is larger than the image: <b>0</b> windows</span>`; $("cntTable").innerHTML = ""; $("winRead").textContent = ""; $("scaleIdxO").textContent = "-"; $("posO").textContent = "-"; return; }
+  const sc = res.scales[st.view.scale], cnt = sc.nx * sc.ny; st.view.pos = clamp(st.view.pos, 0, cnt - 1);
+  $("pos").max = cnt - 1; $("pos").value = st.view.pos; $("scaleIdxO").textContent = `${st.view.scale + 1} of ${nsc} (${sc.s} px)`; $("posO").textContent = `${st.view.pos + 1} of ${cnt}`;
+  const ix = st.view.pos % sc.nx, iy = Math.floor(st.view.pos / sc.nx), x = ix * res.stride, y = iy * res.stride;
+  let c = paintBase($("scanView")); c.strokeStyle = AMBER; c.lineWidth = 2; c.strokeRect(x * Z + 1, y * Z + 1, sc.s * Z - 2, sc.s * Z - 2);
+  c.fillStyle = AMBER; c.fillRect((x + sc.s / 2) * Z - 2, (y + sc.s / 2) * Z - 2, 4, 4);
+  // heat map for this scale
+  c = paintBase($("heatView")); const hc = document.createElement("canvas"); hc.width = sc.nx; hc.height = sc.ny; const hx = hc.getContext("2d"), im = hx.createImageData(sc.nx, sc.ny);
+  for (let i = 0; i < cnt; i++) { const col = heatRGB(sc.score[i]); im.data[4 * i] = col[0]; im.data[4 * i + 1] = col[1]; im.data[4 * i + 2] = col[2]; im.data[4 * i + 3] = 215; }
+  hx.putImageData(im, 0, 0); c.imageSmoothingEnabled = false; c.drawImage(hc, (sc.s / 2) * Z, (sc.s / 2) * Z, sc.nx * res.stride * Z, sc.ny * res.stride * Z);
+  c.strokeStyle = AMBER; c.lineWidth = 1; c.strokeRect((x + sc.s / 2) * Z - 2, (y + sc.s / 2) * Z - 2, 4, 4);
+  // window readout
+  const sc0 = sc.score[st.view.pos], vv = featureVector(st.I, st.I2, st.w + 1, x, y, sc.s);
+  $("winRead").innerHTML = `Window at (<b>${x}</b>, <b>${y}</b>), side <b>${sc.s}</b> px. Features: ${[...vv].map((q, j) => `<b>${fmt(q, 2)}</b>`).join(" ")}. Score <b>${fmt(sc0, 3)}</b>${sc0 === -1 ? " (rejected early or flat)" : ""}`;
+  $("cntStats").innerHTML = `<span class="chip">Image <b>${st.w} × ${st.h}</b></span><span class="chip">Scales <b>${nsc}</b></span><span class="chip">Total windows <b>${res.total.toLocaleString()}</b></span><span class="chip">Stride <b>${res.stride} px</b></span>`;
+  $("cntTable").innerHTML = `<table class="calc"><tbody><tr><td class="dim">scale</td><td class="dim"><i>s</i></td><td class="dim"><i>n<sub>x</sub></i> = ⌊(${st.w} − <i>s</i>)/${res.stride}⌋ + 1</td><td class="dim"><i>n<sub>y</sub></i> = ⌊(${st.h} − <i>s</i>)/${res.stride}⌋ + 1</td><td class="dim">windows</td></tr>` + res.scales.map((q, i) => `<tr${i === st.view.scale ? ' class="sel"' : ""}><td>${i + 1}</td><td>${q.s}</td><td>${q.nx}</td><td>${q.ny}</td><td>${(q.nx * q.ny).toLocaleString()}</td></tr>`).join("") + `<tr><td colspan="4"><b>total</b></td><td><b>${res.total.toLocaleString()}</b></td></tr></tbody></table>`;
+}
+for (const id of ["winMin", "step", "stride"]) $(id).addEventListener("input", () => { $("winMinO").textContent = $("winMin").value + " px"; $("stepO").textContent = (+$("step").value).toFixed(2); $("strideO").textContent = $("stride").value + " px"; st.view.pos = 0; requestScan(); });
+$("scaleIdx").addEventListener("input", e => { st.view.scale = +e.target.value; st.view.pos = 0; draw04(); });
+$("pos").addEventListener("input", e => { st.view.pos = +e.target.value; draw04(); });
+
+/* ================= 05: detections ================= */
+function iou(a, b) { const x0 = Math.max(a.x, b.x), y0 = Math.max(a.y, b.y), x1 = Math.min(a.x + a.s, b.x + b.s), y1 = Math.min(a.y + a.s, b.y + b.s), i = Math.max(0, x1 - x0) * Math.max(0, y1 - y0); return i / (a.s * a.s + b.s * b.s - i); }
+const inter = (a, b) => Math.max(0, Math.min(a.x + a.s, b.x + b.s) - Math.max(a.x, b.x)) * Math.max(0, Math.min(a.y + a.s, b.y + b.s) - Math.max(a.y, b.y));
+function group(hits, minN, iouT) {
+  const T = iouT || 0.3, used = new Uint8Array(hits.length), out = []; // hits arrive sorted by score; each unused hit seeds a cluster
+  for (let i = 0; i < hits.length; i++) {
+    if (used[i]) continue; const m = [hits[i]]; used[i] = 1;
+    for (let j = i + 1; j < hits.length; j++) if (!used[j] && iou(hits[i], hits[j]) >= T) { used[j] = 1; m.push(hits[j]); }
+    if (m.length < minN) continue;
+    let sw = 0, x = 0, y = 0, s = 0; for (const q of m) { const wt = Math.exp(4 * q.sc); sw += wt; x += wt * q.x; y += wt * q.y; s += wt * q.s; }
+    out.push({ x: x / sw, y: y / sw, s: s / sw, sc: hits[i].sc, n: m.length });
+  }
+  // a box that mostly covers a better-scoring smaller box is a bigger window around the same face: drop it
+  return out.filter((a, i) => !out.some((b, j) => j !== i && b.sc >= a.sc && b.s < a.s && inter(a, b) >= 0.8 * b.s * b.s));
+}
+function collectHits(res, thr) {
+  let hits = []; for (const sc of res.scales) for (let i = 0; i < sc.score.length; i++) if (sc.score[i] >= thr) hits.push({ x: (i % sc.nx) * res.stride, y: Math.floor(i / sc.nx) * res.stride, s: sc.s, sc: sc.score[i] });
+  const n = hits.length; hits.sort((a, b) => b.sc - a.sc); if (hits.length > 4000) hits = hits.slice(0, 4000);
+  return { hits, n };
+}
+function syncThr() { $("thr").value = st.thr; $("thrO").textContent = (+st.thr).toFixed(2); }
+function draw05() {
+  const res = st.sc; if (!res) return;
+  $("thrO").textContent = (+st.thr).toFixed(2); $("minNO").textContent = st.minN;
+  const { hits, n } = collectHits(res, st.thr), boxes = st.merge ? group(hits, st.minN) : [];
+  st.hits = hits; st.boxes = boxes; st.nHits = n;
+  const { Z } = st, c = paintBase($("detView"));
+  c.lineWidth = 1; c.strokeStyle = AMBER; if (!st.merge || hits.length < 1500) for (const q of hits) c.strokeRect(q.x * Z + 0.5, q.y * Z + 0.5, q.s * Z, q.s * Z);
+  c.lineWidth = 5; c.strokeStyle = "rgba(0,0,0,0.55)"; for (const q of boxes) c.strokeRect(q.x * Z, q.y * Z, q.s * Z, q.s * Z);
+  c.lineWidth = 3; c.strokeStyle = FACE() === "#1f56d1" ? "#4d86ff" : FACE(); for (const q of boxes) c.strokeRect(q.x * Z, q.y * Z, q.s * Z, q.s * Z);
+  if (res.naive == null) res.naive = res.total ? naiveEstimate(res) : 0;
+  const rej = res.total ? res.rejected / res.total * 100 : 0;
+  $("detStats").innerHTML = `<span class="chip">Windows evaluated <b>${res.total.toLocaleString()}</b></span><span class="chip">Hits <b>${n.toLocaleString()}</b>${n > 4000 ? " (showing the best 4000)" : ""}</span><span class="chip">Boxes after merge <b>${st.merge ? boxes.length : "-"}</b></span>` +
+    `<span class="chip">Stage-1 test (feature 0 only) rejects <b>${fmt(rej, 0)}%</b> of windows before the other nine are computed</span><span class="chip">Scan with integral image <b>${fmt(res.ms, 0)} ms</b></span><span class="chip">Naive pixel sums, estimated <b>${fmt(res.naive, 0)} ms</b></span>` +
+    (res.naive > 0 && res.ms > 0 ? `<span class="chip">Saved <b>about ${fmt(res.naive / Math.max(res.ms, 0.5), 0)}×</b></span>` : "");
+}
+$("thr").addEventListener("input", e => { st.thrTouched = true; st.thr = +e.target.value; draw05(); });
+$("minN").addEventListener("input", e => { st.minN = +e.target.value; draw05(); });
+seg("merge", v => { st.merge = v === "on"; draw05(); });
+
+/* ================= startup ================= */
+window.FD = { st, haar, featureVector, integral, rectSum, classify, margin, scan, group, train, getModel, collectHits, DATA, FEATS, REJ, featValue, featRects, windowSizes, gridOf, runScan, SAMPLE_DEFS };
+const pk = picker({ el: "pick", samples: SAMPLE_DEFS, noteEl: "pickNote", onImage: setImage });
+onTheme(deb(() => { drawScatter(); draw04(); draw05(); }, 80));
+syncFeat(); drawToy(); drawScatter();
+pk.pick(SAMPLE_DEFS[0]);
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,509 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Active Illumination, Interactively</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,500;8..60,600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="site.css">
+<style>
+canvas.drag { cursor: grab; touch-action: none; }
+canvas.drag:active { cursor: grabbing; }
+.calc-lines { font: 0.84rem/1.6 var(--mono); display: grid; gap: 2px; overflow-x: auto; white-space: nowrap; }
+.calc-lines b { font-weight: 500; color: var(--accent); }
+td.hi { background: color-mix(in srgb, var(--accent) 24%, transparent); font-weight: 600; }
+.ramp { display: inline-block; width: 120px; height: 10px; border-radius: 3px; vertical-align: middle; margin: 0 6px; }
+.hatch { display: inline-block; width: 22px; height: 10px; border-radius: 2px; vertical-align: middle; margin-right: 6px; background: repeating-linear-gradient(135deg, #3c404a 0 2px, #12151a 2px 4px); }
+.legend.lg { align-items: center; }
+.ctl input[type="checkbox"] { width: 18px; height: 18px; accent-color: var(--accent); }
+.ctl.chk label { color: var(--ink); }
+#geo, #relief { height: 340px; }
+#profile { height: 240px; }
+#strip { width: 100%; height: auto; }
+.tablebox table.calc { width: 100%; }
+.tablebox table.calc td { white-space: nowrap; }
+</style>
+</head>
+<body>
+<header class="site"></header>
+<main class="wrap">
+  <div class="intro">
+    <h1>Active Illumination, Interactively</h1>
+    <p class="lead">Instead of waiting for texture, project your own light. Where a known pattern lands in the camera tells you how far away the surface is.</p>
+    <p>A projector shines stripes onto a scene and a camera, a short baseline away, watches where they land. We start with one stripe and triangulation, see why sweeping stripes one at a time is slow, then use binary and Gray code patterns to label every projector column in only eight images. Follows the Active Illumination Methods lectures (structured light range finding).</p>
+  </div>
+
+  <section class="stage" aria-labelledby="h0">
+    <div class="stage-head"><span class="num">00</span><div><h2 id="h0">Choose a scene</h2><p>Each scene is a synthetic depth map, so the true depth is known and the recovered depth can be checked against it.</p></div></div>
+    <div class="controls">
+      <div class="ctl"><label id="sceneL">Scene</label><div class="seg" id="scene" role="group" aria-labelledby="sceneL"><button type="button" data-v="plane" aria-pressed="true">Tilted plane</button><button type="button" data-v="ball" aria-pressed="false">Ball on floor</button><button type="button" data-v="steps" aria-pressed="false">Steps</button></div></div>
+      <div class="ctl chk"><input type="checkbox" id="dark"><label for="dark">Add a dark patch</label></div>
+    </div>
+    <p class="note"><b>No upload here.</b> Structured light needs a scene whose depth we know, so you cannot bring your own photo. The plane has simple, checkable depth; the ball adds a curved surface; the steps add depth jumps and occlusion shadows. The dark patch (albedo 0.04) reflects almost none of the pattern, which makes decoding fail there.</p>
+    <div class="three">
+      <figure><canvas class="view" id="sDepth" aria-label="True depth map, near is bright"></canvas><figcaption>True depth (near = bright)</figcaption></figure>
+      <figure><canvas class="view" id="sCam" aria-label="Camera view of the scene"></canvas><figcaption>Camera view under ordinary light</figcaption></figure>
+      <figure><canvas class="view" id="sLit" aria-label="Pixels reached by the projector"></canvas><figcaption>Pixels the projector can reach (black = shadow or outside the projector)</figcaption></figure>
+    </div>
+  </section>
+
+  <section class="stage" aria-labelledby="h1">
+    <div class="stage-head"><span class="num">01</span><div><h2 id="h1">Triangulation</h2><p>A ray from the projector and a ray from the camera meet at the surface. The two angles and the baseline fix the depth.</p></div></div>
+    <div class="math">
+      <h3>Assumed geometry</h3>
+      <p>A rectified pair: the camera is at <i>x</i> = 0 and the projector at <i>x</i> = <i>b</i>, both looking along +<i>z</i>, with the same focal length <i>f</i> = 256 px. A point (<i>x</i>, <i>z</i>) lands at camera column <i>c</i> = <i>f</i> <i>x</i>/<i>z</i> and at projector column <i>p</i> = <i>f</i> (<i>x</i> − <i>b</i>)/<i>z</i>. Their difference is the disparity <i>d</i> = <i>c</i> − <i>p</i> = <i>f</i> <i>b</i>/<i>z</i>, so <i>z</i> = <i>f</i> <i>b</i>/<i>d</i>. In terms of the angles α (at the camera) and β (at the projector) measured from the baseline: <i>z</i> = <i>b</i> / (cot α + cot β).</p>
+    </div>
+    <div class="controls">
+      <div class="ctl"><label for="b">Baseline b</label><input type="range" id="b" min="0.10" max="0.60" step="0.01" value="0.40"><output id="bO"></output></div>
+      <div class="ctl"><label for="gz">Depth z</label><input type="range" id="gz" min="1" max="2.5" step="0.01" value="1.5"><output id="gzO"></output></div>
+      <div class="ctl"><label for="gx">Position x</label><input type="range" id="gx" min="-1.2" max="1.9" step="0.01" value="0.47"><output id="gxO"></output></div>
+      <div class="ctl"><label for="pcol">Stripe column p</label><input type="range" id="pcol" min="0" max="255" step="1" value="140"><output id="pcolO"></output></div>
+    </div>
+    <canvas class="plot drag" id="geo" tabindex="0" aria-label="Top-down diagram of camera, projector and a draggable scene point. Drag the point, or use the arrow keys, or the sliders above."></canvas>
+    <div class="math"><div class="calc-lines" id="geoCalc"></div></div>
+    <figure><canvas class="view" id="strip" width="256" height="48" aria-label="Camera view of one projected stripe"></canvas><figcaption>The camera's view of the stripe. Dim line: where it would land at infinite depth (<i>d</i> = 0). Bright line: where it lands now. A farther surface (larger <i>z</i>) gives a smaller disparity, so the stripe slides back toward the dim line; a nearer surface pushes it away.</figcaption></figure>
+    <div class="stats" id="geoStats"></div>
+  </section>
+
+  <section class="stage" aria-labelledby="h2">
+    <div class="stage-head"><span class="num">02</span><div><h2 id="h2">One light stripe</h2><p>A single stripe gives one depth profile per image. The stripe bends sideways by exactly the disparity at each row.</p></div></div>
+    <div class="controls">
+      <div class="ctl"><label for="pcol2">Stripe column p</label><input type="range" id="pcol2" min="0" max="255" step="1" value="110"><output id="pcol2O"></output></div>
+      <div class="ctl"><label for="b2">Baseline b</label><input type="range" id="b2" min="0.10" max="0.60" step="0.01" value="0.40"><output id="b2O"></output></div>
+    </div>
+    <div class="stats" id="oneStats"></div>
+    <div class="two">
+      <figure><canvas class="view" id="oneView" aria-label="Camera image with one light stripe"></canvas><figcaption>Camera image with the stripe in orange. On a flat wall facing the camera it would be straight; depth changes bend it.</figcaption></figure>
+      <figure><canvas class="plot" id="profile" aria-label="Stripe disparity and depth against image row"></canvas><figcaption><span class="legend"><span><i style="background:var(--accent)"></i>Disparity <i>d</i> (left axis, px)</span><span><i style="background:var(--muted)"></i>True depth <i>z</i> (right axis, m)</span></span> Gaps are rows where the stripe is in shadow or off the image.</figcaption></figure>
+    </div>
+  </section>
+
+  <section class="stage" aria-labelledby="h3">
+    <div class="stage-head"><span class="num">03</span><div><h2 id="h3">Sweeping is slow</h2><p>To measure every column you need a separate image for every stripe: <i>N</i> columns, <i>N</i> images.</p></div></div>
+    <div class="controls">
+      <button type="button" class="btn primary" id="swPlay">Play</button>
+      <button type="button" class="btn" id="swStep">Step</button>
+      <button type="button" class="btn" id="swAll">Show all</button>
+      <button type="button" class="btn" id="swReset">Reset</button>
+      <div class="ctl"><label id="spdL">Speed</label><div class="seg" id="spd" role="group" aria-labelledby="spdL"><button type="button" data-v="1" aria-pressed="false">1x</button><button type="button" data-v="4" aria-pressed="true">4x</button><button type="button" data-v="16" aria-pressed="false">16x</button></div></div>
+    </div>
+    <div class="stats" id="swStats"></div>
+    <figure><canvas class="view" id="sweepView" aria-label="Depth map accumulating as the stripe sweeps"></canvas><figcaption>Depth map filled in one stripe at a time. The white stripe is the one being projected.</figcaption></figure>
+  </section>
+
+  <section class="stage" aria-labelledby="h4">
+    <div class="stage-head"><span class="num">04</span><div><h2 id="h4">Binary code patterns</h2><p>Give every projector column a number. Project the bits of that number one image at a time, and each camera pixel reads its own column off as a bit string. Only log<sub>2</sub> <i>N</i> images are needed.</p></div></div>
+    <div class="controls">
+      <div class="ctl"><label for="nbits">Patterns n</label><input type="range" id="nbits" min="1" max="8" step="1" value="8"><output id="nbitsO"></output></div>
+      <div class="ctl"><label for="bit">View pattern k</label><input type="range" id="bit" min="1" max="8" step="1" value="8"><output id="bitO"></output></div>
+    </div>
+    <div class="stats" id="binStats"></div>
+    <div class="three">
+      <figure><canvas class="view" id="projPat" aria-label="Projector pattern for the chosen bit"></canvas><figcaption>Projector pattern <i>k</i>: bit <i>k</i> of each column's code (most significant bit first), so there are 2<sup><i>k</i></sup> stripes</figcaption></figure>
+      <figure><canvas class="view" id="camPat" aria-label="Camera image of the chosen pattern"></canvas><figcaption>What the camera sees: the pattern bent by the scene</figcaption></figure>
+      <figure><canvas class="view" id="codeAcc" aria-label="Code decoded from bits 1 to k"></canvas><figcaption>Code decoded from patterns 1 to <i>k</i>. Colour is the code value; the picture sharpens as bits accumulate.</figcaption></figure>
+    </div>
+    <div class="tablebox"><table class="calc" id="binTable"></table></div>
+    <p class="note">Noise and blur are off here, so the decoded column should equal the true projector column on every pixel that was lit. With <i>n</i> &lt; 8 patterns you only learn which block of 2<sup>8−<i>n</i></sup> columns a pixel belongs to.</p>
+  </section>
+
+  <section class="stage" aria-labelledby="h5">
+    <div class="stage-head"><span class="num">05</span><div><h2 id="h5">Gray code</h2><p>In plain binary, going from column 7 (0111) to 8 (1000) flips four bits at once. A Gray code changes only one bit between neighbours, so a wrong guess at a stripe edge can only move the answer by about one column.</p></div></div>
+    <div class="controls">
+      <div class="ctl"><label for="noise">Noise</label><input type="range" id="noise" min="0" max="40" step="1" value="12"><output id="noiseO"></output></div>
+      <div class="ctl"><label for="blur">Projector blur</label><input type="range" id="blur" min="0" max="4" step="0.1" value="1.5"><output id="blurO"></output></div>
+      <div class="ctl"><label id="codeL">Show decoded map for</label><div class="seg" id="code" role="group" aria-labelledby="codeL"><button type="button" data-v="binary" aria-pressed="false">Binary</button><button type="button" data-v="gray" aria-pressed="true">Gray</button></div></div>
+    </div>
+    <p class="note">Uses the number of patterns chosen in stage 04. Noise adds grey-level jitter to every image. Blur defocuses the projector, which smears thin stripes; the finest binary stripe is one column wide, so it vanishes first.</p>
+    <div class="two">
+      <figure><canvas class="view" id="errBin" aria-label="Binary code column error map"></canvas><figcaption>Binary: column error |decoded − true| (black = 0, bright = 16 or more, grey = no data)</figcaption><div class="stats" id="binErr"></div></figure>
+      <figure><canvas class="view" id="errGray" aria-label="Gray code column error map"></canvas><figcaption>Gray: same scale and same noise</figcaption><div class="stats" id="grayErr"></div></figure>
+    </div>
+    <figure><canvas class="view" id="decView" aria-label="Decoded projector column map"></canvas><figcaption id="decCap"></figcaption></figure>
+    <div class="tablebox"><table class="calc" id="grayTable"></table></div>
+    <div class="math"><p>Why binary is worse: where several bits flip together, one misread bit can move the answer by up to 2<sup><i>n</i>−1</sup> columns. A Gray code has exactly one bit that differs between neighbouring columns, so there is only one place to go wrong at a stripe edge. (Reading Gray back uses a running XOR: <i>b</i><sub>0</sub> = <i>g</i><sub>0</sub>, <i>b</i><sub><i>k</i></sub> = <i>b</i><sub><i>k</i>−1</sub> ⊕ <i>g</i><sub><i>k</i></sub>.)</p></div>
+  </section>
+
+  <section class="stage" aria-labelledby="h6">
+    <div class="stage-head"><span class="num">06</span><div><h2 id="h6">Decode to depth</h2><p>The decoded column is the projector ray. Intersect it with the camera ray (stage 01) to get depth at every pixel.</p></div></div>
+    <div class="controls">
+      <div class="ctl"><label for="b6">Baseline b</label><input type="range" id="b6" min="0.10" max="0.60" step="0.01" value="0.40"><output id="b6O"></output></div>
+      <div class="ctl"><label for="noise6">Noise</label><input type="range" id="noise6" min="0" max="40" step="1" value="12"><output id="noise6O"></output></div>
+      <div class="ctl"><label for="blur6">Projector blur</label><input type="range" id="blur6" min="0" max="4" step="0.1" value="1.5"><output id="blur6O"></output></div>
+      <div class="ctl"><label id="code6L">Code</label><div class="seg" id="code6" role="group" aria-labelledby="code6L"><button type="button" data-v="binary" aria-pressed="false">Binary</button><button type="button" data-v="gray" aria-pressed="true">Gray</button></div></div>
+    </div>
+    <div class="stats" id="depStats"></div>
+    <div class="two">
+      <figure><canvas class="view" id="depthView" aria-label="Recovered depth map"></canvas><figcaption>Recovered depth (near = bright). Hatched = invalid, no depth.</figcaption></figure>
+      <figure><canvas class="view" id="gtView" aria-label="Ground truth depth map"></canvas><figcaption>Ground truth</figcaption></figure>
+    </div>
+    <p class="legend lg"><span>Near<span class="ramp" id="ramp"></span>Far</span><span><span class="hatch"></span>Invalid: in shadow, outside the projector, or too dark to decode</span></p>
+    <div class="controls">
+      <div class="ctl"><label for="ryaw">Relief yaw</label><input type="range" id="ryaw" min="-80" max="80" step="1" value="30"><output id="ryawO"></output></div>
+      <div class="ctl"><label for="rpitch">Relief pitch</label><input type="range" id="rpitch" min="-60" max="60" step="1" value="-15"><output id="rpitchO"></output></div>
+    </div>
+    <figure><canvas class="plot drag" id="relief" tabindex="0" aria-label="3-D point cloud of the recovered depth. Drag to rotate, or use the arrow keys or the sliders."></canvas><figcaption>Recovered surface as a point cloud (64 × 48 samples). Drag to rotate.</figcaption></figure>
+    <div class="math">
+      <h3>Baseline: resolution against shadow</h3>
+      <p>A one-column error in the decoded position changes the depth by Δ<i>z</i> ≈ <i>z</i><sup>2</sup> / (<i>f</i> <i>b</i>). A larger baseline therefore gives finer depth, but it also tilts the projector's view further from the camera's, so more of the scene is hidden from one of them. Drag the baseline up and watch the depth resolution number fall while the shadow percentage grows, especially on the Steps scene.</p>
+      <p>Time of flight is a different kind of active illumination: instead of triangulating, it sends out light and measures how long the pulse (or the phase of a modulated beam) takes to return, then converts that delay to distance with the speed of light. It needs no baseline, so it has no shadows from the projector, but it needs very fast timing electronics. Photometric stereo, which varies light direction rather than projecting patterns, is covered in <a href="photometric-stereo.html">Photometric Stereo</a>.</p>
+    </div>
+  </section>
+</main>
+<footer class="wrap site"></footer>
+
+<script src="common.js"></script>
+<script>
+(() => {
+"use strict";
+const { $, nav, footer, rng, showRGB, hiDPI, onTheme, seg, setSeg, segVal, fmt, cssVar, arrow, gaussKernel } = VB;
+nav("active-illumination.html"); footer();
+
+/* ---------- constants and shared-helper fallbacks ---------- */
+const W = 256, H = 192, N = W * H, F = 256;
+const clamp = VB.clamp || ((v, lo = 0, hi = 1) => v < lo ? lo : v > hi ? hi : v);
+const frame = VB.frame || (fn => { let q = 0; return () => { if (q) return; q = requestAnimationFrame(() => { q = 0; fn(); }); }; });
+const HEAT = [[0, [14, 8, 52]], [0.25, [96, 24, 128]], [0.5, [204, 56, 96]], [0.75, [250, 150, 34]], [1, [255, 245, 170]]];
+const heat = VB.heat || (v => { v = clamp(v); for (let i = 1; i < HEAT.length; i++) if (v <= HEAT[i][0]) { const [t0, a] = HEAT[i - 1], [t1, b] = HEAT[i], t = (v - t0) / (t1 - t0); return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t]; } return HEAT[4][1]; });
+const BG = [18, 21, 26], NODATA = [70, 74, 82], ZLO = 1.0, ZHI = 2.6;
+const depthColor = z => heat((ZHI - z) / (ZHI - ZLO));
+const st = { scene: "plane", dark: false, b: 0.40, gz: 1.5, pcol: 140, pcol2: 110, nbits: 8, bit: 8, kind: "gray", noise: 12, blur: 1.5, yaw: 30, pitch: -15, model: null, geo: null, stats: null, r6: null, sweep: { k: 0, timer: 0, acc: null } };
+
+/* ---------- model: scene, projector, camera, decoder ---------- */
+function buildScene(name, dark) {
+  const Z = new Float32Array(N), alb = new Float32Array(N), r = rng(3);
+  const blocks = [[85, 140, 60, 170, 2.2], [125, 190, 40, 150, 1.7], [175, 238, 70, 165, 1.2]];
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const i = y * W + x; let z, a = 0.8;
+    if (name === "plane") z = 1.2 + 1.0 * x / 255 + 0.25 * y / 191;
+    else {
+      a = 0.55 + 0.35 * r();
+      if (name === "ball") {
+        z = 2.4 - 1.1 * y / 191; // tilted floor, nearer toward the bottom of the image
+        const u = (x - 128) / F, v = (y - 96) / F, cx = -0.15, cy = 0.05, cz = 1.75, R = 0.4;
+        const A = u * u + v * v + 1, B = -2 * (u * cx + v * cy + cz), C = cx * cx + cy * cy + cz * cz - R * R, disc = B * B - 4 * A * C;
+        if (disc > 0) { const t = (-B - Math.sqrt(disc)) / (2 * A); if (t > 0 && t < z) z = t; }
+      } else {
+        z = 2.5;
+        for (const [x0, x1, y0, y1, bz] of blocks) if (x >= x0 && x < x1 && y >= y0 && y < y1 && bz < z) z = bz;
+      }
+    }
+    if (dark && x >= 150 && x < 195 && y >= 45 && y < 95) a = 0.04;
+    Z[i] = z; alb[i] = a;
+  }
+  return { name, Z, alb };
+}
+// Camera pixel (x, row) sees depth Z; its projector column is P = round(x - f b / Z). The projector z-buffer decides who is lit.
+function project(sc, b, albIn) {
+  const Z = sc.Z || sc, alb = albIn || sc.alb || null;
+  const P = new Int16Array(N), lit = new Uint8Array(N), zb = new Float32Array(N).fill(Infinity);
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const i = y * W + x, p = Math.round(x - F * b / Z[i]);
+    if (p >= 0 && p < W) { P[i] = p; const j = y * W + p; if (Z[i] < zb[j]) zb[j] = Z[i]; } else P[i] = -1;
+  }
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) { const i = y * W + x; if (P[i] >= 0 && Z[i] <= zb[y * W + P[i]] + 0.01) lit[i] = 1; }
+  return { P, lit, Z, alb, b };
+}
+// Projector row for bit k (0 = most significant) of an nbits code; each code covers a block of 2^(8-nbits) columns.
+function pattern(kind, k, nbits, sigma) {
+  const a = new Float32Array(W), s = 8 - nbits;
+  for (let n = 0; n < W; n++) { let m = n >> s; if (kind === "gray") m ^= m >> 1; a[n] = (m >> (nbits - 1 - k)) & 1; }
+  if (!(sigma > 0.01)) return a;
+  const g = gaussKernel(sigma), r = (g.length - 1) >> 1, o = new Float32Array(W);
+  for (let n = 0; n < W; n++) { let t = 0; for (let j = -r; j <= r; j++) t += a[clamp(n + j, 0, W - 1)] * g[j + r]; o[n] = t; }
+  return o;
+}
+const bank = []; // standard-normal noise frames, so one slider value always gives the same image
+for (let k = 0; k < 10; k++) { const r = rng(900 + k), f = new Float32Array(N); for (let i = 0; i < N; i++) f[i] = Math.sqrt(-2 * Math.log(r() + 1e-12)) * Math.cos(6.283185307 * r()); bank.push(f); }
+const ONES = new Float32Array(W).fill(1), ZEROS = new Float32Array(W);
+function capture(model, pat, noise, k) {
+  const out = new Float32Array(N), { P, lit, alb } = model, nz = bank[(k | 0) % 10];
+  for (let i = 0; i < N; i++) {
+    let v = 20 + (lit[i] ? (alb ? alb[i] : 0.8) * pat[P[i]] * 200 : 0);
+    if (noise) v += nz[i] * noise;
+    out[i] = v < 0 ? 0 : v > 255 ? 255 : v;
+  }
+  return out;
+}
+function decode(frames, refW, refB, kind, nbits) {
+  const col = new Int16Array(N), valid = new Uint8Array(N), s = 8 - nbits, half = s ? 1 << (s - 1) : 0;
+  for (let i = 0; i < N; i++) {
+    if (refW[i] - refB[i] <= 40) continue;
+    const mid = (refW[i] + refB[i]) / 2; let m = 0, run = 0;
+    for (let k = 0; k < nbits; k++) { const bit = frames[k][i] > mid ? 1 : 0; run = kind === "gray" ? run ^ bit : bit; m = (m << 1) | run; }
+    col[i] = (m << s) + half; valid[i] = 1;
+  }
+  return { col, valid };
+}
+function toDepth(col, valid, b) {
+  const Z = new Float32Array(N).fill(NaN);
+  for (let i = 0; i < N; i++) { const d = (i % W) - col[i]; if (valid[i] && d > 0) Z[i] = F * b / d; }
+  return Z;
+}
+function runDecode(model, kind, nbits, noise, blur) {
+  const frames = []; for (let k = 0; k < nbits; k++) frames.push(capture(model, pattern(kind, k, nbits, blur), noise, k));
+  return decode(frames, capture(model, ONES, noise, 8), capture(model, ZEROS, noise, 9), kind, nbits);
+}
+const cache = new Map();
+function getDec(kind, nb, noise, blur) {
+  const key = [kind, nb, noise, blur].join("|"); if (cache.has(key)) return cache.get(key);
+  if (cache.size > 14) cache.clear();
+  const d = runDecode(st.model, kind, nb, noise, blur); cache.set(key, d); return d;
+}
+const gray = n => n ^ (n >> 1), bits = (n, w) => n.toString(2).padStart(w, "0"), pop = n => { let c = 0; for (; n; n &= n - 1) c++; return c; };
+const pct = v => v === 1 ? "100%" : v === 0 ? "0%" : (v * 100).toFixed(1) + "%";
+const chips = (id, arr) => { $(id).innerHTML = arr.map(([a, b]) => `<span class="chip">${a} <b>${b}</b></span>`).join(""); };
+const css = n => cssVar(n) || "#888";
+
+/* ---------- baseline / noise / blur are shared between stages ---------- */
+let sch = null; const schedRebuild = frame(() => rebuild());
+function setB(v, from) { st.b = +v; for (const id of ["b", "b2", "b6"]) { $(id).value = v; $(id + "O").value = fmt(+v, 2) + " m"; } r1(); schedRebuild(); }
+for (const id of ["b", "b2", "b6"]) $(id).addEventListener("input", e => setB(e.target.value));
+function setNB(n, bl) { if (n != null) { st.noise = +n; $("noise").value = n; $("noise6").value = n; $("noiseO").value = $("noise6O").value = st.noise; } if (bl != null) { st.blur = +bl; $("blur").value = bl; $("blur6").value = bl; $("blurO").value = $("blur6O").value = fmt(st.blur, 1); } schedHeavy(); }
+for (const id of ["noise", "noise6"]) $(id).addEventListener("input", e => setNB(e.target.value, null));
+for (const id of ["blur", "blur6"]) $(id).addEventListener("input", e => setNB(null, e.target.value));
+function setKind(k) { st.kind = k; setSeg("code", k); setSeg("code6", k); schedHeavy(); }
+seg("code", setKind); seg("code6", setKind);
+
+/* ---------- 00 scene ---------- */
+function r0() {
+  const m = st.model, Z = m.Z;
+  showRGB("sDepth", W, H, i => depthColor(Z[i]));
+  showRGB("sCam", W, H, i => { const v = 20 + m.alb[i] * 200; return [v, v, v]; });
+  showRGB("sLit", W, H, i => m.lit[i] ? (() => { const v = 20 + m.alb[i] * 200; return [v, v, v * 0.9]; })() : [0, 0, 0]);
+}
+seg("scene", v => { st.scene = v; rebuild(); });
+$("dark").addEventListener("change", e => { st.dark = e.target.checked; rebuild(); });
+
+/* ---------- 01 triangulation ---------- */
+function geo() {
+  const b = st.b, z = st.gz, pcol = st.pcol, x = b + (pcol - 128) * z / F;
+  const c = F * x / z, d = F * b / z, cA = c + 128, cotA = x / z, cotB = (b - x) / z;
+  st.geo = { x, z, b, pcol, c, cA, d, pA: pcol, cotA, cotB, zAngle: b / (cotA + cotB), zDisp: F * b / (cA - pcol) };
+}
+function r1() {
+  geo(); const g = st.geo;
+  $("bO").value = $("b2O").value = $("b6O").value = fmt(st.b, 2) + " m";
+  $("gzO").value = fmt(g.z, 2) + " m"; $("gx").value = g.x; $("gxO").value = fmt(g.x, 2) + " m"; $("gz").value = g.z; $("pcol").value = g.pcol; $("pcolO").value = g.pcol;
+  $("geoCalc").innerHTML =
+    `<span>disparity  <b>d = c − p = f·b / z</b> = ${F} × ${fmt(g.b, 2)} / ${fmt(g.z, 2)} = <b>${fmt(g.d, 2)} px</b></span>` +
+    `<span>cot α = x / z = ${fmt(g.x, 2)} / ${fmt(g.z, 2)} = ${fmt(g.cotA, 3)}     cot β = (b − x) / z = ${fmt(g.b - g.x, 2)} / ${fmt(g.z, 2)} = ${fmt(g.cotB, 3)}</span>` +
+    `<span>depth      <b>z = b / (cot α + cot β)</b> = ${fmt(g.b, 2)} / ${fmt(g.cotA + g.cotB, 3)} = <b>${fmt(g.zAngle, 3)} m</b></span>` +
+    `<span>check      z = f·b / d = ${F} × ${fmt(g.b, 2)} / ${fmt(g.cA - g.pA, 2)} = ${fmt(g.zDisp, 3)} m</span>`;
+  chips("geoStats", [["Stripe in camera, c", fmt(g.cA, 1) + " px"], ["Stripe in projector, p", g.pA + " px"], ["Disparity d", fmt(g.d, 2) + " px"], ["Depth z", fmt(g.zAngle, 3) + " m"], ["Depth step per column", fmt(g.z * g.z / (F * g.b) * 1000, 1) + " mm"]]);
+  drawStrip(); drawGeo();
+}
+function drawStrip() {
+  const cv = $("strip"), ctx = cv.getContext("2d"), g = st.geo;
+  ctx.fillStyle = "#12151a"; ctx.fillRect(0, 0, 256, 48);
+  ctx.fillStyle = "#2a313b"; for (let x = 0; x < 256; x += 32) ctx.fillRect(x, 0, 1, 6);
+  ctx.fillStyle = "rgba(255,255,255,.35)"; ctx.fillRect(g.pA - 1, 0, 1, 48);
+  const cx = clamp(g.cA, 1, 254); ctx.fillStyle = "#ffb13b"; ctx.fillRect(Math.round(cx) - 1, 0, 2, 48);
+  ctx.strokeStyle = "#ffb13b"; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(g.pA, 24.5); ctx.lineTo(cx, 24.5); ctx.stroke();
+}
+const geoT = { ox: 0, oy: 30, sc: 100 };
+function drawGeo() {
+  const cv = $("geo"), { ctx, W: w, H: h } = hiDPI(cv, 340); ctx.clearRect(0, 0, w, h);
+  const g = st.geo, xmin = -1.2, xmax = 1.9, zmax = 2.65, sc = Math.min((w - 20) / (xmax - xmin), (h - 50) / zmax);
+  const ox = (w - sc * (xmax - xmin)) / 2 - xmin * sc, oy = 30; Object.assign(geoT, { ox, oy, sc });
+  const X = x => ox + x * sc, Z = z => oy + z * sc, ink = css("--ink"), muted = css("--muted"), acc = css("--accent"), line = css("--line");
+  ctx.fillStyle = css("--surface"); ctx.fillRect(X(xmin), oy, (xmax - xmin) * sc, zmax * sc);
+  ctx.fillStyle = "rgba(127,127,127,.10)"; ctx.fillRect(X(xmin), Z(1), (xmax - xmin) * sc, 1.5 * sc);
+  ctx.font = "11px " + (css("--mono")); ctx.fillStyle = muted; ctx.textAlign = "left"; ctx.fillText("working range 1.0 to 2.5 m", X(xmin) + 6, Z(1) + 14);
+  ctx.strokeStyle = line; ctx.lineWidth = 1; ctx.strokeRect(X(xmin) + .5, oy + .5, (xmax - xmin) * sc, zmax * sc);
+  // baseline
+  ctx.strokeStyle = ink; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(X(0), oy); ctx.lineTo(X(g.b), oy); ctx.stroke();
+  ctx.fillStyle = ink; ctx.textAlign = "center"; ctx.fillText("b = " + fmt(g.b, 2) + " m", X(g.b / 2), oy - 8);
+  // devices
+  const dev = (x, label, align) => { ctx.fillStyle = ink; ctx.beginPath(); ctx.moveTo(X(x) - 8, oy - 12); ctx.lineTo(X(x) + 8, oy - 12); ctx.lineTo(X(x), oy + 1); ctx.closePath(); ctx.fill(); ctx.textAlign = align; ctx.fillText(label, X(x) + (align === "right" ? -12 : 12), oy - 14); };
+  dev(0, "camera", "right"); dev(g.b, "projector", "left");
+  // rays
+  ctx.setLineDash([5, 4]); ctx.strokeStyle = acc; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.moveTo(X(0), oy); ctx.lineTo(X(g.x), Z(g.z)); ctx.moveTo(X(g.b), oy); ctx.lineTo(X(g.x), Z(g.z)); ctx.stroke(); ctx.setLineDash([]);
+  // angles
+  const aA = Math.atan2(g.z, g.x), aB = Math.atan2(g.z, g.x - g.b), r = 30;
+  ctx.strokeStyle = muted; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(X(0), oy, r, 0, aA, false); ctx.stroke(); ctx.beginPath(); ctx.arc(X(g.b), oy, r, aB, Math.PI, false); ctx.stroke();
+  ctx.fillStyle = ink; ctx.textAlign = "center"; ctx.fillText("α", X(0) + (r + 12) * Math.cos(aA / 2), oy + (r + 12) * Math.sin(aA / 2) + 4); ctx.fillText("β", X(g.b) + (r + 12) * Math.cos((aB + Math.PI) / 2), oy + (r + 12) * Math.sin((aB + Math.PI) / 2) + 4);
+  // depth guide and point
+  ctx.strokeStyle = line; ctx.setLineDash([2, 3]); ctx.beginPath(); ctx.moveTo(X(g.x), oy); ctx.lineTo(X(g.x), Z(g.z)); ctx.stroke(); ctx.setLineDash([]);
+  ctx.fillStyle = muted; ctx.textAlign = "left"; ctx.fillText("z = " + fmt(g.z, 2) + " m", X(g.x) + 6, Z(g.z / 2));
+  ctx.fillStyle = acc; ctx.beginPath(); ctx.arc(X(g.x), Z(g.z), 8, 0, 7); ctx.fill(); ctx.strokeStyle = css("--surface"); ctx.lineWidth = 2; ctx.stroke();
+}
+function setPoint(x, z) { st.gz = clamp(z, 1, 2.5); st.pcol = clamp(Math.round(128 + F * (x - st.b) / st.gz), 0, 255); r1(); }
+$("gz").addEventListener("input", e => { st.gz = +e.target.value; r1(); });
+$("gx").addEventListener("input", e => setPoint(+e.target.value, st.gz));
+$("pcol").addEventListener("input", e => { st.pcol = +e.target.value; r1(); });
+{
+  const cv = $("geo"); let on = false;
+  const at = e => { const r = cv.getBoundingClientRect(); setPoint((e.clientX - r.left - geoT.ox) / geoT.sc, (e.clientY - r.top - geoT.oy) / geoT.sc); };
+  cv.addEventListener("pointerdown", e => { on = true; cv.setPointerCapture(e.pointerId); at(e); });
+  cv.addEventListener("pointermove", e => { if (on) at(e); });
+  cv.addEventListener("pointerup", () => { on = false; }); cv.addEventListener("pointercancel", () => { on = false; });
+  cv.addEventListener("keydown", e => {
+    const k = e.key; if (k === "ArrowLeft") st.pcol = clamp(st.pcol - 1, 0, 255); else if (k === "ArrowRight") st.pcol = clamp(st.pcol + 1, 0, 255);
+    else if (k === "ArrowUp") st.gz = clamp(st.gz - 0.02, 1, 2.5); else if (k === "ArrowDown") st.gz = clamp(st.gz + 0.02, 1, 2.5); else return;
+    e.preventDefault(); r1();
+  });
+}
+
+/* ---------- 02 one stripe ---------- */
+function r2() {
+  const m = st.model, pc = st.pcol2, mask = new Uint8Array(N), dRow = new Float32Array(H).fill(NaN), zRow = new Float32Array(H).fill(NaN);
+  let cnt = 0, sd = 0, zmin = Infinity, zmax = -Infinity;
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const i = y * W + x; if (m.lit[i] && m.P[i] === pc) { mask[i] = 1; if (x + 1 < W) mask[i + 1] = 1; if (isNaN(dRow[y])) { dRow[y] = x - pc; zRow[y] = m.Z[i]; cnt++; sd += x - pc; zmin = Math.min(zmin, m.Z[i]); zmax = Math.max(zmax, m.Z[i]); } }
+  }
+  $("pcol2").value = pc; $("pcol2O").value = pc;
+  showRGB("oneView", W, H, i => mask[i] ? [255, 130, 40] : (v => [v, v, v])(20 + m.alb[i] * 200));
+  chips("oneStats", [["Stripe rows found", cnt], ["Mean disparity", cnt ? fmt(sd / cnt, 1) + " px" : "–"], ["Depth range", cnt ? fmt(zmin, 2) + " to " + fmt(zmax, 2) + " m" : "–"]]);
+  st.one = { dRow, zRow, cnt }; drawProfile();
+}
+function drawProfile() {
+  if (!st.one) return;
+  const cv = $("profile"), { ctx, W: w, H: h } = hiDPI(cv, 240), { dRow, zRow } = st.one; ctx.clearRect(0, 0, w, h);
+  const L = 40, R = 40, T = 10, B = 26, pw = w - L - R, ph = h - T - B, muted = css("--muted"), line = css("--line");
+  let dmax = 20; for (const d of dRow) if (d > dmax) dmax = d; dmax = Math.ceil(dmax * 1.1 / 10) * 10;
+  const X = y => L + y / (H - 1) * pw, YD = d => T + ph - d / dmax * ph, YZ = z => T + (z - ZLO) / (ZHI - ZLO) * ph;
+  ctx.font = "10px " + css("--mono"); ctx.fillStyle = muted; ctx.strokeStyle = line; ctx.lineWidth = 1;
+  for (let t = 0; t <= 4; t++) {
+    const yy = T + ph * t / 4; ctx.beginPath(); ctx.moveTo(L, yy); ctx.lineTo(L + pw, yy); ctx.stroke();
+    ctx.textAlign = "right"; ctx.fillText(fmt(dmax * (1 - t / 4), 0), L - 5, yy + 3); ctx.textAlign = "left"; ctx.fillText(fmt(ZLO + (ZHI - ZLO) * t / 4, 1), L + pw + 5, yy + 3);
+  }
+  ctx.textAlign = "center"; for (let t = 0; t <= 3; t++) ctx.fillText(Math.round(t * (H - 1) / 3), X(t * (H - 1) / 3), h - 10);
+  ctx.fillText("image row", L + pw / 2, h - 0);
+  const plot = (arr, Y, color, dash) => { ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.setLineDash(dash); ctx.beginPath(); let pen = false; for (let y = 0; y < H; y++) { if (isNaN(arr[y])) { pen = false; continue; } if (!pen) { ctx.moveTo(X(y), Y(arr[y])); pen = true; } else ctx.lineTo(X(y), Y(arr[y])); } ctx.stroke(); ctx.setLineDash([]); };
+  plot(zRow, YZ, muted, [5, 4]); plot(dRow, YD, css("--accent"), []);
+}
+$("pcol2").addEventListener("input", e => { st.pcol2 = +e.target.value; r2(); });
+
+/* ---------- 03 sweep ---------- */
+let byOff = null, byIdx = null;
+function sweepBuckets() {
+  const m = st.model; byOff = new Int32Array(W + 1); for (let i = 0; i < N; i++) if (m.lit[i]) byOff[m.P[i] + 1]++;
+  for (let p = 0; p < W; p++) byOff[p + 1] += byOff[p];
+  const pos = byOff.slice(0, W); byIdx = new Int32Array(byOff[W]); for (let i = 0; i < N; i++) if (m.lit[i]) byIdx[pos[m.P[i]]++] = i;
+}
+function sweepReset() { clearInterval(st.sweep.timer); st.sweep.timer = 0; st.sweep.k = 0; st.sweep.acc = new Float32Array(N).fill(NaN); $("swPlay").textContent = "Play"; sweepBuckets(); r3(); }
+function sweepStep() {
+  const s = st.sweep; if (s.k >= W) return false; const m = st.model;
+  for (let j = byOff[s.k]; j < byOff[s.k + 1]; j++) { const i = byIdx[j], d = (i % W) - s.k; s.acc[i] = F * m.b / d; }
+  s.k++; return s.k < W;
+}
+function sweepStop() { clearInterval(st.sweep.timer); st.sweep.timer = 0; $("swPlay").textContent = "Play"; }
+function r3() {
+  const s = st.sweep, cur = s.k > 0 ? s.k - 1 : -1, m = st.model;
+  showRGB("sweepView", W, H, i => m.lit[i] && m.P[i] === cur ? [255, 255, 255] : isNaN(s.acc[i]) ? BG : depthColor(s.acc[i]));
+  chips("swStats", [["Frame", s.k + " of " + W], ["At 30 fps", fmt(W / 30, 1) + " s"], ["Binary code", "8 frames (" + fmt(8 / 30, 2) + " s)"]]);
+}
+$("swPlay").addEventListener("click", () => {
+  const s = st.sweep; if (s.timer) { sweepStop(); return; }
+  if (s.k >= W) sweepReset();
+  $("swPlay").textContent = "Pause";
+  s.timer = setInterval(() => { let go = true; for (let t = 0; t < +segVal("spd") && go; t++) go = sweepStep(); r3(); if (!go) sweepStop(); }, 40);
+});
+$("swStep").addEventListener("click", () => { sweepStop(); sweepStep(); r3(); });
+$("swAll").addEventListener("click", () => { sweepStop(); while (sweepStep()); r3(); });
+$("swReset").addEventListener("click", sweepReset);
+seg("spd", () => {});
+
+/* ---------- 04 binary patterns ---------- */
+function r4() {
+  const nb = st.nbits, j = Math.min(st.bit, nb), m = st.model, s = 8 - j;
+  $("bit").max = nb; $("bit").value = j; st.bit = j; $("nbitsO").value = nb; $("bitO").value = j;
+  const pat = pattern("binary", j - 1, nb, 0), cam = capture(m, pat, 0, j - 1);
+  const pc = $("projPat"); pc.width = W; pc.height = 24; const px = pc.getContext("2d"); for (let x = 0; x < W; x++) { px.fillStyle = pat[x] ? "#f2f2f2" : "#12151a"; px.fillRect(x, 0, 1, 24); }
+  showRGB("camPat", W, H, i => [cam[i], cam[i], cam[i]]);
+  const prefix = getDec("binary", j, 0, 0), full = getDec("binary", nb, 0, 0), top = (1 << j) - 1;
+  showRGB("codeAcc", W, H, i => prefix.valid[i] && m.lit[i] ? heat((prefix.col[i] >> s) / top) : BG);
+  let ok = 0, right = 0, ex = 0; const fs = 8 - nb;
+  for (let i = 0; i < N; i++) if (full.valid[i] && m.lit[i]) { ok++; if ((full.col[i] >> fs) === (m.P[i] >> fs)) right++; if (full.col[i] === m.P[i]) ex++; }
+  const r = ok ? right / ok : 0;
+  st.bin = { ok, right, exact: ex, fracRight: r, stripes: countStripes(pat) };
+  chips("binStats", [["Patterns", nb], ["Codes 2^" + nb, 1 << nb], ["Stripes in pattern " + j, st.bin.stripes], [nb === 8 ? "Decoded column exactly correct" : "Right code block", pct(r)]]);
+  let t = `<tr><td>column</td>${Array.from({ length: nb }, (_, k) => `<td class="${k + 1 === j ? "hi" : ""}">bit ${k + 1}</td>`).join("")}</tr>`;
+  for (let n = 0; n < 16; n++) { const code = bits(n >> (8 - nb), nb); t += `<tr><td>${n}</td>${[...code].map((c, k) => `<td class="${k + 1 === j ? "hi" : ""}">${c}</td>`).join("")}</tr>`; }
+  $("binTable").innerHTML = t;
+}
+function countStripes(a) { let c = 1; for (let x = 1; x < a.length; x++) if (a[x] !== a[x - 1]) c++; return c; }
+$("nbits").addEventListener("input", e => { st.nbits = +e.target.value; st.bit = Math.min(st.bit, st.nbits); schedHeavy(); });
+$("bit").addEventListener("input", e => { st.bit = +e.target.value; schedHeavy(); });
+
+/* ---------- 05 Gray code ---------- */
+function errStats(dec) {
+  const m = st.model; let sum = 0, cnt = 0, gt1 = 0;
+  for (let i = 0; i < N; i++) if (dec.valid[i] && m.lit[i]) { const e = Math.abs(dec.col[i] - m.P[i]); sum += e; cnt++; if (e > 1) gt1++; }
+  return { mean: cnt ? sum / cnt : 0, gt1: cnt ? gt1 / cnt : 0, invalid: N - cnt, count: cnt };
+}
+function r5() {
+  const nb = st.nbits, m = st.model; $("noiseO").value = $("noise6O").value = st.noise; $("blurO").value = $("blur6O").value = fmt(st.blur, 1);
+  const db = getDec("binary", nb, st.noise, st.blur), dg = getDec("gray", nb, st.noise, st.blur);
+  const errImg = (id, d) => showRGB(id, W, H, i => { if (!d.valid[i] || !m.lit[i]) return NODATA; const e = Math.abs(d.col[i] - m.P[i]); return e === 0 ? [8, 10, 14] : heat(0.2 + 0.8 * Math.min(1, e / 16)); });
+  errImg("errBin", db); errImg("errGray", dg);
+  const sb = errStats(db), sg = errStats(dg); st.stats = { binary: sb, gray: sg };
+  const row = s => [["Mean error", fmt(s.mean, 2) + " cols"], ["Error over 1 column", pct(s.gt1)], ["Invalid pixels", s.invalid]];
+  chips("binErr", row(sb)); chips("grayErr", row(sg));
+  const d = st.kind === "gray" ? dg : db;
+  showRGB("decView", W, H, i => d.valid[i] && m.lit[i] ? heat(d.col[i] / 255) : NODATA);
+  $("decCap").innerHTML = `Decoded projector column (${st.kind === "gray" ? "Gray" : "binary"} code, ${nb} patterns). A clean result is a smooth ramp.`;
+  let t = `<tr><td>column</td><td>binary</td><td>Gray</td><td>bits changed, binary</td><td>bits changed, Gray</td></tr>`;
+  for (let n = 0; n < 16; n++) { const a = n >> (8 - nb), pa = Math.max(0, n - 1) >> (8 - nb); const cb = n ? pop(a ^ pa) : "–", cg = n ? pop(gray(a) ^ gray(pa)) : "–"; t += `<tr><td>${n}</td><td>${bits(a, nb)}</td><td>${bits(gray(a), nb)}</td><td class="${n === 8 ? "hi" : ""}">${cb}</td><td class="${n === 8 ? "hi" : ""}">${cg}</td></tr>`; }
+  $("grayTable").innerHTML = t;
+}
+
+/* ---------- 06 decode to depth ---------- */
+function r6() {
+  const nb = st.nbits, m = st.model, dec = getDec(st.kind, nb, st.noise, st.blur), ok = new Uint8Array(N);
+  for (let i = 0; i < N; i++) ok[i] = dec.valid[i] && m.lit[i];
+  const Zr = toDepth(dec.col, ok, st.b), errs = []; let nv = 0, sh = 0;
+  for (let i = 0; i < N; i++) { if (!m.lit[i]) sh++; if (!isNaN(Zr[i])) { nv++; errs.push(Math.abs(Zr[i] - m.Z[i]) / m.Z[i]); } }
+  errs.sort((a, b) => a - b); const med = errs.length ? errs[errs.length >> 1] : NaN, dz = 1.5 * 1.5 / (F * st.b);
+  st.r6 = { Zr, medErr: med, validFrac: nv / N, shadowFrac: sh / N, dz };
+  $("b6O").value = fmt(st.b, 2) + " m";
+  const hatch = i => (((i % W) + ((i / W) | 0)) & 3) === 0 ? [60, 64, 74] : BG;
+  showRGB("depthView", W, H, i => isNaN(Zr[i]) ? hatch(i) : depthColor(Zr[i]));
+  showRGB("gtView", W, H, i => depthColor(m.Z[i]));
+  chips("depStats", [["Median depth error", isNaN(med) ? "–" : fmt(med * 100, 2) + "%"], ["Valid pixels", fmt(nv / N * 100, 1) + "%"], ["In shadow", fmt(sh / N * 100, 1) + "%"], ["Depth step per column at 1.5 m", fmt(dz * 1000, 1) + " mm"]]);
+  drawRelief();
+}
+function drawRelief() {
+  const cv = $("relief"), { ctx, W: w, H: h } = hiDPI(cv, 340), r = st.r6; ctx.fillStyle = "#12151a"; ctx.fillRect(0, 0, w, h); if (!r) return;
+  // TODO VB.orbit: local orbit view, to be replaced when the shared helper exists
+  const th = st.yaw * Math.PI / 180, ph = st.pitch * Math.PI / 180, cy = Math.cos(th), sy = Math.sin(th), cp = Math.cos(ph), sp = Math.sin(ph), D = 3.4, fl = Math.min(w, h * 1.3) * 1.15, pts = [];
+  for (let y = 0; y < H; y += 4) for (let x = 0; x < W; x += 4) {
+    const Z = r.Zr[y * W + x]; if (isNaN(Z)) continue;
+    const px = (x - 128) / F * Z, py = (y - 96) / F * Z, pz = Z - 1.75;
+    const x1 = px * cy + pz * sy, z1 = -px * sy + pz * cy, y2 = py * cp - z1 * sp, z2 = py * sp + z1 * cp, d = z2 + D;
+    pts.push([w / 2 + fl * x1 / d, h / 2 + fl * y2 / d, d, Z]);
+  }
+  pts.sort((a, b) => b[2] - a[2]);
+  for (const [sx, sy2, d, Z] of pts) { const c = depthColor(Z); ctx.fillStyle = `rgb(${c[0] | 0},${c[1] | 0},${c[2] | 0})`; const s = Math.max(2, 17 / d); ctx.fillRect(sx - s / 2, sy2 - s / 2, s, s); }
+}
+function setView(yaw, pitch) { st.yaw = clamp(yaw, -80, 80); st.pitch = clamp(pitch, -60, 60); $("ryaw").value = st.yaw; $("rpitch").value = st.pitch; $("ryawO").value = Math.round(st.yaw) + "°"; $("rpitchO").value = Math.round(st.pitch) + "°"; drawRelief(); }
+$("ryaw").addEventListener("input", e => setView(+e.target.value, st.pitch)); $("rpitch").addEventListener("input", e => setView(st.yaw, +e.target.value));
+{
+  const cv = $("relief"); let on = false, lx = 0, ly = 0;
+  cv.addEventListener("pointerdown", e => { on = true; lx = e.clientX; ly = e.clientY; cv.setPointerCapture(e.pointerId); });
+  cv.addEventListener("pointermove", e => { if (!on) return; setView(st.yaw + (e.clientX - lx) * 0.5, st.pitch + (e.clientY - ly) * 0.5); lx = e.clientX; ly = e.clientY; });
+  cv.addEventListener("pointerup", () => { on = false; }); cv.addEventListener("pointercancel", () => { on = false; });
+  cv.addEventListener("keydown", e => { const d = { ArrowLeft: [-5, 0], ArrowRight: [5, 0], ArrowUp: [0, -5], ArrowDown: [0, 5] }[e.key]; if (!d) return; e.preventDefault(); setView(st.yaw + d[0], st.pitch + d[1]); });
+}
+
+/* ---------- pipeline ---------- */
+function renderHeavy() { r4(); r5(); r6(); }
+const schedHeavy = frame(renderHeavy);
+function rebuild() {
+  clearInterval(st.sweep.timer);
+  const sc = buildScene(st.scene, st.dark); st.model = project(sc, st.b); st.model.name = sc.name; cache.clear();
+  r0(); r1(); r2(); sweepReset(); renderHeavy();
+}
+$("ramp").style.background = "linear-gradient(90deg," + [0, 0.25, 0.5, 0.75, 1].map(t => { const c = heat(t); return `rgb(${c[0] | 0},${c[1] | 0},${c[2] | 0})`; }).join(",") + ")";
+setNB(12, 1.5); setB(0.40); setView(30, -15);
+onTheme(() => { if (st.geo) { drawGeo(); drawProfile(); drawRelief(); } });
+window.AI = { buildScene, project, pattern, capture, decode, toDepth, runDecode, st, W, H, F, rebuild };
+rebuild();
+})();
+</script>
+</body>
+</html>
