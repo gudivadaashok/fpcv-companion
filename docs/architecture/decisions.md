@@ -125,3 +125,13 @@ I did not edit `common.js` or `site.css`. The developer adding the two new pages
 CSS to add to `site.css` (also fixes review #10): `canvas.drag { cursor: grab; touch-action: none; } canvas.drag:active { cursor: grabbing; }`, `.eq.pre { white-space: pre; }`, `.calc-lines` (3 rules from shape-from-shading), `.mats`, `td.hi`, `.dot`. The new pages use `canvas.drag`, `.calc-lines`, `td.hi`, `.dot`.
 
 Not shared yet (one new caller only): an orbit/3D drag view. `#view3d` exists in camera-calibration, photometric-stereo and appearance-matching with a per-page copy; active-illumination would be a fourth. Because the three existing copies differ, extract `VB.orbit` as its own task after the new pages ship; active-illumination keeps a local copy marked `// TODO VB.orbit`.
+
+## 5. Math typesetting: vendored KaTeX (the first runtime dependency)
+
+**Decision.** Typeset all math with KaTeX 0.19.1 (MIT), vendored in `vendor/katex/` (UMD `katex.min.js`, `katex.min.css`, 20 woff2 fonts, `LICENSE`, `VERSION`). Design and migration plan: `docs/architecture/math.md`.
+
+**Why this overrides "no dependencies".** The monospace `<div class="eq">` look was rejected by the product owner, and so was native MathML ("robotic, not readable"). The stated target is Jupyter-quality (LaTeX) typesetting. Principle 1 allows a library that "pays for itself" and prefers one that can be vendored as a single file. KaTeX is vendored, needs no npm or build step, and still opens from `file://`. This is a deliberate exception, not a precedent: no other library is approved by this decision.
+
+**Rejected.** MathJax 3/4 (same Computer Modern glyphs, so no better look; 1 MB or more, asynchronous typesetting that is tens of milliseconds per expression and janky on slider drags; v4 loads font chunks by dynamic import, which `file://` is likely to block). MathML only (Temml, native): rejected by the owner on looks. Pre-rendered SVG or PNG: cannot show live numbers. Unicode and `<sub>`: the status quo being replaced.
+
+Full comparison table in `math.md` section 1.

@@ -38,7 +38,7 @@ open index.html                 # or serve it: python3 -m http.server 8000
 
 ## How it's built
 
-- **No framework, no build step, no dependencies.** Each lecture is a single self-contained `<topic>.html` file.
+- **No framework, no build step, no npm dependencies** (one vendored library, KaTeX, for math). Each lecture is a single self-contained `<topic>.html` file.
 - **`common.js`** holds everything the pages share. It exposes it all on `window.VB`:
   - the chapter and topic registry (`CHAPTERS`), which drives the home page, the nav bar and the previous/next links
   - the procedural sample images and the image picker / upload control
@@ -112,13 +112,15 @@ Each lecture is one file, such as `optical-flow.html`. Its HTML, styles and code
 - Run `STRICT=1 node scripts/check.mjs`. It must print `ok`.
 - Check that the browser console shows no errors.
 - Check the page in light and dark mode, and at phone width (about 375 px).
-- Keep the site dependency-free. If you think a library or build step is needed, open an issue to discuss it first.
+- Keep the site free of npm and build dependencies (KaTeX is the one vendored library). If you think a library or build step is needed, open an issue to discuss it first.
 
 Then open a pull request describing what you changed and why.
 
 ## Credits
 
 The concepts, notation and structure follow **First Principles of Computer Vision** by **Shree Nayar**, Columbia University. Watch the lectures at [fpcv.cs.columbia.edu](https://fpcv.cs.columbia.edu/) or on the [FPCV YouTube channel](https://www.youtube.com/channel/UCf0WB91t8Ky6AuYcQV0CcLw).
+
+Math is typeset with [KaTeX](https://katex.org) (MIT, Copyright Khan Academy and other contributors), vendored in `vendor/katex/`.
 
 This is an independent project, not affiliated with or endorsed by Columbia University or the FPCV team.
 

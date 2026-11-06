@@ -89,10 +89,29 @@ button.btn.primary { background: var(--accent); border-color: var(--accent); col
 .seg button + button { border-left: 1px solid var(--line); }
 .seg button[aria-pressed="true"] { background: var(--ink); color: var(--bg); }
 
-.math { background: var(--bg); border-radius: 8px; padding: 14px 16px; font-size: 0.92rem; display: grid; gap: 6px; min-width: 0; overflow-x: auto; overflow-wrap: anywhere; }
+.math { background: var(--bg); border-radius: 8px; padding: 14px 16px; font-size: 0.92rem; display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; min-width: 0; overflow-x: auto; overflow-wrap: anywhere; }
 .math h3 { font-size: 1rem; }
 .math p { margin: 0; }
-.eq { font-family: var(--mono); font-size: 0.86rem; overflow-x: auto; white-space: nowrap; }
+
+/* math (KaTeX): colour is inherited (currentColor); see docs/architecture/math.md */
+.katex { font-size: 1.08em; }
+.katex-display { margin: 0.6em 0; overflow-x: auto; overflow-y: hidden; padding: 2px 0; }
+.eqd { margin: 10px 0; min-width: 0; max-width: 100%; overflow-x: auto; overflow-y: hidden; }
+.tex-fallback { font-family: var(--mono); font-size: 0.9em; }
+.mwrap { container-type: inline-size; }
+.mgrid { display: grid; grid-template-columns: max-content max-content max-content; column-gap: 12px; row-gap: 14px; align-items: center; overflow-x: auto; padding: 4px 2px; }
+.mrow { display: contents; }
+.ml { color: var(--muted); font-size: 0.88rem; padding-right: 12px; }
+.me { justify-self: end; font-size: 1.12rem; }
+.mv { justify-self: start; font-size: 1.12rem; color: var(--accent); }
+.mwrap + .note { margin-top: 12px; }
+@container (max-width: 560px) {
+  .mgrid { display: block; overflow: visible; }
+  .mrow { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; padding: 8px 0; border-bottom: 1px solid var(--line); }
+  .mrow:last-child { border-bottom: 0; }
+  .ml { flex: 1 0 100%; padding: 0; }
+  .me, .mv { justify-self: auto; min-width: 0; max-width: 100%; overflow-x: auto; overflow-y: hidden; }
+}
 
 .stats { display: flex; flex-wrap: wrap; gap: 8px; }
 .chip { font-size: 0.82rem; border: 1px solid var(--line); border-radius: 999px; padding: 3px 10px; color: var(--muted); }

@@ -56,9 +56,47 @@ function nav(active) {
 }
 
 function footer() {
+  mathify(document.querySelector("main"));
   const f = document.querySelector("footer.site");
   if (!f) return;
   f.innerHTML = `<p>An unofficial study companion. Concepts and notation follow the lectures in <a href="https://fpcv.cs.columbia.edu/">First Principles of Computer Vision</a> by Shree Nayar, Columbia University. Watch them there or on the <a href="https://www.youtube.com/channel/UCf0WB91t8Ky6AuYcQV0CcLw">FPCV YouTube channel</a>.</p><p>Sample images are generated in your browser. Uploaded images are processed locally and never sent anywhere.</p>`;
+}
+
+/* ---------- math (KaTeX, vendored in vendor/katex/; see docs/architecture/math.md) ----------
+ VB.tex(latex, {display}) -> HTML string (memoized; falls back to the LaTeX source in <code> if KaTeX is missing)
+ VB.mathRows(el, [{label, tex, value?, note?}], note?) -> label | formula | = value grid, for live numbers
+ VB.mathify(root) -> typesets \( inline \) and \[ display \] written in static prose (footer() calls it on <main>) */
+const _tex = new Map();
+function tex(latex, opts = {}) {
+  const d = !!opts.display, key = (d ? "D|" : "I|") + latex;
+  let h = _tex.get(key);
+  if (h === undefined) {
+    try { h = window.katex ? katex.renderToString(latex, { displayMode: d, throwOnError: false, strict: "ignore", output: "htmlAndMathml" }) : `<code class="tex-fallback">${esc(latex)}</code>`; }
+    catch (e) { h = `<code class="tex-fallback">${esc(latex)}</code>`; }
+    if (_tex.size > 500) _tex.clear();
+    _tex.set(key, h);
+  }
+  return h;
+}
+function mathRows(el, rows, note) {
+  el.innerHTML = `<div class="mwrap"><div class="mgrid">` + rows.map(r =>
+    `<div class="mrow"><div class="ml">${r.label || ""}</div><div class="me">${tex("\\displaystyle " + r.tex)}</div>` +
+    `<div class="mv">${r.value != null ? tex("= " + r.value) : ""}</div></div>`).join("") + `</div></div>` +
+    rows.filter(r => r.note).map(r => `<p class="note">${r.note}</p>`).join("") + (note ? `<p class="note">${note}</p>` : "");
+}
+const _mre = /\\\(([\s\S]+?)\\\)|\\\[([\s\S]+?)\\\]/g;
+function mathify(root = document.body) {
+  if (!root) return;
+  const skip = "script,style,code,pre,textarea,.katex";
+  const w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, { acceptNode: n => (n.nodeValue.includes("\\(") || n.nodeValue.includes("\\[")) && !n.parentElement.closest(skip) ? 1 : 3 });
+  const todo = []; for (let n; (n = w.nextNode());) todo.push(n);
+  for (const n of todo) {
+    const s = n.nodeValue; let last = 0, html = "";
+    s.replace(_mre, (m, a, b, i) => { html += esc(s.slice(last, i)) + tex((a ?? b).trim(), { display: a === undefined }); last = i + m.length; return m; });
+    if (!last) continue;
+    html += esc(s.slice(last));
+    const t = document.createElement("template"); t.innerHTML = html; n.replaceWith(t.content);
+  }
 }
 
 function rng(seed) { return () => { seed |= 0; seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
@@ -252,7 +290,7 @@ const fmt = (v, d = 1) => (Object.is(v, -0) ? 0 : v).toLocaleString(undefined, {
    vertex normals (smooth, two-sided), so a mesh looks smooth; light is fixed in world space.
  Colors are CSS colors, or a custom property name such as "--accent", re-read on every redraw (theme-aware).
  VB.view3d.surface(z, w, h, { step: 2, mask, rgb: i => [r,g,b], zscale: 1 }) -> items for a height field (x = col - w/2, y = h/2 - row,
- z minus its mean), with central-difference vertex normals; cells with any masked-out corner are skipped.
+ z minus its mean), with central-difference vertex normals; cells straddling the mask edge are clipped to it (smooth silhouette, no skirts).
  Input: drag orbits (mouse, touch), wheel and two-finger pinch zoom, arrows rotate, + / - zoom, 0 resets. */
 function view3d(cv, o = {}) {
   const pr = o.pitchRange || [0.05, 1.5], R = o.fit || 1, def = { yaw: o.yaw ?? 0.6, pitch: o.pitch ?? 0.9, zoom: 1 };
@@ -320,14 +358,40 @@ view3d.surface = (z, w, h, o = {}) => {
     P.push([x - w / 2, h / 2 - y, ((mask && !mask[y * w + x] ? mean : Z(x, y)) - mean) * zs]); Nn.push([-zx / l, zy / l, 1 / l]);
   }
   const items = [], rgb = o.rgb || (() => [235, 235, 235]);
+  // Silhouette: a cell with some masked-out corners is clipped where a box-blurred copy of the mask crosses 0.5,
+  // so the rim follows the true boundary instead of a staircase of whole cells. No skirts: z of valid corners only.
+  let M = null;
+  if (mask) {
+    const t = new Float32Array(w * h); M = new Float32Array(w * h);
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { let s = 0; for (let k = -2; k <= 2; k++) s += mask[y * w + Math.max(0, Math.min(w - 1, x + k))] ? 1 : 0; t[y * w + x] = s / 5; }
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { let s = 0; for (let k = -2; k <= 2; k++) s += t[Math.max(0, Math.min(h - 1, y + k)) * w + x]; M[y * w + x] = s / 5; }
+  }
+  const CO = [[0, 0], [1, 0], [1, 1], [0, 1]];
   for (let b = 0; b < gh; b++) for (let a = 0; a < gw; a++) {
     const i = Math.min(h - 1, b * step + 1) * w + Math.min(w - 1, a * step + 1);
     const ids = [b * (gw + 1) + a, b * (gw + 1) + a + 1, (b + 1) * (gw + 1) + a + 1, (b + 1) * (gw + 1) + a];
-    if (mask && ![[0, 0], [1, 0], [1, 1], [0, 1]].every(([dx, dy]) => mask[(b + dy) * step * w + (a + dx) * step])) continue; // all 4 corners on the object: no skirts
-    items.push({ p: ids.map(t => P[t]), n: ids.map(t => Nn[t]), rgb: rgb(i) });
+    if (!mask) { items.push({ p: ids.map(t => P[t]), n: ids.map(t => Nn[t]), rgb: rgb(i) }); continue; }
+    const px = CO.map(([dx, dy]) => (b + dy) * step * w + (a + dx) * step), ok = px.map(q => !!mask[q]);
+    if (ok.every(Boolean)) { items.push({ p: ids.map(t => P[t]), n: ids.map(t => Nn[t]), rgb: rgb(i) }); continue; }
+    if (!ok.some(Boolean)) continue;
+    const p = [], n = [];
+    for (let j = 0; j < 4; j++) {
+      const k = (j + 1) % 4;
+      if (ok[j]) { p.push(P[ids[j]]); n.push(Nn[ids[j]]); }
+      if (ok[j] !== ok[k]) {
+        const v = ok[j] ? j : k, u = ok[j] ? k : j;   // v on the object, u off it
+        const t = Math.max(0, Math.min(1, (M[px[v]] - 0.5) / ((M[px[v]] - M[px[u]]) || 1)));
+        const A = P[ids[v]], B = P[ids[u]];
+        // z follows the tangent plane of the valid corner (steep rims would otherwise show as vertical steps)
+        const vx = (a + CO[v][0]) * step, vy = (b + CO[v][1]) * step, dx = (CO[u][0] - CO[v][0]) * step * t, dy = (CO[u][1] - CO[v][1]) * step * t;
+        const gx = (Z(vx + 1, vy) - Z(vx - 1, vy)) / 2 * zs, gy = (Z(vx, vy + 1) - Z(vx, vy - 1)) / 2 * zs;
+        p.push([A[0] + (B[0] - A[0]) * t, A[1] + (B[1] - A[1]) * t, A[2] + gx * dx + gy * dy]); n.push(Nn[ids[v]]);
+      }
+    }
+    if (p.length >= 3) items.push({ p, n, rgb: rgb(i) });
   }
   return items;
 };
 
-window.VB = { $, CHAPTERS, TOPICS, nav, footer, rng, addNoise, cssVar, hslToRgb, hsvToRgb, seg, setSeg, segVal, SAMPLES, sampleCanvas, picker, esc, toGray, sized, show, showRGB, gaussKernel, sepConv, gaussBlur, conv2, boxSum, bilinear, fft1, fft2, imgXY, hiDPI, onTheme, arrow, fmt, view3d };
+window.VB = { $, CHAPTERS, TOPICS, nav, footer, rng, addNoise, cssVar, hslToRgb, hsvToRgb, seg, setSeg, segVal, SAMPLES, sampleCanvas, picker, esc, toGray, sized, show, showRGB, gaussKernel, sepConv, gaussBlur, conv2, boxSum, bilinear, fft1, fft2, imgXY, hiDPI, onTheme, arrow, fmt, view3d, tex, mathRows, mathify };
 })();
