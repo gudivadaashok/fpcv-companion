@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Appearance Matching, Interactively</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,500;8..60,600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="site.css">
+<style>
+.strip { display: flex; gap: 4px; overflow-x: auto; padding: 4px 2px 8px; }
+.strip canvas { flex: none; width: 56px; height: 56px; image-rendering: pixelated; border: 2px solid transparent; border-radius: 4px; cursor: pointer; background: var(--stage); }
+.strip canvas:hover { border-color: var(--muted); }
+.strip canvas.sel { border-color: var(--accent); }
+.eig { display: grid; grid-template-columns: repeat(auto-fill, minmax(76px, 1fr)); gap: 8px; }
+.eig figure { text-align: center; }
+.eig canvas { width: 100%; image-rendering: pixelated; border-radius: 4px; background: var(--stage); display: block; }
+#view3d { cursor: grab; touch-action: none; height: 420px; }
+#scree, #dist { height: 260px; }
+#scree { cursor: pointer; }
+.bigsel { width: 100%; max-width: 240px; }
+.res { display: grid; gap: 4px; font-size: 0.95rem; }
+.res .mono { font-size: 0.86rem; }
+.sw2 { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; }
+</style>
+</head>
+<body>
+<header class="site"></header>
+<main class="wrap">
+  <div class="intro">
+    <h1>Appearance Matching, Interactively</h1>
+    <p class="lead">Recognize an object and its pose by comparing whole images. Squeeze every image into a few numbers with PCA, and a rotating object traces a closed curve in that small space. A new image lands near the curve of the right object, at the right place on it.</p>
+    <p>Everything is computed in your browser: the objects are rendered by a small ray marcher, and the eigenvectors come from a Jacobi eigen solver written for this page. Follows the Appearance Matching lecture (the parametric eigenspace of Murase and Nayar).</p>
+  </div>
+
+  <section class="stage" aria-labelledby="h0">
+    <div class="stage-head"><span class="num">00</span><div><h2 id="h0">Four objects, 48 poses each</h2><p>Each object turns about its vertical axis in 7.5° steps. Every image is 48×48 grayscale, so it is one point in a 2304-dimensional space. Pick an object, then click a frame to select it.</p></div></div>
+    <div class="controls">
+      <div class="ctl"><label>Object</label><div class="seg" id="objSeg"></div></div>
+      <span class="note" id="status">Rendering and computing the eigenspace…</span>
+    </div>
+    <div class="strip" id="strip" aria-label="Filmstrip of 48 poses. Click a frame to select it."></div>
+    <div class="main-side">
+      <figure><canvas class="view bigsel" id="selImg"></canvas><figcaption id="selCap">Selected image</figcaption></figure>
+      <div class="math"><h3>What the data looks like</h3><p>Stack the pixels of an image into one long vector <b>x</b> with 2304 entries. The training set has 4 objects × 48 poses = 192 such vectors. The object is lit from a fixed direction, so shading changes as it turns, and so does its silhouette.</p><p class="note">The scene is simple: a plain background, no cast shadows, and one fixed camera. Real appearance matching needs the same lighting and a segmented object, or extra training images that cover other lights.</p></div>
+    </div>
+  </section>
+
+  <section class="stage" aria-labelledby="h1">
+    <div class="stage-head"><span class="num">01</span><div><h2 id="h1">Eigenimages</h2><p>Subtract the mean image <b>m</b> from every image. The eigenvectors of the covariance matrix with the largest eigenvalues are the directions of greatest variation. Shown as images, they are the eigenimages. Click the plot to set how many components to keep.</p></div></div>
+    <div class="main-side">
+      <div>
+        <div class="eig" id="eigs"></div>
+      </div>
+      <figure><canvas class="plot" id="scree" aria-label="Eigenvalues and cumulative energy. Click to set k."></canvas><figcaption><span class="legend"><span><i style="background:var(--accent)"></i>Eigenvalue share</span><span><i style="background:#c2410c"></i>Cumulative energy</span><span><i style="background:var(--ink)"></i>Current k</span></span></figcaption></figure>
+    </div>
+    <div class="math"><h3>The Gram matrix trick</h3>
+      <p class="eq">X = [x₁−m, …, x_N−m]  (2304 × 192)    covariance C = X Xᵀ / N  (2304 × 2304, too big)</p>
+      <p class="eq">G = XᵀX  (192 × 192):   G v = λ v   ⇒   C (X v) = (λ/N) (X v)   ⇒   eigenimage e = X v / √λ</p>
+      <p>Solving the small 192×192 problem gives the same nonzero eigenvalues. The eigen solver here is a cyclic Jacobi method: it applies plane rotations until the matrix is diagonal. <span id="eigInfo"></span></p></div>
+  </section>
+
+  <section class="stage" aria-labelledby="h2">
+    <div class="stage-head"><span class="num">02</span><div><h2 id="h2">Reconstruct from k components</h2><p>Each image becomes k coefficients g<sub>i</sub> = e<sub>i</sub> · (x − m). Adding up the first k eigenimages, weighted by the coefficients, rebuilds an approximation. Drag the slider and watch the error shrink.</p></div></div>
+    <div class="controls">
+      <div class="ctl"><label for="kRange">Components k</label><input type="range" id="kRange" min="0" max="24" value="6"><output id="kO">6</output></div>
+      <span class="note">Selected image: <b id="kSel"></b></span>
+    </div>
+    <div class="three">
+      <figure><canvas class="view" id="rOrig"></canvas><figcaption>Original x</figcaption></figure>
+      <figure><canvas class="view" id="rRec"></canvas><figcaption>Reconstruction x̂ = m + Σ g<sub>i</sub> e<sub>i</sub></figcaption></figure>
+      <figure><canvas class="view" id="rErr"></canvas><figcaption>Absolute error |x − x̂|, scaled to its own maximum</figcaption></figure>
+    </div>
+    <div class="stats" id="rStats"></div>
+    <div class="math"><h3>The numbers for this image</h3><div id="rCoef"></div></div>
+  </section>
+
+  <section class="stage" aria-labelledby="h3">
+    <div class="stage-head"><span class="num">03</span><div><h2 id="h3">The pose manifold</h2><p>Plot the first three coefficients (g₁, g₂, g₃) of every image. As an object turns through 360°, its point travels around a closed curve. Drag to rotate the view. Click any point to see its image.</p></div></div>
+    <div class="main-side">
+      <figure><canvas class="plot" id="view3d" aria-label="3D plot of the pose manifolds. Drag to rotate. Click a point to select it."></canvas>
+        <figcaption><span class="legend" id="legend3d"></span></figcaption></figure>
+      <div class="math detail" id="manInfo"></div>
+    </div>
+    <p class="note">Only three of the 24 stored coordinates are drawn. Curves that look close in this view may be far apart in the other coordinates. Recognition below uses all the components you choose.</p>
+  </section>
+
+  <section class="stage" aria-labelledby="h4">
+    <div class="stage-head"><span class="num">04</span><div><h2 id="h4">Recognize a new pose</h2><p>The test image is rendered at an angle that is not in the training set, then optionally corrupted. It is projected into the eigenspace, and the closest point on any object's curve gives the answer. The 3D view above shows the test point as a white diamond.</p></div></div>
+    <div class="controls">
+      <div class="ctl"><label>True object</label><div class="seg" id="qObj"></div></div>
+      <div class="ctl"><label for="qAng">True angle</label><input type="range" id="qAng" min="0" max="359.5" step="0.5" value="93.5"><output id="qAngO">93.5°</output></div>
+      <button type="button" class="btn" id="qRand">Random object and pose</button>
+    </div>
+    <div class="controls">
+      <div class="ctl"><label for="qNoise">Noise σ</label><input type="range" id="qNoise" min="0" max="80" value="10"><output id="qNoiseO">10</output></div>
+      <div class="ctl"><label for="qOcc">Occlusion</label><input type="range" id="qOcc" min="0" max="70" value="0"><output id="qOccO">0%</output></div>
+      <div class="ctl"><label for="qK">Components used</label><input type="range" id="qK" min="1" max="24" value="10"><output id="qKO">10</output></div>
+    </div>
+    <div class="three">
+      <figure><canvas class="view" id="qImg"></canvas><figcaption>Test image (true pose, plus noise and occlusion)</figcaption></figure>
+      <figure><canvas class="view click" id="qNear"></canvas><figcaption id="qNearCap">Closest stored image</figcaption></figure>
+      <figure><canvas class="view" id="qRec"></canvas><figcaption>Test image rebuilt from the chosen components</figcaption></figure>
+    </div>
+    <div class="main-side">
+      <figure><canvas class="plot" id="dist" aria-label="Distance from the test point to every stored pose, by object"></canvas><figcaption><span class="legend" id="legendD"></span> Dashed line: true angle. Dot: best match.</figcaption></figure>
+      <div class="math"><h3>Result</h3><div class="res" id="qRes"></div></div>
+    </div>
+    <div class="math"><h3>How the match is made</h3>
+      <p class="eq">g = Eₖᵀ (x − m)        d(j) = ‖g − g_j‖  over all stored points j</p>
+      <p>The curve between neighboring stored poses is treated as a straight segment, and g is projected onto each segment. That gives a pose estimate finer than the 7.5° spacing. Heavy noise barely matters, because noise spreads over all 2304 dimensions and only a few land in the first components. Occlusion is harder: it changes the image in a structured way that moves g toward the wrong place.</p></div>
+    <div class="controls">
+      <button type="button" class="btn primary" id="qBatch">Test 100 random poses</button>
+      <span class="note">Uses the noise, occlusion and component settings above, with random objects and angles.</span>
+    </div>
+    <div class="stats" id="batchStats"></div>
+  </section>
+</main>
+<footer class="wrap site"></footer>
+
+<script src="common.js"></script>
+<script>
+(() => {
+"use strict";
+const { $, nav, footer, show, hiDPI, onTheme, cssVar, seg, setSeg, segVal, rng, fmt, imgXY } = VB;
+nav("appearance-matching.html"); footer();
+
+const R = 48, D = R * R, NP = 48, STEP = 360 / NP, K = 24;
+const COLS = ["#e11d48", "#0284c7", "#ca8a04", "#16a34a"];
+
+/* ---------- objects as signed distance functions (object space, y up) ---------- */
+const len2 = (a, b) => Math.sqrt(a * a + b * b);
+const sdSphere = (x, y, z, cx, cy, cz, r) => Math.sqrt((x - cx) ** 2 + (y - cy) ** 2 + (z - cz) ** 2) - r;
+const sdBox = (x, y, z, cx, cy, cz, hx, hy, hz) => { const qx = Math.abs(x - cx) - hx, qy = Math.abs(y - cy) - hy, qz = Math.abs(z - cz) - hz; return Math.sqrt(Math.max(qx, 0) ** 2 + Math.max(qy, 0) ** 2 + Math.max(qz, 0) ** 2) + Math.min(Math.max(qx, qy, qz), 0); };
+const sdCylY = (x, z, y, cx, cy, cz, r, hh) => { const dx = len2(x - cx, z - cz) - r, dy = Math.abs(y - cy) - hh; return Math.min(Math.max(dx, dy), 0) + len2(Math.max(dx, 0), Math.max(dy, 0)); };
+const sdTorusZ = (x, y, z, cx, cy, cz, R0, r) => { const q = len2(x - cx, y - cy) - R0; return len2(q, z - cz) - r; };
+const sdCap = (x, y, z, ax, ay, az, bx, by, bz, r) => { const px = x - ax, py = y - ay, pz = z - az, ex = bx - ax, ey = by - ay, ez = bz - az; const h = Math.max(0, Math.min(1, (px * ex + py * ey + pz * ez) / (ex * ex + ey * ey + ez * ez))); return Math.sqrt((px - ex * h) ** 2 + (py - ey * h) ** 2 + (pz - ez * h) ** 2) - r; };
+const OBJECTS = [
+  { name: "Mug", parts: [
+    { d: (x, y, z) => Math.max(sdCylY(x, z, y, 0, 0, 0, 0.8, 0.75), -sdCylY(x, z, y, 0, 0.2, 0, 0.64, 0.75)), t: (x, y, z) => { const a = Math.atan2(z, x); return y > 0.45 ? 0.35 : (Math.sin(5 * a) > 0 ? 0.95 : 0.5); } },
+    { d: (x, y, z) => sdTorusZ(x, y, z, 0.88, 0.05, 0, 0.4, 0.1), t: () => 0.8 } ] },
+  { name: "Robot", parts: [
+    { d: (x, y, z) => sdBox(x, y, z, 0, -0.15, 0, 0.55, 0.65, 0.4) - 0.04, t: (x, y, z) => (((Math.floor(x * 4) + Math.floor(y * 4) + Math.floor(z * 4)) & 1) ? 0.92 : 0.5) },
+    { d: (x, y, z) => sdSphere(x, y, z, 0.2, 0.85, 0, 0.38), t: (x, y, z) => (z > 0 && Math.abs(y - 0.9) < 0.1 ? 0.2 : 0.8) },
+    { d: (x, y, z) => sdBox(x, y, z, 1.0, -0.05, 0, 0.45, 0.11, 0.11), t: () => 0.65 },
+    { d: (x, y, z) => sdCap(x, y, z, 0.2, 1.2, 0, 0.2, 1.55, 0, 0.05), t: () => 0.95 } ] },
+  { name: "Teapot", parts: [
+    { d: (x, y, z) => sdSphere(x, y * 1.15, z, 0, 0, 0, 0.8), t: (x, y, z) => (Math.sin(6 * x) * Math.sin(6 * y) * Math.sin(6 * z) > 0 ? 0.95 : 0.45) },
+    { d: (x, y, z) => sdCap(x, y, z, 0.7, 0.05, 0, 1.25, 0.6, 0, 0.12), t: () => 0.7 },
+    { d: (x, y, z) => sdTorusZ(x, y, z, -0.85, 0.1, 0, 0.38, 0.09), t: () => 0.7 },
+    { d: (x, y, z) => sdSphere(x, y, z, 0, 0.82, 0, 0.22), t: () => 0.9 } ] },
+  { name: "Plane", parts: [
+    { d: (x, y, z) => sdCap(x, y, z, -1.1, 0, 0, 1.2, 0, 0, 0.23), t: x => (Math.sin(7 * x) > 0 ? 0.9 : 0.55) },
+    { d: (x, y, z) => sdBox(x, y, z, 0.1, 0, 0, 0.3, 0.04, 1.1), t: (x, y, z) => (Math.abs(z) > 0.75 ? 0.3 : 0.8) },
+    { d: (x, y, z) => sdBox(x, y, z, -1.0, 0.32, 0, 0.2, 0.3, 0.04), t: () => 0.35 },
+    { d: (x, y, z) => sdBox(x, y, z, -1.0, 0.04, 0, 0.18, 0.03, 0.45), t: () => 0.75 } ] },
+];
+const PITCH = 0.45, CAMD = 5, FOV = 0.36;
+const camO = [0, CAMD * Math.sin(PITCH), CAMD * Math.cos(PITCH)], camF = [0, -Math.sin(PITCH), -Math.cos(PITCH)], camU = [0, Math.cos(PITCH), -Math.sin(PITCH)];
+const LW = (() => { const l = [-0.45, 0.75, 0.5], n = Math.hypot(...l); return l.map(v => v / n); })();
+
+function renderPose(oi, deg, out) {
+  const parts = OBJECTS[oi].parts, np = parts.length;
+  const th = deg * Math.PI / 180, ct = Math.cos(th), st = Math.sin(th);
+  const toObj = (x, y, z) => [ct * x - st * z, y, st * x + ct * z];
+  const O = toObj(...camO), L = toObj(...LW);
+  const sdf = (x, y, z) => { let m = 1e9; for (let i = 0; i < np; i++) { const d = parts[i].d(x, y, z); if (d < m) m = d; } return m; };
+  const BR = 1.95;
+  for (let j = 0; j < R; j++) for (let i = 0; i < R; i++) {
+    const u = ((i + 0.5) / R * 2 - 1) * FOV, v = (1 - (j + 0.5) / R * 2) * FOV;
+    let dx = camF[0] + u, dy = camF[1] + v * camU[1], dz = camF[2] + v * camU[2]; const dl = Math.hypot(dx, dy, dz); dx /= dl; dy /= dl; dz /= dl;
+    const d = toObj(dx, dy, dz); dx = d[0]; dy = d[1]; dz = d[2];
+    const b = O[0] * dx + O[1] * dy + O[2] * dz, c = O[0] ** 2 + O[1] ** 2 + O[2] ** 2 - BR * BR, disc = b * b - c;
+    let val = 28;
+    if (disc > 0) {
+      const t0 = -b - Math.sqrt(disc), tEnd = t0 + 2 * Math.sqrt(disc); let t = t0, hit = false, px = 0, py = 0, pz = 0;
+      for (let s = 0; s < 60; s++) { px = O[0] + dx * t; py = O[1] + dy * t; pz = O[2] + dz * t; const h = sdf(px, py, pz); if (h < 0.003) { hit = true; break; } t += h; if (t > tEnd) break; }
+      if (hit) {
+        const e = 0.004;
+        let nx = sdf(px + e, py, pz) - sdf(px - e, py, pz), ny = sdf(px, py + e, pz) - sdf(px, py - e, pz), nz = sdf(px, py, pz + e) - sdf(px, py, pz - e);
+        const nl = Math.hypot(nx, ny, nz) || 1; nx /= nl; ny /= nl; nz /= nl;
+        let bi = 0, bd = 1e9; for (let q = 0; q < np; q++) { const h = parts[q].d(px, py, pz); if (h < bd) { bd = h; bi = q; } }
+        const alb = parts[bi].t(px, py, pz); const lam = Math.max(0, nx * L[0] + ny * L[1] + nz * L[2]);
+        val = Math.min(255, 255 * alb * (0.22 + 0.78 * lam));
+      }
+    }
+    out[j * R + i] = val;
+  }
+  return out;
+}
+
+/* ---------- symmetric eigen solver: cyclic Jacobi ---------- */
+function jacobiEigen(A, n) {
+  const V = new Float64Array(n * n); for (let i = 0; i < n; i++) V[i * n + i] = 1;
+  let total = 0; for (let i = 0; i < n * n; i++) total += A[i] * A[i];
+  let sweeps = 0;
+  for (; sweeps < 40; sweeps++) {
+    let off = 0; for (let p = 0; p < n; p++) for (let q = p + 1; q < n; q++) off += 2 * A[p * n + q] ** 2;
+    if (off < 1e-20 * total) break;
+    for (let p = 0; p < n - 1; p++) for (let q = p + 1; q < n; q++) {
+      const apq = A[p * n + q]; if (Math.abs(apq) < 1e-14 * Math.sqrt(total)) continue;
+      const th = (A[q * n + q] - A[p * n + p]) / (2 * apq); const t = (th >= 0 ? 1 : -1) / (Math.abs(th) + Math.sqrt(th * th + 1)); const c = 1 / Math.sqrt(t * t + 1), s = t * c;
+      for (let k = 0; k < n; k++) { const kp = k * n + p, kq = k * n + q; const a = A[kp], b = A[kq]; A[kp] = c * a - s * b; A[kq] = s * a + c * b; }
+      const rp = p * n, rq = q * n;
+      for (let k = 0; k < n; k++) { const a = A[rp + k], b = A[rq + k]; A[rp + k] = c * a - s * b; A[rq + k] = s * a + c * b; }
+      for (let k = 0; k < n; k++) { const kp = k * n + p, kq = k * n + q; const a = V[kp], b = V[kq]; V[kp] = c * a - s * b; V[kq] = s * a + c * b; }
+    }
+  }
+  const idx = Array.from({ length: n }, (_, i) => i).sort((a, b) => A[b * n + b] - A[a * n + a]);
+  return { vals: idx.map(i => A[i * n + i]), vecs: idx.map(i => { const v = new Float64Array(n); for (let k = 0; k < n; k++) v[k] = V[k * n + i]; return v; }), sweeps };
+}
+
+/* ---------- build the eigenspace ---------- */
+const M = { imgs: [], mean: null, eig: [], vals: [], total: 0, coef: [], sweeps: 0, ms: 0 };   // imgs[o][j] Float32Array
+function build() {
+  const t0 = performance.now(); const N = OBJECTS.length * NP; const all = [];
+  OBJECTS.forEach((_, o) => { M.imgs[o] = []; for (let j = 0; j < NP; j++) { const im = new Float32Array(D); renderPose(o, j * STEP, im); M.imgs[o].push(im); all.push(im); } });
+  const mean = new Float32Array(D); for (const im of all) for (let i = 0; i < D; i++) mean[i] += im[i] / N; M.mean = mean;
+  const X = all.map(im => { const c = new Float32Array(D); for (let i = 0; i < D; i++) c[i] = im[i] - mean[i]; return c; });
+  const G = new Float64Array(N * N);
+  for (let a = 0; a < N; a++) for (let b = a; b < N; b++) { let s = 0; const xa = X[a], xb = X[b]; for (let i = 0; i < D; i++) s += xa[i] * xb[i]; G[a * N + b] = G[b * N + a] = s; }
+  const { vals, vecs, sweeps } = jacobiEigen(G, N);
+  M.vals = vals; M.sweeps = sweeps; M.total = vals.reduce((s, v) => s + Math.max(0, v), 0);
+  M.eig = [];
+  for (let k = 0; k < K; k++) { const e = new Float32Array(D), v = vecs[k], sc = 1 / Math.sqrt(Math.max(vals[k], 1e-12)); for (let j = 0; j < N; j++) { const w = v[j] * sc, xj = X[j]; for (let i = 0; i < D; i++) e[i] += w * xj[i]; } M.eig.push(e); }
+  M.coef = OBJECTS.map((_, o) => M.imgs[o].map(im => project(im, K)));
+  M.ms = performance.now() - t0;
+}
+function project(im, k) { const g = new Float64Array(K); for (let c = 0; c < k; c++) { const e = M.eig[c]; let s = 0; for (let i = 0; i < D; i++) s += e[i] * (im[i] - M.mean[i]); g[c] = s; } return g; }
+function reconstruct(g, k) { const o = Float32Array.from(M.mean); for (let c = 0; c < k; c++) { const e = M.eig[c], w = g[c]; for (let i = 0; i < D; i++) o[i] += w * e[i]; } return o; }
+
+/* ---------- recognition ---------- */
+function makeQuery(oi, deg, noise, occ) {
+  const im = new Float32Array(D); renderPose(oi, deg, im);
+  if (occ > 0) { const s = Math.round(occ / 100 * R), x0 = 12, y0 = 14; for (let y = y0; y < Math.min(R, y0 + s); y++) for (let x = x0; x < Math.min(R, x0 + s); x++) im[y * R + x] = 110; }
+  if (noise > 0) { const r = rng(1234 + Math.round(deg * 2) + oi * 977); for (let i = 0; i < D; i++) { const u = Math.max(1e-9, r()), w = r(); im[i] += noise * Math.sqrt(-2 * Math.log(u)) * Math.cos(6.2832 * w); } }
+  for (let i = 0; i < D; i++) im[i] = Math.max(0, Math.min(255, im[i]));
+  return im;
+}
+function match(im, k) {
+  const g = project(im, k); let best = { d: 1e18 }; const per = [];
+  OBJECTS.forEach((_, o) => {
+    const dists = new Float64Array(NP); let ob = { d: 1e18 };
+    for (let j = 0; j < NP; j++) {
+      const a = M.coef[o][j], b = M.coef[o][(j + 1) % NP]; let ab = 0, aq = 0, ee = 0;
+      for (let c = 0; c < k; c++) { const e = b[c] - a[c]; ab += e * e; aq += (g[c] - a[c]) * e; ee += (g[c] - a[c]) ** 2; }
+      const t = ab > 0 ? Math.max(0, Math.min(1, aq / ab)) : 0; let dd = 0; for (let c = 0; c < k; c++) { const p = a[c] + t * (b[c] - a[c]); dd += (g[c] - p) ** 2; }
+      dists[j] = Math.sqrt(ee); dd = Math.sqrt(dd);
+      if (dd < ob.d) ob = { d: dd, o, j, t, pose: ((j + t) * STEP) % 360 };
+    }
+    per.push({ dists, best: ob }); if (ob.d < best.d) best = ob;
+  });
+  let nn = { d: 1e18 }; const dn = per[best.o].dists; for (let j = 0; j < NP; j++) if (dn[j] < nn.d) nn = { d: dn[j], j };
+  return { g, best, per, nearest: nn.j };
+}
+const angDiff = (a, b) => { const d = Math.abs(a - b) % 360; return Math.min(d, 360 - d); };
+function batchTest(n, noise, occ, k, seed = 99) {
+  const r = rng(seed); let right = 0; const errs = [];
+  for (let i = 0; i < n; i++) { const o = Math.floor(r() * OBJECTS.length), deg = Math.floor(r() * 720) / 2; const m = match(makeQuery(o, deg, noise, occ), k); if (m.best.o === o) { right++; errs.push(angDiff(m.best.pose, deg)); } }
+  errs.sort((a, b) => a - b);
+  return { n, objAcc: right / n, meanErr: errs.length ? errs.reduce((s, v) => s + v, 0) / errs.length : NaN, medErr: errs.length ? errs[errs.length >> 1] : NaN, maxErr: errs.length ? errs[errs.length - 1] : NaN };
+}
+
+/* ---------- UI state ---------- */
+const S = { obj: 0, pose: 6, rot: [0.7, 0.45], q: null, ready: false };
+const tiles = [];
+
+function drawTo(id, arr, mode) { return show(id, R, R, arr, mode || "clamp"); }
+function initUI() {
+  const objSeg = $("objSeg"), qObj = $("qObj");
+  OBJECTS.forEach((o, i) => { for (const el of [objSeg, qObj]) { const b = document.createElement("button"); b.type = "button"; b.dataset.v = i; b.setAttribute("aria-pressed", String(i === (el === objSeg ? S.obj : 0))); b.innerHTML = `<span class="sw2" style="background:${COLS[i]}"></span>${o.name}`; el.append(b); } });
+  seg("objSeg", v => { S.obj = +v; buildStrip(); selectImg(S.obj, S.pose); });
+  seg("qObj", () => updateQuery());
+  $("legend3d").innerHTML = OBJECTS.map((o, i) => `<span><i style="background:${COLS[i]}"></i>${o.name}</span>`).join("") + '<span><i style="background:var(--ink)"></i>Selected</span><span>◆ Test image</span>';
+  $("legendD").innerHTML = OBJECTS.map((o, i) => `<span><i style="background:${COLS[i]}"></i>${o.name}</span>`).join("");
+  buildStrip();
+  const eigs = $("eigs");
+  for (let k = 0; k < 12; k++) { const f = document.createElement("figure"); f.innerHTML = `<canvas id="eg${k}" width="${R}" height="${R}"></canvas><figcaption>e<sub>${k + 1}</sub> · ${(100 * M.vals[k] / M.total).toFixed(1)}%</figcaption>`; eigs.append(f); }
+  const mf = document.createElement("figure"); mf.innerHTML = `<canvas id="egm" width="${R}" height="${R}"></canvas><figcaption>mean m</figcaption>`; eigs.prepend(mf);
+  drawTo("egm", M.mean); for (let k = 0; k < 12; k++) drawTo("eg" + k, M.eig[k], "auto");
+  $("eigInfo").innerHTML = `Here it took ${M.sweeps} sweeps and ${fmt(M.ms / 1000, 2)} s in total, including rendering. The first 3 components hold ${(100 * (M.vals[0] + M.vals[1] + M.vals[2]) / M.total).toFixed(0)}% of the variance.`;
+}
+function buildStrip() {
+  const s = $("strip"); s.innerHTML = ""; tiles.length = 0;
+  for (let j = 0; j < NP; j++) { const c = document.createElement("canvas"); c.width = c.height = R; c.title = `${(j * STEP).toFixed(1)}°`; c.addEventListener("click", () => selectImg(S.obj, j)); s.append(c); tiles.push(c); show(c, R, R, M.imgs[S.obj][j]); }
+}
+function selectImg(o, j) {
+  S.obj = o; S.pose = j; setSeg("objSeg", o);
+  if (tiles.length && tiles[0].dataset.o !== String(o)) { buildStrip(); }
+  tiles.forEach((c, i) => { c.classList.toggle("sel", i === j); c.dataset.o = o; });
+  const t = tiles[j]; if (t && t.scrollIntoView) { const s = $("strip"); const l = t.offsetLeft - s.clientWidth / 2 + 28; s.scrollLeft = Math.max(0, l); }
+  drawTo("selImg", M.imgs[o][j]);
+  const txt = `${OBJECTS[o].name} at ${(j * STEP).toFixed(1)}°`; $("selCap").textContent = "Selected: " + txt; $("kSel").textContent = txt;
+  drawRecon(); draw3d(); manInfo();
+}
+
+/* ---------- 01 scree ---------- */
+function drawScree() {
+  const cv = $("scree"); const { ctx, W, H } = hiDPI(cv, 260); ctx.clearRect(0, 0, W, H);
+  const ink = cssVar("--ink"), mut = cssVar("--muted"), line = cssVar("--line"), acc = cssVar("--accent");
+  const L = 38, B = 28, T = 10, Rr = 12, w = W - L - Rr, h = H - T - B, n = K; const mx = M.vals[0] / M.total;
+  ctx.strokeStyle = line; ctx.fillStyle = mut; ctx.font = "10px " + (cssVar("--mono") || "monospace"); ctx.lineWidth = 1;
+  for (let f = 0; f <= 1.001; f += 0.25) { const y = T + h * (1 - f); ctx.beginPath(); ctx.moveTo(L, y); ctx.lineTo(L + w, y); ctx.stroke(); ctx.fillText(Math.round(f * 100) + "%", 4, y + 3); }
+  const bw = w / n; let cum = 0; const kk = +$("kRange").value;
+  ctx.fillStyle = acc; for (let i = 0; i < n; i++) { const f = M.vals[i] / M.total, bh = f / Math.max(mx, 0.01) * h * 0.95; ctx.globalAlpha = i < kk ? 1 : 0.35; ctx.fillRect(L + i * bw + 2, T + h - bh, bw - 4, bh); }
+  ctx.globalAlpha = 1; ctx.strokeStyle = "#c2410c"; ctx.lineWidth = 2; ctx.beginPath();
+  for (let i = 0; i < n; i++) { cum += M.vals[i] / M.total; const x = L + (i + 0.5) * bw, y = T + h * (1 - cum); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); } ctx.stroke();
+  ctx.fillStyle = mut; for (let i = 0; i < n; i += 3) ctx.fillText(String(i + 1), L + (i + 0.5) * bw - 3, H - 12);
+  ctx.fillText("component index", L + w / 2 - 40, H - 1);
+  if (kk > 0) { const x = L + kk * bw; ctx.strokeStyle = ink; ctx.lineWidth = 1.5; ctx.setLineDash([4, 3]); ctx.beginPath(); ctx.moveTo(x, T); ctx.lineTo(x, T + h); ctx.stroke(); ctx.setLineDash([]); }
+  cv._geo = { L, bw, n };
+}
+$("scree").addEventListener("click", e => { const g = e.currentTarget._geo, r = e.currentTarget.getBoundingClientRect(); const k = Math.round((e.clientX - r.left - g.L) / g.bw); $("kRange").value = Math.max(0, Math.min(K, k)); drawRecon(); });
+
+/* ---------- 02 reconstruct ---------- */
+function drawRecon() {
+  if (!S.ready) return;
+  const k = +$("kRange").value; $("kO").value = k;
+  const im = M.imgs[S.obj][S.pose], g = M.coef[S.obj][S.pose], rec = reconstruct(g, k);
+  drawTo("rOrig", im); drawTo("rRec", rec); const err = new Float32Array(D); let se = 0, ss = 0;
+  for (let i = 0; i < D; i++) { err[i] = Math.abs(im[i] - rec[i]); se += err[i] ** 2; ss += (im[i] - M.mean[i]) ** 2; }
+  drawTo("rErr", err, "auto");
+  let cap = 0; for (let c = 0; c < k; c++) cap += g[c] * g[c];
+  $("rStats").innerHTML = `<span class="chip">RMS error <b>${fmt(Math.sqrt(se / D), 1)}</b> gray levels</span><span class="chip">Image variance captured <b>${ss > 0 ? fmt(100 * cap / ss, 1) : "–"}%</b></span><span class="chip">Numbers stored <b>${k}</b> instead of <b>${D}</b></span><span class="chip">Compression <b>${k ? fmt(D / k, 0) : "–"}×</b></span>`;
+  const terms = []; for (let c = 0; c < Math.min(k, 6); c++) terms.push(`<tr><td>g<sub>${c + 1}</sub></td><td>= e<sub>${c + 1}</sub> · (x − m)</td><td>= ${fmt(g[c], 1)}</td></tr>`);
+  $("rCoef").innerHTML = k ? `<table class="calc" style="margin-top:4px">${terms.join("")}</table><p class="eq" style="margin-top:6px">x̂ = m ${Array.from({ length: Math.min(k, 3) }, (_, c) => `${g[c] < 0 ? "−" : "+"} ${fmt(Math.abs(g[c]), 1)} e${c + 1}`).join(" ")}${k > 3 ? ` + … (${k - 3} more terms)` : ""}</p>${k > 6 ? '<p class="note">Showing the first 6 coefficients.</p>' : ""}` : `<p>With k = 0 the reconstruction is just the mean image m. Every pose of every object collapses to the same picture.</p>`;
+  drawScree();
+}
+$("kRange").addEventListener("input", drawRecon);
+
+/* ---------- 03 manifold ---------- */
+let proj3 = [];
+function draw3d() {
+  if (!S.ready) return;
+  const cv = $("view3d"); const { ctx, W, H } = hiDPI(cv, 420); ctx.clearRect(0, 0, W, H);
+  const ink = cssVar("--ink"), mut = cssVar("--muted"), line = cssVar("--line");
+  let mx = 1e-9; for (const oc of M.coef) for (const g of oc) for (let c = 0; c < 3; c++) mx = Math.max(mx, Math.abs(g[c]));
+  if (S.q) for (let c = 0; c < 3; c++) mx = Math.max(mx, Math.abs(S.q.g[c]));
+  const [yaw, pitch] = S.rot, cy = Math.cos(yaw), sy = Math.sin(yaw), cp = Math.cos(pitch), sp = Math.sin(pitch), sc = Math.min(W, H) * 0.42;
+  const P = (a, b, c) => { const X = a / mx, Y = b / mx, Z = c / mx; const x1 = X * cy + Z * sy, z1 = -X * sy + Z * cy; const y2 = Y * cp - z1 * sp, z2 = Y * sp + z1 * cp; return [W / 2 + x1 * sc, H / 2 - y2 * sc, z2]; };
+  ctx.lineWidth = 1; ctx.font = "11px " + (cssVar("--mono") || "monospace");
+  [["g₁", [1, 0, 0]], ["g₂", [0, 1, 0]], ["g₃", [0, 0, 1]]].forEach(([n, v]) => { const a = P(-v[0] * mx, -v[1] * mx, -v[2] * mx), b = P(v[0] * mx, v[1] * mx, v[2] * mx); ctx.strokeStyle = line; ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.stroke(); ctx.fillStyle = mut; ctx.fillText(n, b[0] + 4, b[1] - 4); });
+  const items = []; proj3 = [];
+  OBJECTS.forEach((_, o) => {
+    const pts = M.coef[o].map(g => P(g[0], g[1], g[2]));
+    ctx.strokeStyle = COLS[o]; ctx.lineWidth = 1.6; ctx.globalAlpha = 0.55; ctx.beginPath(); pts.forEach((p, j) => j ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1])); ctx.closePath(); ctx.stroke(); ctx.globalAlpha = 1;
+    pts.forEach((p, j) => { items.push([p[2], p[0], p[1], o, j]); proj3.push([p[0], p[1], o, j]); });
+  });
+  items.sort((a, b) => a[0] - b[0]);
+  for (const [z, x, y, o, j] of items) { const r = 3 + z * 0.8 / 1 * 0.6 + 1; ctx.fillStyle = COLS[o]; ctx.beginPath(); ctx.arc(x, y, Math.max(2, r), 0, 7); ctx.fill(); }
+  const sel = proj3.find(p => p[2] === S.obj && p[3] === S.pose); if (sel) { ctx.strokeStyle = ink; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.arc(sel[0], sel[1], 9, 0, 7); ctx.stroke(); }
+  if (S.q) {
+    const q = P(S.q.g[0], S.q.g[1], S.q.g[2]); const b = S.q.m.best; const nb = M.coef[b.o][b.j], nc = M.coef[b.o][(b.j + 1) % NP]; const np = P(nb[0] + b.t * (nc[0] - nb[0]), nb[1] + b.t * (nc[1] - nb[1]), nb[2] + b.t * (nc[2] - nb[2]));
+    ctx.strokeStyle = ink; ctx.setLineDash([3, 3]); ctx.lineWidth = 1.2; ctx.beginPath(); ctx.moveTo(q[0], q[1]); ctx.lineTo(np[0], np[1]); ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle = "#fff"; ctx.strokeStyle = "#000"; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(q[0], q[1] - 8); ctx.lineTo(q[0] + 8, q[1]); ctx.lineTo(q[0], q[1] + 8); ctx.lineTo(q[0] - 8, q[1]); ctx.closePath(); ctx.fill(); ctx.stroke();
+  }
+}
+function manInfo() {
+  const g = M.coef[S.obj][S.pose]; const mi = $("manInfo");
+  mi.innerHTML = `<h3>Selected point</h3><canvas class="view bigsel" id="manImg" style="max-width:150px"></canvas><dl><dt>Object</dt><dd>${OBJECTS[S.obj].name}</dd><dt>Pose</dt><dd>${(S.pose * STEP).toFixed(1)}°</dd><dt>g₁</dt><dd>${fmt(g[0], 1)}</dd><dt>g₂</dt><dd>${fmt(g[1], 1)}</dd><dt>g₃</dt><dd>${fmt(g[2], 1)}</dd></dl><p class="note">Click another point, or drag to rotate.</p>`;
+  drawTo("manImg", M.imgs[S.obj][S.pose]);
+}
+(() => {
+  const cv = $("view3d"); let last = null, moved = 0, sx = 0, sy = 0;
+  cv.addEventListener("pointerdown", e => { last = [e.clientX, e.clientY]; sx = e.clientX; sy = e.clientY; moved = 0; cv.setPointerCapture(e.pointerId); cv.style.cursor = "grabbing"; });
+  cv.addEventListener("pointermove", e => { if (!last) return; moved += Math.abs(e.clientX - last[0]) + Math.abs(e.clientY - last[1]); S.rot[0] += (e.clientX - last[0]) * 0.01; S.rot[1] = Math.max(-1.5, Math.min(1.5, S.rot[1] + (e.clientY - last[1]) * 0.01)); last = [e.clientX, e.clientY]; draw3d(); });
+  cv.addEventListener("pointerup", e => {
+    last = null; cv.style.cursor = "grab";
+    if (moved < 5) { const r = cv.getBoundingClientRect(); const x = e.clientX - r.left, y = e.clientY - r.top; let best = null, bd = 18; for (const p of proj3) { const d = Math.hypot(p[0] - x, p[1] - y); if (d <= bd) { bd = d; best = p; } } if (best) selectImg(best[2], best[3]); }
+  });
+})();
+
+/* ---------- 04 recognize ---------- */
+function updateQuery() {
+  if (!S.ready) return;
+  const o = +segVal("qObj"), ang = +$("qAng").value, noise = +$("qNoise").value, occ = +$("qOcc").value, k = +$("qK").value;
+  $("qAngO").value = ang.toFixed(1) + "°"; $("qNoiseO").value = noise; $("qOccO").value = occ + "%"; $("qKO").value = k;
+  const im = makeQuery(o, ang, noise, occ), m = match(im, k); S.q = { o, ang, im, m, g: project(im, K) };
+  drawTo("qImg", im); const b = m.best;
+  drawTo("qNear", M.imgs[b.o][m.nearest]); $("qNearCap").textContent = `Closest stored image: ${OBJECTS[b.o].name} at ${(m.nearest * STEP).toFixed(1)}°. Click to select it.`;
+  drawTo("qRec", reconstruct(S.q.g, k));
+  const err = angDiff(b.pose, ang), okObj = b.o === o;
+  const tag = !okObj ? '<span class="tag bad">wrong object</span>' : err <= 2 ? '<span class="tag good">pose within 2°</span>' : err <= 7.5 ? '<span class="tag warn">pose off by ' + fmt(err, 1) + '°</span>' : '<span class="tag bad">pose off by ' + fmt(err, 1) + '°</span>';
+  const order = m.per.map((p, i) => [p.best.d, i]).sort((a, b) => a[0] - b[0]);
+  $("qRes").innerHTML = `<div><b>Estimated:</b> ${OBJECTS[b.o].name} at ${fmt(b.pose, 1)}° ${tag}</div><div><b>Truth:</b> ${OBJECTS[o].name} at ${fmt(ang, 1)}°</div><div class="mono">Pose error ${okObj ? fmt(err, 1) + "°" : "n/a"}. Nearest segment: stored poses ${(b.j * STEP).toFixed(1)}° and ${(((b.j + 1) % NP) * STEP).toFixed(1)}°, t = ${fmt(b.t, 2)}.</div><div class="mono">Distance to each object's curve:</div><div class="mono">${order.map(([d, i]) => `<span class="sw2" style="background:${COLS[i]}"></span>${OBJECTS[i].name} ${fmt(d, 0)}`).join("<br>")}</div>`;
+  drawDist(); draw3d();
+}
+function drawDist() {
+  const cv = $("dist"); const { ctx, W, H } = hiDPI(cv, 260); ctx.clearRect(0, 0, W, H); const q = S.q; if (!q) return;
+  const mut = cssVar("--muted"), line = cssVar("--line"), ink = cssVar("--ink"); const L = 40, B = 24, T = 8, Rr = 8, w = W - L - Rr, h = H - T - B;
+  let mx = 1e-9; q.m.per.forEach(p => { for (const d of p.dists) mx = Math.max(mx, d); });
+  const X = j => L + j / NP * w, Y = d => T + h - d / mx * h;
+  ctx.strokeStyle = line; ctx.lineWidth = 1; ctx.strokeRect(L, T, w, h); ctx.fillStyle = mut; ctx.font = "10px " + (cssVar("--mono") || "monospace");
+  for (const a of [0, 90, 180, 270, 360]) ctx.fillText(a + "°", L + a / 360 * w - 8, H - 10); ctx.fillText("0", 26, T + h); ctx.fillText(fmt(mx, 0), 4, T + 9);
+  q.m.per.forEach((p, o) => { ctx.strokeStyle = COLS[o]; ctx.lineWidth = 1.8; ctx.beginPath(); for (let j = 0; j <= NP; j++) { const d = p.dists[j % NP]; j ? ctx.lineTo(X(j), Y(d)) : ctx.moveTo(X(j), Y(d)); } ctx.stroke(); });
+  ctx.strokeStyle = ink; ctx.setLineDash([4, 3]); ctx.beginPath(); ctx.moveTo(L + q.ang / 360 * w, T); ctx.lineTo(L + q.ang / 360 * w, T + h); ctx.stroke(); ctx.setLineDash([]);
+  const b = q.m.best; ctx.fillStyle = COLS[b.o]; ctx.strokeStyle = ink; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(L + b.pose / 360 * w, Y(b.d), 5, 0, 7); ctx.fill(); ctx.stroke();
+}
+["qAng", "qNoise", "qOcc", "qK"].forEach(id => $(id).addEventListener("input", updateQuery));
+$("qRand").addEventListener("click", () => { const o = Math.floor(Math.random() * OBJECTS.length); setSeg("qObj", o); $("qAng").value = (Math.floor(Math.random() * 720) / 2).toFixed(1); updateQuery(); });
+$("qNear").addEventListener("click", () => { if (S.q) selectImg(S.q.m.best.o, S.q.m.nearest); });
+$("qBatch").addEventListener("click", () => {
+  const b = $("qBatch"); b.disabled = true; setTimeout(() => {
+    const r = batchTest(100, +$("qNoise").value, +$("qOcc").value, +$("qK").value, (Math.random() * 1e6) | 0); b.disabled = false;
+    $("batchStats").innerHTML = `<span class="chip">Object correct <b>${fmt(100 * r.objAcc, 0)}%</b></span><span class="chip">Mean pose error <b>${fmt(r.meanErr, 2)}°</b></span><span class="chip">Median <b>${fmt(r.medErr, 2)}°</b></span><span class="chip">Worst <b>${fmt(r.maxErr, 1)}°</b></span><span class="chip">Pose errors count only correctly recognized objects</span>`;
+  }, 20);
+});
+
+/* ---------- start ---------- */
+function start() {
+  build(); initUI(); S.ready = true; $("status").textContent = `Done: ${M.imgs.length * NP} images, ${fmt(M.ms / 1000, 2)} s.`;
+  selectImg(0, 6); updateQuery();
+  const b = batchTest(60, 10, 0, 10, 5);
+  $("batchStats").innerHTML = `<span class="chip">Object correct <b>${fmt(100 * b.objAcc, 0)}%</b></span><span class="chip">Mean pose error <b>${fmt(b.meanErr, 2)}°</b></span><span class="chip">Median <b>${fmt(b.medErr, 2)}°</b></span><span class="chip">Worst <b>${fmt(b.maxErr, 1)}°</b></span><span class="chip">Pose errors count only correctly recognized objects</span><span class="chip">Shown: 60 poses at noise 10, no occlusion</span>`;
+}
+onTheme(() => { if (S.ready) { drawScree(); draw3d(); drawDist(); } });
+window.AM = { renderPose, jacobiEigen, M, batchTest, OBJECTS };
+setTimeout(start, 30);
+})();
+</script>
+</body>
+</html>

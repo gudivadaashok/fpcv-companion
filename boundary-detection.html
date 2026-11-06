@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Boundary Detection, Interactively</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,500;8..60,600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="site.css">
+<style>
+  .eq { white-space: pre; }
+  .eq b { color: var(--accent); font-weight: 500; }
+  canvas.drag { cursor: grab; touch-action: none; }
+  canvas.drag:active { cursor: grabbing; }
+  canvas.accum { width: 100%; height: 340px; display: block; background: var(--stage); border-radius: 6px; image-rendering: pixelated; cursor: crosshair; }
+  .dim { opacity: 0.4; pointer-events: none; }
+  .list { max-height: 260px; }
+</style>
+</head>
+<body>
+<header class="site"></header>
+<main class="wrap">
+  <div class="intro">
+    <h1>Boundary Detection, Interactively</h1>
+    <p class="lead">Edge pixels are loose dots. To find a line, a circle or an object outline, you have to group them. The Hough transform lets every edge pixel vote for the shapes it could belong to. A snake instead lets a closed curve crawl toward the boundary.</p>
+    <p>Pick a sample or use your own photo. Follows the Boundary Detection lectures.</p>
+  </div>
+
+  <section class="stage" aria-labelledby="h0">
+    <div class="stage-head"><span class="num">00</span><div><h2 id="h0">Choose an image</h2><p>Lines and Coins have known straight edges and circles, so you can check the answers. Blob suits the snake.</p></div></div>
+    <div id="pick"></div>
+    <p class="note" id="pickNote"></p>
+  </section>
+
+  <section class="stage" aria-labelledby="h1">
+    <div class="stage-head"><span class="num">01</span><div><h2 id="h1">Edge map</h2><p>Every method below starts from a binary edge image. This one uses a simple Canny detector: smooth, take the Sobel gradient, thin it, then link it with two thresholds (low = 40% of high).</p></div></div>
+    <div class="controls">
+      <div class="ctl"><label for="eS">Smoothing σ</label><input type="range" id="eS" min="0.6" max="3" step="0.1" value="1.2"><output id="eSO"></output></div>
+      <div class="ctl"><label for="eT">High threshold</label><input type="range" id="eT" min="5" max="60" step="1" value="20"><output id="eTO"></output></div>
+    </div>
+    <div class="two">
+      <figure><canvas class="view" id="eGray"></canvas><figcaption>Grayscale image (at most 300 px wide)</figcaption></figure>
+      <figure><canvas class="view" id="eMap"></canvas><figcaption id="eCap"></figcaption></figure>
+    </div>
+  </section>
+
+  <section class="stage" aria-labelledby="h2">
+    <div class="stage-head"><span class="num">02</span><div><h2 id="h2">Hough transform for lines</h2><p>A line is x·cos θ + y·sin θ = ρ. One edge pixel (x, y) fits every line whose (ρ, θ) satisfies that equation, which is a sinusoid in (ρ, θ) space. Each edge pixel adds one vote along its sinusoid. Pixels on a common line have sinusoids that cross at one cell, so that cell collects many votes. Click an edge pixel to see its sinusoid. Click the accumulator to select a line.</p></div></div>
+    <div class="controls">
+      <div class="ctl"><label for="hT">Vote threshold</label><input type="range" id="hT" min="10" max="100" step="1" value="25"><output id="hTO"></output></div>
+      <div class="ctl"><label for="hN">Max lines (top N)</label><input type="range" id="hN" min="1" max="15" step="1" value="8"><output id="hNO"></output></div>
+    </div>
+    <div class="three">
+      <figure><canvas class="view click" id="hEdge"></canvas><figcaption>Edge pixels. Click one to draw its sinusoid.</figcaption></figure>
+      <figure><canvas class="accum" id="hAcc"></canvas><figcaption>Accumulator. θ runs 0° to 179° left to right, ρ runs −D to +D top to bottom (D = image diagonal). Brighter = more votes. Boxes mark peaks. Click to select.</figcaption></figure>
+      <figure><canvas class="view" id="hRes"></canvas><figcaption>Detected lines (blue). The selected line is red, and the edge pixels on it are yellow.</figcaption></figure>
+    </div>
+    <div class="two">
+      <div class="math"><h3>Selected line</h3><div id="hRead"></div></div>
+      <div class="tablebox list"><table><thead><tr><th>#</th><th>θ</th><th>ρ</th><th>Votes</th></tr></thead><tbody id="hTab"></tbody></table></div>
+    </div>
+  </section>
+
+  <section class="stage" aria-labelledby="h3">
+    <div class="stage-head"><span class="num">03</span><div><h2 id="h3">Hough transform for circles</h2><p>A circle with center (a, b) and radius r satisfies (x − a)² + (y − b)² = r². For a known radius, each edge pixel votes for every center that lies a distance r from it, which is a circle of its own. Votes pile up at the true center. With an unknown radius, repeat for many radii. Votes are scaled by the circumference, so a score of 1 means the whole circle is covered by edge pixels.</p></div></div>
+    <div class="controls">
+      <div class="ctl"><label>Search</label><div class="seg" id="cMode"><button type="button" data-v="one" aria-pressed="true">One radius</button><button type="button" data-v="all" aria-pressed="false">All radii (8 to 70 px)</button></div></div>
+      <div class="ctl" id="cRctl"><label for="cR">Radius r</label><input type="range" id="cR" min="8" max="70" step="1" value="34"><output id="cRO"></output></div>
+      <div class="ctl"><label for="cT">Min. circle covered</label><input type="range" id="cT" min="25" max="100" step="1" value="55"><output id="cTO"></output></div>
+    </div>
+    <div class="two">
+      <figure><canvas class="view click" id="cAcc"></canvas><figcaption id="cAccCap"></figcaption></figure>
+      <figure><canvas class="view" id="cRes"></canvas><figcaption>Detected circles (blue). The selected one is red. Click the accumulator to select a center.</figcaption></figure>
+    </div>
+    <div class="two">
+      <div class="math"><h3>Selected circle</h3><div id="cRead"></div></div>
+      <div class="note">Simplification: every edge pixel votes in all directions, so a few false centers appear where circles and straight edges cross. Real implementations also use the gradient direction to vote for only two centers per pixel. Votes in a 3 × 3 neighborhood are pooled so small rounding errors do not split a peak. Circle coverage is counted exactly: edge pixels within 1 px of the circle, divided by 2πr.</div>
+    </div>
+  </section>
+
+  <section class="stage" aria-labelledby="h4">
+    <div class="stage-head"><span class="num">04</span><div><h2 id="h4">Active contour (snake)</h2><p>A snake is a closed curve of points. Each iteration moves every point to the best spot in its 5 × 5 neighborhood. The best spot minimizes E = α·E<sub>cont</sub> + β·E<sub>curv</sub> − γ·‖∇I‖. E<sub>cont</sub> keeps points evenly spaced, E<sub>curv</sub> keeps the curve smooth, and the last term pulls points toward strong edges. Drag the dashed circle to move it, or drag its ring to resize it. Dragging restarts the snake.</p></div></div>
+    <div class="controls">
+      <div class="ctl"><label for="sA">α (spacing)</label><input type="range" id="sA" min="0" max="3" step="0.05" value="0.6"><output id="sAO"></output></div>
+      <div class="ctl"><label for="sB">β (smoothness)</label><input type="range" id="sB" min="0" max="3" step="0.05" value="0.8"><output id="sBO"></output></div>
+      <div class="ctl"><label for="sG">γ (edge pull)</label><input type="range" id="sG" min="0" max="4" step="0.05" value="1.6"><output id="sGO"></output></div>
+      <div class="ctl"><label for="sS">Edge blur σ</label><input type="range" id="sS" min="1" max="8" step="0.5" value="3"><output id="sSO"></output></div>
+    </div>
+    <div class="controls">
+      <button class="btn primary" type="button" id="sRun">Pause</button>
+      <button class="btn" type="button" id="sStep">Step once</button>
+      <button class="btn" type="button" id="sReset">Reset circle</button>
+    </div>
+    <div class="main-side">
+      <figure><canvas class="view drag" id="sImg"></canvas><figcaption>Dashed: initial circle (drag to move or resize). Yellow: the snake, with its 48 points.</figcaption></figure>
+      <div style="display:grid;gap:12px">
+        <figure><canvas class="view" id="sForce"></canvas><figcaption>Edge force ‖∇(G<sub>σ</sub> ∗ I)‖. Bright pixels attract the snake. Larger σ reaches farther but is less precise.</figcaption></figure>
+        <figure><canvas class="plot" id="sPlot" style="height:120px"></canvas><figcaption><span class="legend"><span><i style="background:var(--accent)"></i>mean edge force under points</span><span><i style="background:#c2410c"></i>points moved</span></span></figcaption></figure>
+      </div>
+    </div>
+    <div class="stats" id="sStats"></div>
+    <div class="math"><h3>One greedy update, at the last point moved</h3><div id="sMath"></div></div>
+  </section>
+</main>
+<footer class="wrap site"></footer>
+
+<script src="common.js"></script>
+<script>
+(() => {
+"use strict";
+const { $, nav, footer, SAMPLES, picker, toGray, show, showRGB, gaussBlur, conv2, boxSum, imgXY, hiDPI, onTheme, cssVar, seg, segVal, fmt, addNoise } = VB;
+nav("boundary-detection.html"); footer();
+const deb = (fn, ms = 50) => { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; };
+const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
+let K = {}; const pal = () => { K = { ink: cssVar("--ink"), mut: cssVar("--muted"), acc: cssVar("--accent"), line: cssVar("--line"), mono: cssVar("--mono") || "monospace" }; }; pal();
+const RED = "#ff3b30", YEL = "#ffd60a", LB = "#4da3ff", ORG = "#c2410c";
+const dl = rows => `<dl class="detail" style="display:grid;grid-template-columns:auto 1fr;gap:3px 12px;margin:0">${rows.map(([a, b]) => `<dt>${a}</dt><dd class="mono">${b}</dd>`).join("")}</dl>`;
+const st = { w: 0, h: 0, g: null, edge: null, pts: null };
+const SX = [-1, 0, 1, -2, 0, 2, -1, 0, 1], SY = [-1, -2, -1, 0, 0, 0, 1, 2, 1];
+const heat = v => { v = Math.pow(clamp(v, 0, 1), 0.6); return [255 * clamp(2.2 * v), 255 * clamp(2.2 * v - 0.9), 255 * clamp(0.15 + 1.3 * v - (v > 0.7 ? (v - 0.7) * 2.5 : 0))]; };
+
+/* ---------- samples ---------- */
+const linesS = { name: "Lines", note: "<b>Lines:</b> a tilted frame, a triangle, plus one exactly horizontal line (y = 187 in the 300 px image) and one vertical line (x = 62). Expect peaks at θ = 90° and θ = 0° for those two.", draw(c, w, h) {
+  c.fillStyle = "#e4e2dc"; c.fillRect(0, 0, w, h); c.strokeStyle = "#22252b"; c.lineWidth = 6; c.lineJoin = "miter";
+  c.save(); c.translate(300, 135); c.rotate(0.32); c.strokeRect(-95, -60, 190, 120); c.restore();
+  c.beginPath(); c.moveTo(60, 120); c.lineTo(170, 120); c.lineTo(110, 250); c.closePath(); c.stroke();
+  c.lineWidth = 5; c.beginPath(); c.moveTo(0, 300); c.lineTo(480, 300); c.stroke(); c.beginPath(); c.moveTo(100, 0); c.lineTo(100, 360); c.stroke();
+  addNoise(c, w, h, 6, 3);
+} };
+const coinsS = { name: "Coins", r: 34, note: "<b>Coins:</b> three coins with radii about 34, 28 and 19 px in the 300 px image, plus a small background ring. Try one radius at r = 34, then All radii.", draw(c, w, h) {
+  c.fillStyle = "#cdc7b8"; c.fillRect(0, 0, w, h);
+  for (const [x, y, r, col] of [[120, 120, 45, "#b9893b"], [260, 95, 30, "#c9ccd2"], [380, 170, 55, "#b9893b"], [170, 270, 28, "#c9ccd2"]]) {
+    const gr = c.createRadialGradient(x - r * 0.3, y - r * 0.3, r * 0.1, x, y, r); gr.addColorStop(0, "#f4eddc"); gr.addColorStop(1, col);
+    c.fillStyle = gr; c.beginPath(); c.arc(x, y, r, 0, 7); c.fill(); c.strokeStyle = "#3b3b3b"; c.lineWidth = 3; c.stroke();
+  }
+  addNoise(c, w, h, 5, 5);
+} };
+const blobS = { name: "Blob", note: "<b>Blob:</b> a dark, lobed shape on a light background. Start the snake from the big circle and watch it shrink onto the outline. Raise β to smooth the lobes, or set γ to 0 and see it collapse.", draw(c, w, h) {
+  c.fillStyle = "#dcdad4"; c.fillRect(0, 0, w, h);
+  c.beginPath(); for (let a = 0; a <= 64; a++) { const t = a / 64 * Math.PI * 2, r = 98 + 22 * Math.cos(3 * t + 0.5) + 12 * Math.sin(2 * t); const x = 240 + r * Math.cos(t), y = 180 + r * Math.sin(t); a ? c.lineTo(x, y) : c.moveTo(x, y); } c.closePath();
+  const gr = c.createRadialGradient(220, 160, 10, 240, 180, 130); gr.addColorStop(0, "#5b616b"); gr.addColorStop(1, "#2b2f36"); c.fillStyle = gr; c.fill();
+  addNoise(c, w, h, 8, 9);
+} };
+const samples = [linesS, coinsS, blobS,
+  Object.assign({}, SAMPLES.shapes, { note: "<b>Shapes:</b> a mix of straight edges and circles. Both Hough variants find something here." }),
+  Object.assign({}, SAMPLES.scene, { note: "<b>Scene:</b> a real-looking scene. Lines find the roof, road markings and fence. Many weak edges make other peaks, so raise the threshold." })];
+
+/* ---------- 01 edges ---------- */
+function canny(g, w, h, sig, hiPct) {
+  const sm = gaussBlur(g, w, h, sig), gx = conv2(sm, w, h, SX, 3, 3), gy = conv2(sm, w, h, SY, 3, 3), m = new Float32Array(w * h); let mx = 1;
+  for (let i = 0; i < m.length; i++) { m[i] = Math.hypot(gx[i], gy[i]); mx = Math.max(mx, m[i]); }
+  const nms = new Float32Array(w * h);
+  for (let y = 1; y < h - 1; y++) for (let x = 1; x < w - 1; x++) { const i = y * w + x; let a = Math.atan2(gy[i], gx[i]) * 180 / Math.PI; if (a < 0) a += 180; const o = (a < 22.5 || a >= 157.5) ? 1 : a < 67.5 ? w + 1 : a < 112.5 ? w : w - 1; if (m[i] >= m[i + o] && m[i] >= m[i - o]) nms[i] = m[i]; }
+  const H = hiPct / 100 * mx, L = 0.4 * H, fin = new Uint8Array(w * h), stack = [];
+  for (let i = 0; i < nms.length; i++) if (nms[i] >= H) { fin[i] = 1; stack.push(i); }
+  while (stack.length) { const i = stack.pop(), x = i % w, y = (i / w) | 0; for (let j = -1; j <= 1; j++) for (let k = -1; k <= 1; k++) { const xx = x + k, yy = y + j; if (xx < 0 || yy < 0 || xx >= w || yy >= h) continue; const n = yy * w + xx; if (!fin[n] && nms[n] >= L) { fin[n] = 1; stack.push(n); } } }
+  return fin;
+}
+function runEdges() {
+  const { w, h, g } = st, s = +$("eS").value, t = +$("eT").value; $("eSO").value = s.toFixed(1); $("eTO").value = t + "%";
+  st.edge = canny(g, w, h, s, t); const pts = []; for (let i = 0; i < st.edge.length; i++) if (st.edge[i]) pts.push(i % w, (i / w) | 0); st.pts = pts;
+  show("eGray", w, h, g); showRGB("eMap", w, h, i => st.edge[i] ? [255, 255, 255] : [12, 14, 18]);
+  $("eCap").textContent = `Binary edge map: ${(pts.length / 2).toLocaleString()} edge pixels.`;
+  st.hl = null; st.circ = null; computeLines(); lineView(); circView(); snakeForce();
+}
+$("eS").addEventListener("input", deb(runEdges)); $("eT").addEventListener("input", deb(runEdges));
+
+/* ---------- 02 hough lines ---------- */
+const TH = 180, CS = new Float32Array(TH), SN = new Float32Array(TH); for (let t = 0; t < TH; t++) { CS[t] = Math.cos(t * Math.PI / 180); SN[t] = Math.sin(t * Math.PI / 180); }
+const HL = { sel: null, peaks: [], pt: null };
+function computeLines() {
+  const { w, h, pts } = st, D = Math.ceil(Math.hypot(w, h)), R = 2 * D + 1, acc = new Uint16Array(R * TH); let mx = 1;
+  for (let k = 0; k < pts.length; k += 2) { const x = pts[k], y = pts[k + 1]; for (let t = 0; t < TH; t++) { const r = Math.round(x * CS[t] + y * SN[t]) + D, i = r * TH + t; if (++acc[i] > mx) mx = acc[i]; } }
+  st.hl = { acc, R, D, max: mx }; HL.sel = null; HL.pt = null;
+}
+function findLines(thr, topN) {
+  const { acc, R, D, max } = st.hl, cut = Math.max(3, thr / 100 * max), cand = [];
+  for (let i = 0; i < acc.length; i++) if (acc[i] >= cut) cand.push(i);
+  cand.sort((a, b) => acc[b] - acc[a]); const out = [], win = 7;
+  for (const i of cand) {
+    const t = i % TH, r = (i / TH) | 0; let bad = false;
+    for (const p of out) { const dt = Math.abs(t - p.t); if (dt <= win && Math.abs(r - p.r) <= win) { bad = true; break; } if (TH - dt <= win && Math.abs(r - (2 * D - p.r)) <= win) { bad = true; break; } }
+    if (!bad) { out.push({ t, r, v: acc[i] }); if (out.length >= topN) break; }
+  }
+  return out;
+}
+function snapMax(t0, r0) { const { acc, R } = st.hl; let b = null, bv = -1; for (let dr = -4; dr <= 4; dr++) for (let dt = -4; dt <= 4; dt++) { const t = t0 + dt, r = r0 + dr; if (t < 0 || t >= TH || r < 0 || r >= R) continue; const v = acc[r * TH + t]; if (v > bv) { bv = v; b = { t, r, v }; } } return b; }
+function lineView() {
+  if (!st.hl) return; const { w, h } = st, { acc, R, D, max } = st.hl, thr = +$("hT").value, N = +$("hN").value; $("hTO").value = thr + "%"; $("hNO").value = N;
+  HL.peaks = findLines(thr, N);
+  if (!HL.sel || !HL.peaks.some(p => p.t === HL.sel.t && p.r === HL.sel.r)) { if (!HL.sel || HL.sel.auto !== false) HL.sel = HL.peaks[0] ? Object.assign({}, HL.peaks[0]) : null; }
+  // edge image
+  const ce = showRGB("hEdge", w, h, i => st.edge[i] ? [255, 255, 255] : [12, 14, 18]);
+  if (HL.pt) { ce.strokeStyle = RED; ce.lineWidth = 2; ce.beginPath(); ce.arc(HL.pt[0], HL.pt[1], 5, 0, 7); ce.stroke(); }
+  // accumulator
+  const ca = showRGB("hAcc", TH, R, i => heat(acc[i] / max));
+  if (HL.pt) { ca.fillStyle = "rgba(255,255,255,.85)"; for (let t = 0; t < TH; t++) { const r = Math.round(HL.pt[0] * CS[t] + HL.pt[1] * SN[t]) + D; ca.fillRect(t, r, 1, 1); } }
+  for (const p of HL.peaks) { ca.strokeStyle = "#fff"; ca.lineWidth = 1; ca.strokeRect(p.t - 5, p.r - 5, 11, 11); }
+  if (HL.sel) { ca.strokeStyle = RED; ca.lineWidth = 2; ca.strokeRect(HL.sel.t - 6, HL.sel.r - 6, 13, 13); }
+  // result
+  const cr = show("hRes", w, h, st.g); cr.fillStyle = "rgba(0,0,0,.45)"; cr.fillRect(0, 0, w, h);
+  const draw = (p, col, lw) => { const th = p.t * Math.PI / 180, rho = p.r - D, x0 = rho * Math.cos(th), y0 = rho * Math.sin(th), dx = -Math.sin(th), dy = Math.cos(th); cr.strokeStyle = col; cr.lineWidth = lw; cr.beginPath(); cr.moveTo(x0 - dx * 1000, y0 - dy * 1000); cr.lineTo(x0 + dx * 1000, y0 + dy * 1000); cr.stroke(); };
+  for (const p of HL.peaks) draw(p, LB, 1.4);
+  let sup = 0;
+  if (HL.sel) { draw(HL.sel, RED, 2); const t = HL.sel.t, rho = HL.sel.r - D; cr.fillStyle = YEL; for (let k = 0; k < st.pts.length; k += 2) { const x = st.pts[k], y = st.pts[k + 1]; if (Math.abs(x * CS[t] + y * SN[t] - rho) <= 1) { sup++; cr.fillRect(x, y, 1, 1); } } }
+  readLine(sup); tableLines();
+}
+function readLine(sup) {
+  const s = HL.sel, D = st.hl.D; if (!s) { $("hRead").innerHTML = "<p class='note'>No peak above the threshold. Lower it.</p>"; return; }
+  const th = s.t, rho = s.r - D, c = CS[th], sn = SN[th];
+  let slope = ""; if (Math.abs(sn) > 0.05) slope = `y = (ρ − x·cos θ) / sin θ = ${fmt(-c / sn, 3)}·x + ${fmt(rho / sn, 1)}`; else slope = `vertical line, x = ${fmt(rho / c, 1)}`;
+  let pt = ""; if (HL.pt) { const [x, y] = HL.pt; pt = `<p class="note" style="margin-top:6px">Clicked pixel (${x}, ${y}) votes along ρ = ${x}·cos θ + ${y}·sin θ. At θ = ${th}° that gives ρ = ${fmt(x * c + y * sn, 1)}${Math.abs(x * c + y * sn - rho) <= 1 ? ", so it lies on this line" : ", so it is not on this line"}.</p>`; }
+  $("hRead").innerHTML = `<div class="eq">cell  θ = <b>${th}°</b>,  ρ = <b>${rho} px</b>
+votes in the cell = <b>${s.v}</b>   (${fmt(s.v / st.hl.max * 100, 0)}% of the strongest cell)
+line:  x·cos(${th}°) + y·sin(${th}°) = ${rho}
+       ${fmt(c, 3)}·x + ${fmt(sn, 3)}·y = ${rho}
+${slope}
+edge pixels within 1 px of the line: <b>${sup}</b></div>${pt}`;
+}
+function tableLines() {
+  const D = st.hl.D, sel = HL.sel; $("hTab").innerHTML = HL.peaks.map((p, i) => `<tr data-i="${i}" class="${sel && p.t === sel.t && p.r === sel.r ? "sel" : ""}"><td>${i + 1}</td><td>${p.t}°</td><td>${p.r - D}</td><td>${p.v}<span class="bar"><i style="width:${p.v / st.hl.max * 100}%"></i></span></td></tr>`).join("") || '<tr><td colspan="4">No peaks above the threshold.</td></tr>';
+}
+$("hTab").addEventListener("click", e => { const tr = e.target.closest("tr"); if (!tr || tr.dataset.i === undefined) return; HL.sel = Object.assign({}, HL.peaks[+tr.dataset.i]); lineView(); });
+$("hAcc").addEventListener("click", e => { const [t, r] = imgXY(e, e.currentTarget, TH, st.hl.R), s = snapMax(t, r); if (s) { HL.sel = Object.assign({ auto: false }, s); lineView(); } });
+$("hEdge").addEventListener("click", e => {
+  const [x, y] = imgXY(e, e.currentTarget, st.w, st.h); let b = null, bd = 49; const p = st.pts;
+  for (let k = 0; k < p.length; k += 2) { const d = (p[k] - x) ** 2 + (p[k + 1] - y) ** 2; if (d < bd) { bd = d; b = [p[k], p[k + 1]]; } }
+  HL.pt = b; lineView();
+});
+["hT", "hN"].forEach(id => $(id).addEventListener("input", deb(lineView, 30)));
+
+/* ---------- 03 hough circles ---------- */
+const CI = { sel: null, found: [] };
+function ringAcc(r) {
+  const { w, h, pts } = st, acc = new Float32Array(w * h), n = Math.ceil(2 * Math.PI * r * 1.2), cs = [], sn = [];
+  for (let j = 0; j < n; j++) { cs.push(Math.cos(j / n * 2 * Math.PI) * r); sn.push(Math.sin(j / n * 2 * Math.PI) * r); }
+  for (let k = 0; k < pts.length; k += 2) { const x = pts[k], y = pts[k + 1]; let prev = -1; for (let j = 0; j < n; j++) { const a = Math.round(x + cs[j]), b = Math.round(y + sn[j]); if (a < 0 || b < 0 || a >= w || b >= h) continue; const i = b * w + a; if (i !== prev) acc[i]++; prev = i; } }
+  const sm = boxSum(acc, w, h, 1), f = 1 / (2 * Math.PI * r); for (let i = 0; i < sm.length; i++) sm[i] *= f / 2; // pooled votes, roughly "fraction covered"
+  return sm;
+}
+function support(a, b, r) { const p = st.pts; let c = 0; for (let k = 0; k < p.length; k += 2) { if (Math.abs(Math.hypot(p[k] - a, p[k + 1] - b) - r) <= 1) c++; } return c; }
+function circData() {
+  const mode = segVal("cMode"), { w, h } = st;
+  if (mode === "one") { const r = +$("cR").value; if (!st.circ || st.circ.mode !== "one" || st.circ.r !== r) st.circ = { mode, r, score: ringAcc(r), rr: null }; }
+  else if (!st.circ || st.circ.mode !== "all") { const best = new Float32Array(w * h), br = new Uint8Array(w * h); for (let r = 8; r <= 70; r++) { const s = ringAcc(r); for (let i = 0; i < s.length; i++) if (s[i] > best[i]) { best[i] = s[i]; br[i] = r; } } st.circ = { mode, score: best, rr: br }; }
+  return st.circ;
+}
+function findCircles(d, thr) {
+  const { w, h } = st, s = d.score; let mx = 1e-6; for (const v of s) if (v > mx) mx = v;
+  const cand = []; const cut = mx * 0.35; for (let i = 0; i < s.length; i++) if (s[i] >= cut) cand.push(i);
+  cand.sort((a, b) => s[b] - s[a]); const out = []; let tried = 0;
+  for (const i of cand) {
+    if (++tried > 1500 || out.length >= 12) break; const a = i % w, b = (i / w) | 0, r = d.mode === "one" ? d.r : d.rr[i];
+    if (out.some(o => Math.hypot(o.a - a, o.b - b) < 0.6 * Math.max(o.r, r) && Math.abs(o.r - r) < 0.5 * Math.max(o.r, r))) continue;
+    const cov = Math.min(1, support(a, b, r) / (2 * Math.PI * r)); if (cov >= thr) out.push({ a, b, r, cov, v: s[i] });
+  }
+  return out;
+}
+function circView() {
+  if (!st.pts) return; const { w, h } = st, thr = +$("cT").value / 100, mode = segVal("cMode"); $("cTO").value = Math.round(thr * 100) + "%"; $("cRO").value = $("cR").value + " px"; $("cRctl").classList.toggle("dim", mode === "all");
+  const d = circData(), s = d.score; let mx = 1e-6; for (const v of s) if (v > mx) mx = v;
+  CI.found = findCircles(d, thr);
+  if (!CI.sel || CI.sel.auto === undefined) CI.sel = CI.found[0] ? Object.assign({}, CI.found[0]) : null;
+  const ca = showRGB("cAcc", w, h, i => heat(s[i] / mx));
+  $("cAccCap").textContent = mode === "one" ? `Accumulator for r = ${d.r}: brightness = pooled votes for each center (a, b). Click to select.` : "Best score over all radii for each center (a, b). Click to select.";
+  for (const o of CI.found) { ca.strokeStyle = "#fff"; ca.lineWidth = 1.2; ca.strokeRect(o.a - 4, o.b - 4, 9, 9); }
+  if (CI.sel) { ca.strokeStyle = RED; ca.lineWidth = 2; ca.strokeRect(CI.sel.a - 6, CI.sel.b - 6, 13, 13); }
+  const cr = show("cRes", w, h, st.g); cr.fillStyle = "rgba(0,0,0,.4)"; cr.fillRect(0, 0, w, h);
+  for (const o of CI.found) { cr.strokeStyle = LB; cr.lineWidth = 1.6; cr.beginPath(); cr.arc(o.a, o.b, o.r, 0, 7); cr.stroke(); }
+  if (CI.sel) { cr.strokeStyle = RED; cr.lineWidth = 2.4; cr.beginPath(); cr.arc(CI.sel.a, CI.sel.b, CI.sel.r, 0, 7); cr.stroke(); cr.fillStyle = RED; cr.fillRect(CI.sel.a - 2, CI.sel.b - 2, 5, 5); }
+  readCircle();
+}
+function readCircle() {
+  const o = CI.sel; if (!o) { $("cRead").innerHTML = "<p class='note'>No circle above the threshold. Lower it, or change the radius.</p>"; return; }
+  const sup = support(o.a, o.b, o.r), circ = 2 * Math.PI * o.r;
+  $("cRead").innerHTML = `<div class="eq">center (a, b) = <b>(${o.a}, ${o.b})</b>,  radius r = <b>${o.r} px</b>
+circle: (x − ${o.a})² + (y − ${o.b})² = ${o.r}² = ${o.r * o.r}
+circumference 2πr = ${fmt(circ, 1)} px
+edge pixels within 1 px of the circle = <b>${sup}</b>
+covered = ${sup} / ${fmt(circ, 1)} = <b>${fmt(Math.min(1, sup / circ) * 100, 0)}%</b></div>`;
+}
+$("cAcc").addEventListener("click", e => {
+  const [x, y] = imgXY(e, e.currentTarget, st.w, st.h), d = st.circ, w = st.w; let b = null, bv = -1;
+  for (let dy = -4; dy <= 4; dy++) for (let dx = -4; dx <= 4; dx++) { const xx = x + dx, yy = y + dy; if (xx < 0 || yy < 0 || xx >= w || yy >= st.h) continue; const v = d.score[yy * w + xx]; if (v > bv) { bv = v; b = [xx, yy]; } }
+  const r = d.mode === "one" ? d.r : d.rr[b[1] * w + b[0]]; CI.sel = { a: b[0], b: b[1], r, auto: false }; circView();
+});
+seg("cMode", () => { CI.sel = null; circView(); });
+$("cR").addEventListener("input", deb(() => { CI.sel = null; circView(); }, 40)); $("cT").addEventListener("input", deb(() => { CI.sel = null; circView(); }, 30));
+
+/* ---------- 04 snake ---------- */
+const SN_N = 48, sn = { cx: 0, cy: 0, r: 0, x: null, y: null, it: 0, running: false, conv: false, moved: [], mean: [], force: null, last: null, timer: 0 };
+function snakeForce() {
+  if (!st.g) return; const { w, h, g } = st, s = +$("sS").value; $("sSO").value = s.toFixed(1);
+  const sm = gaussBlur(g, w, h, s), gx = conv2(sm, w, h, SX, 3, 3), gy = conv2(sm, w, h, SY, 3, 3), m = new Float32Array(w * h); let mx = 1e-6;
+  for (let i = 0; i < m.length; i++) { m[i] = Math.hypot(gx[i], gy[i]); if (m[i] > mx) mx = m[i]; } for (let i = 0; i < m.length; i++) m[i] /= mx;
+  sn.force = m; snakeDraw();
+}
+function snakeInit() { const n = SN_N; sn.x = new Int16Array(n); sn.y = new Int16Array(n); for (let i = 0; i < n; i++) { const a = i / n * 2 * Math.PI; sn.x[i] = Math.round(clamp(sn.cx + sn.r * Math.cos(a), 1, st.w - 2)); sn.y[i] = Math.round(clamp(sn.cy + sn.r * Math.sin(a), 1, st.h - 2)); } sn.it = 0; sn.conv = false; sn.moved = []; sn.mean = []; sn.last = null; }
+function snakeStep() {
+  const { w, h } = st, n = SN_N, x = sn.x, y = sn.y, F = sn.force, al = +$("sA").value, be = +$("sB").value, ga = +$("sG").value; let d = 0;
+  for (let i = 0; i < n; i++) d += Math.hypot(x[i] - x[(i + n - 1) % n], y[i] - y[(i + n - 1) % n]); const dbar = d / n; let moved = 0;
+  for (let i = 0; i < n; i++) {
+    const pi = (i + n - 1) % n, ni = (i + 1) % n, cand = [];
+    let mc = 1e-9, mk = 1e-9, fl = 1e9, fh = -1e9;
+    for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) {
+      const px = clamp(x[i] + dx, 1, w - 2), py = clamp(y[i] + dy, 1, h - 2);
+      const ec = (dbar - Math.hypot(px - x[pi], py - y[pi])) ** 2, ek = (x[pi] - 2 * px + x[ni]) ** 2 + (y[pi] - 2 * py + y[ni]) ** 2, f = F[py * w + px];
+      cand.push({ px, py, ec, ek, f }); if (ec > mc) mc = ec; if (ek > mk) mk = ek; if (f < fl) fl = f; if (f > fh) fh = f;
+    }
+    let best = null, be2 = 1e18;
+    for (const c of cand) { c.nc = c.ec / mc; c.nk = c.ek / mk; c.nf = fh - fl > 1e-9 ? (c.f - fl) / (fh - fl) : 0; c.E = al * c.nc + be * c.nk - ga * c.nf; if (c.E < be2) { be2 = c.E; best = c; } }
+    if (best.px !== x[i] || best.py !== y[i]) { moved++; x[i] = best.px; y[i] = best.py; }
+    sn.last = { i, c: best, dbar, mc, mk, fl, fh, al, be, ga };
+  }
+  sn.it++; let mean = 0; for (let i = 0; i < n; i++) mean += F[y[i] * w + x[i]]; sn.moved.push(moved); sn.mean.push(mean / n); if (moved === 0) sn.conv = true;
+}
+function snakeDraw() {
+  if (!st.g || !sn.x) return; const { w, h, g } = st;
+  const draw = c => {
+    const n = SN_N; c.strokeStyle = "rgba(255,255,255,.75)"; c.lineWidth = 1.2; c.setLineDash([4, 3]); c.beginPath(); c.arc(sn.cx, sn.cy, sn.r, 0, 7); c.stroke(); c.setLineDash([]);
+    c.strokeStyle = YEL; c.lineWidth = 1.6; c.beginPath(); for (let i = 0; i <= n; i++) { const j = i % n; i ? c.lineTo(sn.x[j] + 0.5, sn.y[j] + 0.5) : c.moveTo(sn.x[j] + 0.5, sn.y[j] + 0.5); } c.stroke();
+    c.fillStyle = "#ff9f0a"; for (let i = 0; i < n; i++) c.fillRect(sn.x[i] - 1, sn.y[i] - 1, 3, 3);
+  };
+  const c1 = show("sImg", w, h, g); c1.fillStyle = "rgba(0,0,0,.25)"; c1.fillRect(0, 0, w, h); draw(c1);
+  // handles
+  c1.fillStyle = "#fff"; c1.strokeStyle = "#000"; c1.lineWidth = 1; c1.beginPath(); c1.arc(sn.cx + sn.r, sn.cy, 4, 0, 7); c1.fill(); c1.stroke(); c1.beginPath(); c1.moveTo(sn.cx - 5, sn.cy); c1.lineTo(sn.cx + 5, sn.cy); c1.moveTo(sn.cx, sn.cy - 5); c1.lineTo(sn.cx, sn.cy + 5); c1.strokeStyle = "#fff"; c1.stroke();
+  const c2 = show("sForce", w, h, sn.force, "auto"); draw(c2);
+  const cv = $("sPlot"); const { ctx: c, W, H } = hiDPI(cv, 120); c.clearRect(0, 0, W, H); c.strokeStyle = K.line; c.strokeRect(6, 6, W - 12, H - 12);
+  const N = Math.max(60, sn.mean.length), X = i => 6 + i / (N - 1) * (W - 12); const mxm = Math.max(1, ...sn.moved), mxe = Math.max(0.05, ...sn.mean);
+  c.strokeStyle = ORG; c.lineWidth = 1.5; c.beginPath(); sn.moved.forEach((v, i) => { const yy = H - 8 - v / mxm * (H - 16); i ? c.lineTo(X(i), yy) : c.moveTo(X(i), yy); }); c.stroke();
+  c.strokeStyle = K.acc; c.lineWidth = 2; c.beginPath(); sn.mean.forEach((v, i) => { const yy = H - 8 - v / mxe * (H - 16); i ? c.lineTo(X(i), yy) : c.moveTo(X(i), yy); }); c.stroke();
+  const mean = sn.mean.length ? sn.mean[sn.mean.length - 1] : 0, mv = sn.moved.length ? sn.moved[sn.moved.length - 1] : SN_N;
+  $("sStats").innerHTML = `<span class="chip">Iteration <b>${sn.it}</b></span><span class="chip">Points moved last step <b>${mv}</b> of ${SN_N}</span><span class="chip">Mean edge force under points <b>${fmt(mean * 100, 0)}%</b></span><span class="chip">${sn.conv ? "<b>Converged: no point moved</b>" : sn.running ? "Running" : "Paused"}</span>`;
+  const L = sn.last; if (L) { const c0 = L.c; $("sMath").innerHTML = `<div class="eq">point ${L.i + 1} of ${SN_N}, mean spacing d̄ = ${fmt(L.dbar, 1)} px, chose position (${c0.px}, ${c0.py})
+E = α·E<sub>cont</sub> + β·E<sub>curv</sub> − γ·(edge force)       (each term normalized to 0..1 over the 25 candidates)
+  = ${fmt(L.al, 2)}·${fmt(c0.nc, 2)} + ${fmt(L.be, 2)}·${fmt(c0.nk, 2)} − ${fmt(L.ga, 2)}·${fmt(c0.nf, 2)}  =  <b>${fmt(c0.E, 3)}</b>
+The point moves to whichever of the 25 neighbors has the lowest E.</div>`; } else $("sMath").innerHTML = '<p class="note">Press Step once to see the energy of one update.</p>';
+  $("sRun").textContent = sn.running ? "Pause" : sn.conv ? "Run again" : "Run";
+}
+function snakeTick() { clearTimeout(sn.timer); if (!sn.running) return; snakeStep(); snakeDraw(); if (sn.conv || sn.it >= 400) { sn.running = false; snakeDraw(); return; } sn.timer = setTimeout(snakeTick, 45); }
+function snakeRun(on) { sn.running = on; if (on) { sn.conv = false; snakeTick(); } else clearTimeout(sn.timer); snakeDraw(); }
+function snakeResetCircle(run) { clearTimeout(sn.timer); snakeInit(); sn.running = !!run; snakeDraw(); if (run) snakeTick(); }
+$("sRun").addEventListener("click", () => { if (sn.conv || sn.it >= 400) { snakeInit(); } snakeRun(!sn.running); });
+$("sStep").addEventListener("click", () => { snakeRun(false); snakeStep(); snakeDraw(); });
+$("sReset").addEventListener("click", () => { sn.cx = st.w / 2; sn.cy = st.h / 2; sn.r = Math.round(0.42 * Math.min(st.w, st.h)); snakeResetCircle(true); });
+["sA", "sB", "sG"].forEach(id => $(id).addEventListener("input", () => { $("sAO").value = (+$("sA").value).toFixed(2); $("sBO").value = (+$("sB").value).toFixed(2); $("sGO").value = (+$("sG").value).toFixed(2); if (sn.force && !sn.running && sn.it < 400) { sn.running = true; sn.conv = false; snakeTick(); } }));
+$("sS").addEventListener("input", deb(snakeForce, 30));
+(() => {
+  const cv = $("sImg"); let mode = null, off = [0, 0];
+  const pos = e => { const r = cv.getBoundingClientRect(); return [(e.clientX - r.left) / r.width * st.w, (e.clientY - r.top) / r.height * st.h]; };
+  cv.addEventListener("pointerdown", e => { const [x, y] = pos(e), d = Math.hypot(x - sn.cx, y - sn.cy); mode = Math.abs(d - sn.r) < 12 ? "size" : "move"; off = [sn.cx - x, sn.cy - y]; cv.setPointerCapture(e.pointerId); if (mode === "move" && d > sn.r + 12) { sn.cx = x; sn.cy = y; off = [0, 0]; } snakeRun(false); snakeInit(); snakeDraw(); });
+  cv.addEventListener("pointermove", e => { if (!mode) return; const [x, y] = pos(e); if (mode === "size") sn.r = Math.max(8, Math.min(Math.hypot(st.w, st.h) / 2, Math.hypot(x - sn.cx, y - sn.cy))); else { sn.cx = clamp(x + off[0], 0, st.w); sn.cy = clamp(y + off[1], 0, st.h); } snakeInit(); snakeDraw(); });
+  const up = () => { if (mode) { mode = null; snakeResetCircle(true); } }; cv.addEventListener("pointerup", up); cv.addEventListener("pointercancel", up);
+})();
+
+/* ---------- load ---------- */
+function load(src, sw, sh, meta) {
+  Object.assign(st, toGray(src, sw, sh, 300)); HL.sel = null; HL.pt = null; CI.sel = null; st.circ = null;
+  const s = meta && meta.sample; $("cR").value = s && s.r ? s.r : 30;
+  sn.cx = st.w / 2; sn.cy = st.h / 2; sn.r = Math.round(0.42 * Math.min(st.w, st.h)); snakeInit();
+  ["sA", "sB", "sG"].forEach(id => $(id).dispatchEvent(new Event("input"))); clearTimeout(sn.timer); sn.running = false;
+  runEdges(); snakeRun(true);
+}
+const pk = picker({ el: "pick", samples, noteEl: "pickNote", onImage: load });
+onTheme(deb(() => { pal(); if (st.g) snakeDraw(); }, 80));
+pk.pick(linesS);
+})();
+</script>
+</body>
+</html>

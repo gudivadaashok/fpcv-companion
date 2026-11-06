@@ -1,0 +1,422 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Image Formation, Interactively</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,500;8..60,600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="site.css">
+<style>
+  canvas.drag { cursor: grab; touch-action: none; }
+  canvas.drag:active { cursor: grabbing; }
+  .slots { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; }
+  @media (max-width: 860px) { .slots { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+  @media (max-width: 520px) { .slots { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  .slots figure { border: 2px solid var(--line); border-radius: 8px; padding: 6px; cursor: pointer; background: var(--surface); }
+  .slots figure.on { border-color: var(--accent); }
+  .slots canvas { border-radius: 4px; }
+  .slots figcaption b { color: var(--ink); font-family: var(--mono); font-weight: 500; }
+  .eq b { color: var(--accent); font-weight: 500; }
+  .eq { white-space: pre; }
+</style>
+</head>
+<body>
+<header class="site"></header>
+<main class="wrap">
+  <div class="intro">
+    <h1>Image Formation, Interactively</h1>
+    <p class="lead">A camera maps a 3D world onto a flat sensor. Open or shrink the pinhole, move the camera, slide the object, and watch light, blur and geometry change.</p>
+    <p>All scenes here are synthetic and drawn in your browser. Follows the Image Formation lectures: pinhole camera, perspective projection, and lenses.</p>
+  </div>
+
+  <section class="stage" aria-labelledby="h0">
+    <div class="stage-head"><span class="num">00</span><div><h2 id="h0">The pinhole camera</h2><p>Light from each scene point passes through one small hole and lands on the image plane. A big hole lets in more light but smears every point into a spot. A tiny hole gives a sharp ray, until diffraction (light bending around the edge) smears it again. Drag the diagram or the plot, or use the slider.</p></div></div>
+    <div class="controls">
+      <div class="ctl"><label for="phT">Pinhole diameter d</label><input type="range" id="phT" min="0" max="100" step="0.5" value="40"><output id="phO" style="min-width:7ch">0.5 mm</output></div>
+      <div class="ctl"><label>Model</label><div class="seg" id="phDiff"><button type="button" data-v="0" aria-pressed="false">Rays only</button><button type="button" data-v="1" aria-pressed="true">Rays + diffraction</button></div></div>
+    </div>
+    <div class="main-side">
+      <figure><canvas class="plot drag" id="phDiag" style="height:300px"></canvas><figcaption>Side view. The wall has a hole of diameter d. Two cones of rays leave the top and bottom of the object, and each lands as a spot on the image plane. The hole is drawn larger than true scale.</figcaption></figure>
+      <figure><canvas class="view" id="phImg" width="240" height="180"></canvas><figcaption id="phCap"></figcaption></figure>
+    </div>
+    <figure><canvas class="plot click" id="phPlot" style="height:250px"></canvas>
+      <figcaption><span class="legend"><span><i style="background:#c2410c"></i>geometric blur</span><span><i style="background:#16a34a"></i>diffraction blur</span><span><i style="background:var(--accent)"></i>total blur</span><span><i style="background:var(--muted)"></i>brightness (dotted)</span></span> Click the plot to set d.</figcaption></figure>
+    <div class="two">
+      <div class="math"><h3>The model (simplified)</h3><div class="eq" id="phEq"></div><p class="note">Setup: image plane at i = 50 mm, object at o = 2000 mm, wavelength λ = 0.55 µm. Real blur spots are not exact discs, so we add the two blur sizes in quadrature as a rough guide.</p></div>
+      <div class="math"><h3>At this d</h3><div id="phRead"></div></div>
+    </div>
+  </section>
+
+  <section class="stage" aria-labelledby="h1">
+    <div class="stage-head"><span class="num">01</span><div><h2 id="h1">Perspective projection</h2><p>A point (X, Y, Z) in camera coordinates lands at x = f·X/Z, y = f·Y/Z. Parallel lines in 3D that are not parallel to the image plane meet at a vanishing point. Click a cube corner to see its numbers plugged in. Click or drag in the top view to move the camera.</p></div></div>
+    <div class="controls">
+      <div class="ctl"><label for="psF">Focal length f</label><input type="range" id="psF" min="8" max="120" step="1" value="30"><output id="psFO">30 mm</output></div>
+      <div class="ctl"><label for="psYaw">Pan (yaw)</label><input type="range" id="psYaw" min="-60" max="60" step="1" value="35"><output id="psYawO">35°</output></div>
+      <div class="ctl"><label for="psTilt">Tilt</label><input type="range" id="psTilt" min="-40" max="40" step="1" value="0"><output id="psTiltO">0°</output></div>
+    </div>
+    <div class="controls">
+      <div class="ctl"><label for="psX">Camera X</label><input type="range" id="psX" min="-6" max="6" step="0.1" value="0"><output id="psXO">0.0 m</output></div>
+      <div class="ctl"><label for="psY">Height Y</label><input type="range" id="psY" min="0.2" max="8" step="0.1" value="1.6"><output id="psYO">1.6 m</output></div>
+      <div class="ctl"><label for="psZ">Camera Z</label><input type="range" id="psZ" min="-6" max="10" step="0.1" value="0"><output id="psZO">0.0 m</output></div>
+      <div class="ctl"><label>View</label><div class="seg" id="psView"><button type="button" data-v="wide" aria-pressed="true">Wide (see vanishing points)</button><button type="button" data-v="sensor" aria-pressed="false">Sensor only</button></div></div>
+    </div>
+    <div class="main-side">
+      <figure><canvas class="plot click" id="psImg" style="height:400px"></canvas>
+        <figcaption><span class="legend"><span><i style="background:#d9482b"></i>lines along X (sleepers, cube)</span><span><i style="background:#2563eb"></i>along Z (rails, cube)</span><span><i style="background:#16a34a"></i>along Y (cube)</span></span> The bright rectangle is the 36 × 24 mm sensor. Dimmed lines fall outside it.</figcaption></figure>
+      <figure><canvas class="plot drag" id="psTop" style="height:400px"></canvas><figcaption>Top view (looking down). Drag to move the camera. The wedge is the horizontal field of view.</figcaption></figure>
+    </div>
+    <div class="two">
+      <div class="math"><h3>Selected corner</h3><div id="psRead"></div></div>
+      <div class="math"><h3>Vanishing points (mm on the sensor plane)</h3><div id="psVP"></div></div>
+    </div>
+  </section>
+
+  <section class="stage" aria-labelledby="h2">
+    <div class="stage-head"><span class="num">02</span><div><h2 id="h2">The thin lens</h2><p>A lens gathers many rays from one object point and bends them to meet at one image point. Three rays are easy to trace: one parallel to the axis (it crosses the far focal point), one through the lens center (it goes straight), and one through the near focal point (it leaves parallel). Drag the arrow tip.</p></div></div>
+    <div class="controls">
+      <div class="ctl"><label for="lnF">Focal length f</label><input type="range" id="lnF" min="20" max="100" step="1" value="50"><output id="lnFO">50 mm</output></div>
+      <div class="ctl"><label for="lnO">Object distance o</label><input type="range" id="lnO" min="15" max="400" step="1" value="150"><output id="lnOO">150 mm</output></div>
+    </div>
+    <figure><canvas class="plot drag" id="lnDiag" style="height:340px"></canvas><figcaption>Drag the red handle. Moving left or right changes o. Moving up or down changes the object's height.</figcaption></figure>
+    <div class="two">
+      <div class="math"><h3>Thin lens equation</h3><div class="eq" id="lnEq"></div></div>
+      <div class="math"><h3>What to try</h3><p>Put the object beyond 2f: the image is real, inverted and smaller. At o = 2f it has the same size. Between f and 2f it is larger and farther away. At o = f the rays leave parallel and no image forms. Inside f the image is virtual (dashed), upright and larger, like a magnifying glass.</p><div id="lnType"></div></div>
+    </div>
+  </section>
+
+  <section class="stage" aria-labelledby="h3">
+    <div class="stage-head"><span class="num">03</span><div><h2 id="h3">Aperture, blur circle and depth of field</h2><p>The sensor sits where the focus distance is sharp. An object at another distance focuses in front of or behind the sensor, so each point becomes a blur circle of diameter c = D·|i − i<sub>focus</sub>| / i, where D = f/N is the aperture diameter. A smaller aperture (larger f-number N) shrinks c, so more of the scene looks sharp. Click a target or the plot to choose which distance the ray diagram shows.</p></div></div>
+    <div class="controls">
+      <div class="ctl"><label for="apF">Focal length f</label><input type="range" id="apF" min="20" max="200" step="1" value="50"><output id="apFO">50 mm</output></div>
+      <div class="ctl"><label for="apN">f-number N</label><input type="range" id="apN" min="0" max="8" step="1" value="2"><output id="apNO">f/2.8</output></div>
+      <div class="ctl"><label for="apFocus">Focus distance</label><input type="range" id="apFocus" min="0" max="100" step="0.1" value="47.6"><output id="apFocusO">2.5 m</output></div>
+    </div>
+    <div class="main-side">
+      <figure><canvas class="plot" id="apDiag" style="height:300px"></canvas><figcaption>Rays from a point on the axis at the chosen distance. Gaps between lens and sensor are exaggerated so the blur circle is visible.</figcaption></figure>
+      <div class="math"><h3>Numbers for the chosen distance</h3><div id="apRead"></div></div>
+    </div>
+    <figure><canvas class="plot click" id="apPlot" style="height:240px"></canvas>
+      <figcaption><span class="legend"><span><i style="background:var(--accent)"></i>blur circle c(o)</span><span><i style="background:#16a34a"></i>acceptably sharp (c below 0.03 mm)</span><span><i style="background:#c2410c"></i>limit c = 0.03 mm</span></span></figcaption></figure>
+    <div class="slots" id="apSlots"></div>
+    <p class="note">Each tile shows a 10 × 10 mm patch of the sensor, with a 150 mm target at that distance. Near targets look large and far targets look small, as in a real photo. Blur is drawn as a Gaussian with σ = c/4, a simplification of the true disc.</p>
+    <div class="stats" id="apStats"></div>
+  </section>
+</main>
+<footer class="wrap site"></footer>
+
+<script src="common.js"></script>
+<script>
+(() => {
+"use strict";
+const { $, nav, footer, SAMPLES, hiDPI, onTheme, cssVar, seg, segVal, gaussBlur, show, fmt } = VB;
+nav("image-formation.html"); footer();
+const deb = (fn, ms = 50) => { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; };
+const RED = "#d9482b", GRN = "#16a34a", BLU = "#2563eb", ORG = "#c2410c";
+let K = {};
+const palette = () => { K = { ink: cssVar("--ink"), mut: cssVar("--muted"), acc: cssVar("--accent"), line: cssVar("--line"), bg: cssVar("--bg"), mono: cssVar("--mono") || "monospace" }; };
+palette();
+function ln(c, x1, y1, x2, y2, color, lw = 1, dash) { c.strokeStyle = color; c.lineWidth = lw; c.setLineDash(dash || []); c.beginPath(); c.moveTo(x1, y1); c.lineTo(x2, y2); c.stroke(); c.setLineDash([]); }
+function tx(c, s, x, y, color, size = 12, align = "left") { c.fillStyle = color; c.font = size + "px " + K.mono; c.textAlign = align; c.fillText(s, x, y); }
+function dot(c, x, y, r, color) { c.fillStyle = color; c.beginPath(); c.arc(x, y, r, 0, 7); c.fill(); }
+function ptrXY(e, cv) { const r = cv.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; }
+function dragOn(cv, fn) {
+  let on = false;
+  cv.addEventListener("pointerdown", e => { on = true; cv.setPointerCapture(e.pointerId); fn(...ptrXY(e, cv), true); });
+  cv.addEventListener("pointermove", e => { if (on) fn(...ptrXY(e, cv), false); });
+  const up = () => { on = false; }; cv.addEventListener("pointerup", up); cv.addEventListener("pointercancel", up);
+}
+
+/* =====================  00 pinhole  ===================== */
+const PH = { i: 50, o: 2000, lam: 0.00055, d: 0.5, diff: true };
+const dFromT = t => 0.05 * Math.pow(80, t / 100), tFromD = d => 100 * Math.log(d / 0.05) / Math.log(80);
+function phBlur(d) { const bg = d * (1 + PH.i / PH.o), bd = PH.diff ? 2.44 * PH.lam * PH.i / d : 0; return { bg, bd, b: Math.hypot(bg, bd) }; }
+const phOpt = () => { const a = 1 + PH.i / PH.o; return Math.sqrt(2.44 * PH.lam * PH.i / a); };
+const bright = d => Math.min(1, (d / 2) ** 2);
+const phSrc = (() => { const big = VB.sampleCanvas(SAMPLES.scene, 480, 360), c = document.createElement("canvas"); c.width = 240; c.height = 180; c.getContext("2d").drawImage(big, 0, 0, 240, 180); const d = c.getContext("2d").getImageData(0, 0, 240, 180).data; const ch = [0, 1, 2].map(k => { const a = new Float32Array(240 * 180); for (let i = 0; i < a.length; i++) a[i] = d[i * 4 + k]; return a; }); return ch; })();
+
+function drawPinDiag() {
+  const cv = $("phDiag"); const { ctx: c, W, H } = hiDPI(cv, 300); c.clearRect(0, 0, W, H);
+  const b = phBlur(PH.d); const oy = H / 2, wx = W * 0.5, ix = W - 60, tipX = 56;
+  const tipY = 52, baseY = H - 52;
+  // wall
+  const dpx = 3 + PH.d * 9;
+  c.fillStyle = K.mut; c.fillRect(wx - 4, 8, 8, oy - dpx / 2 - 8); c.fillRect(wx - 4, oy + dpx / 2, 8, H - 8 - oy - dpx / 2);
+  // image plane
+  ln(c, ix, 12, ix, H - 12, K.ink, 3);
+  const cone = (py, color) => {
+    const k = (ix - tipX) / (wx - tipX); const y1 = py + (oy - dpx / 2 - py) * k, y2 = py + (oy + dpx / 2 - py) * k;
+    c.fillStyle = color + "26"; c.beginPath(); c.moveTo(tipX, py); c.lineTo(ix, y1); c.lineTo(ix, y2); c.closePath(); c.fill();
+    ln(c, tipX, py, ix, y1, color, 1.2); ln(c, tipX, py, ix, y2, color, 1.2);
+    const mid = (y1 + y2) / 2, vis = Math.hypot(Math.abs(y2 - y1), Math.min(60, b.bd * 12));
+    if (PH.diff) { c.fillStyle = GRN + "55"; c.fillRect(ix - 5, mid - vis / 2, 10, Math.max(vis, 2)); }
+    c.fillStyle = color; c.fillRect(ix - 3, Math.min(y1, y2), 6, Math.max(2, Math.abs(y2 - y1)));
+    return mid;
+  };
+  cone(tipY, BLU); cone(baseY, ORG);
+  // object
+  VB.arrow(c, tipX, baseY, tipX, tipY, K.ink, 3, 9);
+  tx(c, "object", tipX, H - 14, K.mut, 12, "center"); tx(c, "pinhole", wx, 16 + 0, K.mut, 12, "center"); tx(c, "image plane", ix, H - 14, K.mut, 12, "right");
+  tx(c, `d = ${fmt(PH.d, 2)} mm`, wx + 12, oy + 4, K.ink, 12);
+  tx(c, "blur spot", ix - 12, 30, K.mut, 11, "right");
+  // drag hint arrow on the hole
+  ln(c, wx - 18, oy - dpx / 2, wx - 18, oy + dpx / 2, K.acc, 1.5); ln(c, wx - 22, oy - dpx / 2, wx - 14, oy - dpx / 2, K.acc, 1.5); ln(c, wx - 22, oy + dpx / 2, wx - 14, oy + dpx / 2, K.acc, 1.5);
+}
+function drawPinPlot() {
+  const cv = $("phPlot"); const { ctx: c, W, H } = hiDPI(cv, 250); c.clearRect(0, 0, W, H);
+  const p = 38, pr = 40, pb = 26, pt = 10, X = d => p + Math.log(d / 0.05) / Math.log(80) * (W - p - pr), Y = v => H - pb - Math.min(v, 4) / 4 * (H - pb - pt);
+  c.strokeStyle = K.line; c.lineWidth = 1; c.strokeRect(p, pt, W - p - pr, H - pb - pt);
+  for (const d of [0.1, 0.3, 1, 3]) { ln(c, X(d), pt, X(d), H - pb, K.line, 1, [2, 3]); tx(c, d + " mm", X(d), H - 9, K.mut, 11, "center"); }
+  for (const v of [0, 1, 2, 3, 4]) { tx(c, v + "", p - 6, Y(v) + 4, K.mut, 11, "right"); if (v) ln(c, p, Y(v), W - pr, Y(v), K.line, 1, [2, 3]); }
+  tx(c, "blur (mm)", p + 4, pt + 12, K.mut, 11); tx(c, "100%", W - pr + 4, pt + 12, K.mut, 11); tx(c, "brightness", W - pr + 4, pt + 26, K.mut, 10);
+  const curve = (fn, color, lw, dash) => { c.strokeStyle = color; c.lineWidth = lw; c.setLineDash(dash || []); c.beginPath(); for (let t = 0; t <= 200; t++) { const d = 0.05 * Math.pow(80, t / 200); t ? c.lineTo(X(d), Y(fn(d))) : c.moveTo(X(d), Y(fn(d))); } c.stroke(); c.setLineDash([]); };
+  curve(d => d * (1 + PH.i / PH.o), ORG, 1.5);
+  if (PH.diff) { curve(d => 2.44 * PH.lam * PH.i / d, GRN, 1.5); }
+  curve(d => phBlur(d).b, K.acc, 2.6);
+  curve(d => bright(d) * 4, K.mut, 1.5, [2, 3]);
+  if (PH.diff) { const o = phOpt(); dot(c, X(o), Y(phBlur(o).b), 5, GRN); tx(c, `best d ≈ ${fmt(o, 2)} mm`, X(o) + 8, Y(phBlur(o).b) - 8, GRN, 11); }
+  ln(c, X(PH.d), pt, X(PH.d), H - pb, K.ink, 1.2); dot(c, X(PH.d), Y(phBlur(PH.d).b), 5, K.acc);
+}
+function drawPinImg() {
+  const b = phBlur(PH.d), sig = b.b * (240 / 36) / 4, k = Math.pow(bright(PH.d), 1 / 2.2);
+  const out = [0, 1, 2].map(i => sig > 0.3 ? gaussBlur(phSrc[i], 240, 180, sig) : phSrc[i]);
+  VB.showRGB("phImg", 240, 180, i => [out[0][i] * k, out[1][i] * k, out[2][i] * k]);
+  $("phCap").textContent = `Simulated photo: blur σ ≈ ${fmt(sig, 1)} px, brightness ${fmt(bright(PH.d) * 100, 0)}% (gamma-adjusted for display). Noise is not simulated here.`;
+}
+function readPin() {
+  const d = PH.d, b = phBlur(d), a = 1 + PH.i / PH.o;
+  $("phO").value = fmt(d, 2) + " mm";
+  $("phEq").innerHTML = `geometric blur  b<sub>g</sub> = d·(1 + i/o)\n               = ${fmt(d, 2)}·(1 + ${PH.i}/${PH.o}) = <b>${fmt(b.bg, 2)} mm</b>\ndiffraction    b<sub>d</sub> = 2.44·λ·i / d\n               = 2.44·${PH.lam}·${PH.i} / ${fmt(d, 2)} = <b>${fmt(b.bd, 2)} mm</b>\ntotal          b = √(b<sub>g</sub>² + b<sub>d</sub>²) = <b>${fmt(b.b, 2)} mm</b>\nbest hole      d* = √(2.44·λ·i / (1 + i/o)) = <b>${fmt(phOpt(), 2)} mm</b>`;
+  const stops = 2 * Math.log2(d / 1);
+  $("phRead").innerHTML = `<dl class="detail" style="display:grid;grid-template-columns:auto 1fr;gap:3px 12px;margin:0"><dt>Light collected</dt><dd class="mono">∝ d² = ${fmt(d * d, 3)} (${stops >= 0 ? "+" : ""}${fmt(stops, 1)} stops vs 1 mm)</dd><dt>Blur spot</dt><dd class="mono">${fmt(b.b, 2)} mm = ${fmt(b.b * 240 / 36, 1)} px on this 240 px image</dd><dt>Verdict</dt><dd>${d < phOpt() * 0.7 && PH.diff ? '<span class="tag warn">too small: diffraction dominates</span>' : d > phOpt() * 1.5 ? '<span class="tag bad">too big: geometric blur dominates</span>' : '<span class="tag good">near the sharpest compromise</span>'}</dd></dl>
+  <p class="note">Halving the diameter cuts the light to a quarter. That trade is why real cameras add a lens.</p>`;
+}
+function setD(d) { PH.d = Math.max(0.05, Math.min(4, d)); $("phT").value = tFromD(PH.d); updPin(); }
+function updPin() { readPin(); drawPinDiag(); drawPinPlot(); pinImgDeb(); }
+const pinImgDeb = deb(drawPinImg, 50);
+$("phT").addEventListener("input", () => { PH.d = dFromT(+$("phT").value); updPin(); });
+seg("phDiff", v => { PH.diff = v === "1"; updPin(); });
+dragOn($("phDiag"), (x, y) => { const H = 300, oy = H / 2; setD((Math.abs(y - oy) * 2 - 3) / 9); });
+dragOn($("phPlot"), x => { const W = $("phPlot").clientWidth, p = 38, pr = 40; const t = Math.max(0, Math.min(1, (x - p) / (W - p - pr))); setD(0.05 * Math.pow(80, t)); });
+
+/* =====================  01 perspective  ===================== */
+const PS = { f: 30, x: 0, y: 1.6, z: 0, yaw: 35, tilt: 0, wide: true, sel: 0 };
+const rad = d => d * Math.PI / 180;
+function rotC(d) { const ps = rad(PS.yaw), ph = rad(PS.tilt); const x1 = Math.cos(ps) * d[0] - Math.sin(ps) * d[2], z1 = Math.sin(ps) * d[0] + Math.cos(ps) * d[2], y1 = d[1]; return [x1, Math.cos(ph) * y1 - Math.sin(ph) * z1, Math.sin(ph) * y1 + Math.cos(ph) * z1]; }
+const toCam = P => rotC([P[0] - PS.x, P[1] - PS.y, P[2] - PS.z]);
+const CUBES = [[1.5, 0, 6, 3, 1.5, 7.5], [-4, 0, 11, -2.5, 1.5, 12.5], [0.6, 0, 16, 2.1, 1.5, 17.5]];
+const verts = [], edges = [];
+CUBES.forEach((q, ci) => {
+  const base = verts.length;
+  for (let k = 0; k < 8; k++) verts.push([k & 1 ? q[3] : q[0], k & 2 ? q[4] : q[1], k & 4 ? q[5] : q[2]]);
+  for (let k = 0; k < 8; k++) for (let b = 0; b < 3; b++) if (!(k & (1 << b))) edges.push({ a: verts[base + k], b: verts[base + (k | (1 << b))], dir: b === 0 ? 0 : b === 1 ? 1 : 2, w: 2, ext: ci === 0 });
+});
+for (const sx of [-0.72, 0.72]) edges.push({ a: [sx, 0, 0.3], b: [sx, 0, 400], dir: 2, w: 2.6, ext: false, rail: true });
+for (let z = 1; z <= 60; z++) edges.push({ a: [-1.15, 0, z], b: [1.15, 0, z], dir: 0, w: 1.2, ext: false, tie: true });
+const DCOL = [RED, GRN, BLU];
+function projPt(q, W, H, S) { return [W / 2 + PS.f * q[0] / q[2] * S, H / 2 - PS.f * q[1] / q[2] * S]; }
+function clipProj(a, b, W, H, S) {
+  const A = toCam(a), B = toCam(b), nz = 0.15; if (A[2] < nz && B[2] < nz) return null;
+  let P = A, Q = B; if (A[2] < nz) { const t = (nz - A[2]) / (B[2] - A[2]); P = [A[0] + t * (B[0] - A[0]), A[1] + t * (B[1] - A[1]), nz]; } else if (B[2] < nz) { const t = (nz - B[2]) / (A[2] - B[2]); Q = [B[0] + t * (A[0] - B[0]), B[1] + t * (A[1] - B[1]), nz]; }
+  return [projPt(P, W, H, S), projPt(Q, W, H, S), P[2] > Q[2] ? 0 : 1];
+}
+const vpOf = dir => { const d = rotC([dir === 0 ? 1 : 0, dir === 1 ? 1 : 0, dir === 2 ? 1 : 0]); return Math.abs(d[2]) < 1e-4 ? null : [PS.f * d[0] / d[2], PS.f * d[1] / d[2]]; };
+function drawPers() {
+  const cv = $("psImg"); const { ctx: c, W, H } = hiDPI(cv, 400); c.clearRect(0, 0, W, H);
+  const S = PS.wide ? W / 100 : W / 40, fw = 36 * S, fh = 24 * S, fx = W / 2 - fw / 2, fy = H / 2 - fh / 2;
+  const segs = edges.map(e => ({ e, p: clipProj(e.a, e.b, W, H, S) })).filter(s => s.p);
+  const draw = (alpha) => {
+    c.globalAlpha = alpha;
+    for (const { e, p } of segs) {
+      if (e.tie) { ln(c, p[0][0], p[0][1], p[1][0], p[1][1], RED, 1, null); continue; }
+      ln(c, p[0][0], p[0][1], p[1][0], p[1][1], e.rail ? BLU : DCOL[e.dir], e.w);
+    }
+    c.globalAlpha = 1;
+  };
+  // dimmed everything, then bright inside the sensor
+  draw(0.35);
+  // vanishing points, horizon, extension lines
+  const vps = [0, 1, 2].map(vpOf);
+  const hv = vps[0] || vps[2];
+  if (hv) { const hy = H / 2 - hv[1] * S; ln(c, 0, hy, W, hy, K.mut, 1, [6, 4]); tx(c, "horizon", 6, hy - 5, K.mut, 11); }
+  for (const { e, p } of segs) if (e.ext && vps[e.dir] && e.dir !== 1 || (e.ext && e.dir === 1 && vps[1])) { const v = vps[e.dir]; const q = p[2] === 0 ? p[0] : p[1]; ln(c, q[0], q[1], W / 2 + v[0] * S, H / 2 - v[1] * S, DCOL[e.dir] + "88", 1, [4, 4]); }
+  c.save(); c.beginPath(); c.rect(fx, fy, fw, fh); c.clip(); c.fillStyle = cssVar("--surface"); c.fillRect(fx, fy, fw, fh); draw(1);
+  // extension lines also inside frame
+  c.restore();
+  c.strokeStyle = K.acc; c.lineWidth = 2; c.strokeRect(fx, fy, fw, fh);
+  const names = ["x", "y", "z"];
+  vps.forEach((v, k) => { if (!v) return; const px = W / 2 + v[0] * S, py = H / 2 - v[1] * S; if (px < -20 || px > W + 20 || py < -20 || py > H + 20) return; dot(c, px, py, 5, DCOL[k]); c.strokeStyle = K.ink; c.lineWidth = 1.2; c.beginPath(); c.arc(px, py, 5, 0, 7); c.stroke(); tx(c, "VP" + names[k], px + 8, py - 7, K.ink, 12); });
+  // verts
+  verts.forEach((v, i) => { const q = toCam(v); if (q[2] < 0.15) return; const p = projPt(q, W, H, S); if (i === PS.sel) { c.strokeStyle = "#ff3b30"; c.lineWidth = 2.5; c.beginPath(); c.arc(p[0], p[1], 9, 0, 7); c.stroke(); dot(c, p[0], p[1], 3, "#ff3b30"); } else dot(c, p[0], p[1], 2.5, K.ink); });
+  tx(c, `${fmt(PS.f, 0)} mm lens: horizontal field of view ${fmt(2 * Math.atan(18 / PS.f) * 180 / Math.PI, 0)}°`, fx + 6, fy + fh + 16 > H - 4 ? fy + fh - 6 : fy + fh + 16, K.mut, 11);
+}
+function drawTop() {
+  const cv = $("psTop"); const { ctx: c, W, H } = hiDPI(cv, 400); c.clearRect(0, 0, W, H);
+  const s = Math.min(W / 14, H / 26), X = x => W / 2 + x * s, Z = z => H - 24 - (z + 3) * s;
+  c.strokeStyle = K.line; c.lineWidth = 1; for (let x = -6; x <= 6; x += 2) { ln(c, X(x), 0, X(x), H, K.line, 1, [2, 4]); } for (let z = 0; z <= 20; z += 5) { ln(c, 0, Z(z), W, Z(z), K.line, 1, [2, 4]); tx(c, z + " m", 3, Z(z) - 3, K.mut, 10); }
+  for (const sx of [-0.72, 0.72]) ln(c, X(sx), Z(0), X(sx), Z(30), BLU, 2);
+  for (const q of CUBES) { c.fillStyle = K.mut + "55"; c.strokeStyle = K.ink; c.lineWidth = 1.2; c.fillRect(X(q[0]), Z(q[5]), (q[3] - q[0]) * s, (q[5] - q[2]) * s); c.strokeRect(X(q[0]), Z(q[5]), (q[3] - q[0]) * s, (q[5] - q[2]) * s); }
+  const ps = rad(PS.yaw), half = Math.atan(18 / PS.f), cx = X(PS.x), cz = Z(PS.z), L = 26 * s;
+  c.fillStyle = K.acc + "22"; c.beginPath(); c.moveTo(cx, cz); for (const sgn of [-1, 1]) { const a = ps + sgn * half; c.lineTo(cx + Math.sin(a) * L, cz - Math.cos(a) * L); } c.closePath(); c.fill();
+  for (const sgn of [-1, 1]) { const a = ps + sgn * half; ln(c, cx, cz, cx + Math.sin(a) * L, cz - Math.cos(a) * L, K.acc, 1.2); }
+  // camera body
+  c.save(); c.translate(cx, cz); c.rotate(ps); c.fillStyle = K.ink; c.fillRect(-7, -5, 14, 10); c.beginPath(); c.moveTo(-4, -5); c.lineTo(0, -12); c.lineTo(4, -5); c.fill(); c.restore();
+  const v = verts[PS.sel]; ln(c, cx, cz, X(v[0]), Z(v[2]), "#ff3b30", 1.2, [4, 3]); dot(c, X(v[0]), Z(v[2]), 4, "#ff3b30");
+  tx(c, "camera", cx + 10, cz + 16, K.ink, 11);
+}
+function readPers() {
+  $("psFO").value = PS.f + " mm"; $("psYawO").value = PS.yaw + "°"; $("psTiltO").value = PS.tilt + "°"; $("psXO").value = fmt(PS.x, 1) + " m"; $("psYO").value = fmt(PS.y, 1) + " m"; $("psZO").value = fmt(PS.z, 1) + " m";
+  const v = verts[PS.sel], q = toCam(v);
+  if (q[2] < 0.15) $("psRead").innerHTML = `<p>Corner (${v.map(a => fmt(a, 1)).join(", ")}) is behind the camera. Move the camera back.</p>`;
+  else $("psRead").innerHTML = `<dl class="detail" style="display:grid;grid-template-columns:auto 1fr;gap:3px 12px;margin:0"><dt>World point</dt><dd class="mono">(${v.map(a => fmt(a, 1)).join(", ")}) m</dd><dt>Camera coords</dt><dd class="mono">(X, Y, Z) = (${fmt(q[0], 2)}, ${fmt(q[1], 2)}, ${fmt(q[2], 2)}) m</dd><dt>x = f·X / Z</dt><dd class="mono">${PS.f} · ${fmt(q[0], 2)} / ${fmt(q[2], 2)} = <b>${fmt(PS.f * q[0] / q[2], 2)} mm</b></dd><dt>y = f·Y / Z</dt><dd class="mono">${PS.f} · ${fmt(q[1], 2)} / ${fmt(q[2], 2)} = <b>${fmt(PS.f * q[1] / q[2], 2)} mm</b></dd><dt>Visible?</dt><dd>${Math.abs(PS.f * q[0] / q[2]) <= 18 && Math.abs(PS.f * q[1] / q[2]) <= 12 ? '<span class="tag good">inside the sensor</span>' : '<span class="tag warn">outside the sensor</span>'}</dd></dl><p class="note">Double Z and x halves. That is why far objects look small.</p>`;
+  const rows = [["X-parallel lines", 0, RED], ["Y-parallel lines", 1, GRN], ["Z-parallel lines (rails)", 2, BLU]].map(([n, k, col]) => { const p = vpOf(k); return `<dt><span class="sw" style="background:${col}"></span>${n}</dt><dd class="mono">${p ? `(${fmt(p[0], 1)}, ${fmt(p[1], 1)})` : "at infinity (stay parallel)"}</dd>`; }).join("");
+  $("psVP").innerHTML = `<dl class="detail" style="display:grid;grid-template-columns:auto 1fr;gap:3px 12px;margin:0">${rows}</dl><p class="note">For a direction (dx, dy, dz) in camera coordinates, the vanishing point is f·(dx/dz, dy/dz). If dz = 0 the lines are parallel to the image plane and never meet. Tilt the camera to see the vertical lines converge. The sensor spans ±18 mm by ±12 mm.</p>`;
+}
+const updPers = () => { readPers(); drawPers(); drawTop(); };
+[["psF", "f"], ["psYaw", "yaw"], ["psTilt", "tilt"], ["psX", "x"], ["psY", "y"], ["psZ", "z"]].forEach(([id, k]) => $(id).addEventListener("input", () => { PS[k] = +$(id).value; updPers(); }));
+seg("psView", v => { PS.wide = v === "wide"; updPers(); });
+$("psImg").addEventListener("click", e => {
+  const cv = $("psImg"); const [mx, my] = ptrXY(e, cv); const W = cv.clientWidth, H = 400, S = PS.wide ? W / 100 : W / 40; let best = -1, bd = 18;
+  verts.forEach((v, i) => { const q = toCam(v); if (q[2] < 0.15) return; const p = projPt(q, W, H, S); const d = Math.hypot(p[0] - mx, p[1] - my); if (d < bd) { bd = d; best = i; } });
+  if (best >= 0) { PS.sel = best; updPers(); }
+});
+dragOn($("psTop"), (mx, my) => { const cv = $("psTop"), W = cv.clientWidth, H = 400, s = Math.min(W / 14, H / 26); PS.x = Math.max(-6, Math.min(6, Math.round((mx - W / 2) / s * 10) / 10)); PS.z = Math.max(-6, Math.min(10, Math.round(((H - 24 - my) / s - 3) * 10) / 10)); $("psX").value = PS.x; $("psZ").value = PS.z; updPers(); });
+
+/* =====================  02 thin lens  ===================== */
+const LN = { f: 50, o: 150, h: 30 };
+function drawLens() {
+  const cv = $("lnDiag"); const { ctx: c, W, H } = hiDPI(cv, 340); c.clearRect(0, 0, W, H);
+  const X0 = W / 2, Y0 = H / 2, S = (W / 2 - 26) / 400, f = LN.f, o = LN.o, h = LN.h;
+  const px = x => X0 + x * S, py = y => Y0 - y * S, xmax = (W - X0) / S, xmin = -X0 / S;
+  ln(c, 0, Y0, W, Y0, K.line, 1.2);
+  for (const m of [-2, -1, 1, 2]) { ln(c, px(m * f), Y0 - 5, px(m * f), Y0 + 5, K.mut, 1.5); tx(c, (Math.abs(m) === 1 ? "F" : "2F") + (m > 0 ? "′" : ""), px(m * f), Y0 + 20, K.mut, 12, "center"); }
+  // lens
+  const lh = (H / 2 - 12); c.fillStyle = K.acc + "22"; c.strokeStyle = K.acc; c.lineWidth = 2; c.beginPath(); c.moveTo(X0, Y0 - lh); c.quadraticCurveTo(X0 + 14, Y0, X0, Y0 + lh); c.quadraticCurveTo(X0 - 14, Y0, X0, Y0 - lh); c.fill(); c.stroke();
+  tx(c, "lens", X0 + 6, 14, K.acc, 12);
+  const P = [-o, h], inf = Math.abs(o - f) < 0.5;
+  const tipx = px(-o), tipy = py(h);
+  const rays = [];
+  rays.push({ y: h, slope: -h / f, col: BLU });                      // parallel ray, then through F'
+  rays.push({ y: 0, slope: -h / o, col: GRN });                      // central ray
+  if (!inf) { const yl = -h * f / (o - f); if (Math.abs(yl * S) < lh) rays.push({ y: yl, slope: 0, col: ORG }); }
+  const i = inf ? Infinity : f * o / (o - f), yi = inf ? 0 : -h * i / o;
+  for (const r of rays) {
+    ln(c, tipx, tipy, X0, py(r.y), r.col, 1.6);
+    if (inf) { const sl = r.slope; ln(c, X0, py(r.y), px(xmax), py(r.y + sl * xmax), r.col, 1.6); continue; }
+    ln(c, X0, py(r.y), px(xmax), py(r.y + r.slope * xmax), r.col, 1.6);
+    if (i < 0) ln(c, X0, py(r.y), px(i), py(yi), r.col, 1.2, [4, 4]);
+  }
+  // object
+  VB.arrow(c, tipx, Y0, tipx, tipy, K.ink, 3, 9);
+  c.strokeStyle = "#ff3b30"; c.lineWidth = 2.5; c.beginPath(); c.arc(tipx, tipy, 9, 0, 7); c.stroke(); dot(c, tipx, tipy, 3.5, "#ff3b30");
+  tx(c, "drag", tipx - 14, tipy - 14, "#ff3b30", 11, "right");
+  if (!inf && Math.abs(i) < xmax + 20 && Math.abs(i) < 600) {
+    const dash = i < 0 ? [4, 3] : [];
+    c.setLineDash(dash); VB.arrow(c, px(i), Y0, px(i), py(yi), i < 0 ? K.mut : GRN, 3, 9); c.setLineDash([]);
+    tx(c, i < 0 ? "virtual image" : "real image", px(i), Y0 + (yi > 0 ? 18 : -10) + (yi > 0 ? 0 : 0), K.mut, 11, "center");
+  } else if (!inf) tx(c, "image is far to the right", W - 10, 30, K.mut, 12, "right");
+  else tx(c, "o = f: parallel rays, no image", W - 10, 30, K.mut, 12, "right");
+  tx(c, `o = ${fmt(o, 0)} mm`, tipx, H - 10, K.mut, 12, "center"); if (!inf && i > 0 && px(i) < W - 20) tx(c, `i = ${fmt(i, 1)} mm`, px(i), H - 10, K.mut, 12, "center");
+}
+function readLens() {
+  const f = LN.f, o = LN.o, h = LN.h; $("lnFO").value = f + " mm"; $("lnOO").value = fmt(o, 0) + " mm";
+  if (Math.abs(o - f) < 0.5) { $("lnEq").innerHTML = `1/f = 1/${f} = ${fmt(1 / f, 4)}\n1/o = 1/${fmt(o, 0)} = ${fmt(1 / o, 4)}\n1/i = 1/f − 1/o = 0   so   i = ∞`; $("lnType").innerHTML = '<span class="tag warn">no image: rays leave parallel</span>'; return; }
+  const i = f * o / (o - f), m = -i / o;
+  $("lnEq").innerHTML = `1/f = 1/i + 1/o\n1/${f} = 1/i + 1/${fmt(o, 0)}\n1/i = ${fmt(1 / f, 4)} − ${fmt(1 / o, 4)} = ${fmt(1 / f - 1 / o, 4)}\ni = <b>${fmt(i, 1)} mm</b>\nmagnification m = −i/o = −${fmt(i, 1)}/${fmt(o, 0)} = <b>${fmt(m, 2)}</b>\nimage height = m·h = ${fmt(m, 2)} · ${fmt(h, 0)} = ${fmt(m * h, 1)} mm`;
+  $("lnType").innerHTML = `<span class="tag ${i > 0 ? "good" : "warn"}">${i > 0 ? "real" : "virtual"}</span> <span class="tag ${m < 0 ? "bad" : "good"}" style="color:inherit">${m < 0 ? "inverted" : "upright"}</span> <span class="tag warn">${Math.abs(m) > 1 ? "magnified" : Math.abs(m) < 1 ? "reduced" : "same size"} (|m| = ${fmt(Math.abs(m), 2)})</span>`;
+}
+const updLens = () => { readLens(); drawLens(); };
+$("lnF").addEventListener("input", () => { LN.f = +$("lnF").value; updLens(); });
+$("lnO").addEventListener("input", () => { LN.o = +$("lnO").value; updLens(); });
+dragOn($("lnDiag"), (mx, my) => { const cv = $("lnDiag"), W = cv.clientWidth, S = (W / 2 - 26) / 400; LN.o = Math.max(15, Math.min(400, Math.round((W / 2 - mx) / S))); LN.h = Math.max(6, Math.min(60, Math.round((170 - my) / S))); $("lnO").value = LN.o; updLens(); });
+
+/* =====================  03 aperture / DOF  ===================== */
+const NS = [1.4, 2, 2.8, 4, 5.6, 8, 11, 16, 22];
+const AP = { f: 50, N: 2.8, o0: 2500, sel: 2, cmax: 0.03 };
+const SLOT_O = [1000, 1500, 2500, 5000, 12000], TARGET = 150, PXMM = 20;
+const imgDist = (o, f) => f * o / (o - f);
+const blurC = (o) => { const D = AP.f / AP.N, i0 = imgDist(AP.o0, AP.f), i = imgDist(o, AP.f); return D * Math.abs(i - i0) / i; };
+const focusFromT = t => 600 * Math.pow(20, t / 100);
+const slotEls = [];
+SLOT_O.forEach((o, k) => {
+  const fg = document.createElement("figure"); fg.dataset.k = k; const cv = document.createElement("canvas"); cv.className = "view"; cv.width = 200; cv.height = 200; const cap = document.createElement("figcaption");
+  fg.append(cv, cap); $("apSlots").append(fg); slotEls.push({ fg, cv, cap });
+  fg.addEventListener("click", () => { AP.sel = k; updAp(true); });
+});
+function targetArr(rpx) {
+  const c = document.createElement("canvas"); c.width = 200; c.height = 200; const x = c.getContext("2d"); x.fillStyle = "#c8c8c8"; x.fillRect(0, 0, 200, 200);
+  x.save(); x.translate(100, 100); x.fillStyle = "#f2f2f2"; x.beginPath(); x.arc(0, 0, rpx, 0, 7); x.fill(); x.fillStyle = "#1a1a1a";
+  for (let a = 0; a < 12; a++) { x.beginPath(); x.moveTo(0, 0); x.arc(0, 0, rpx, a * Math.PI / 6, a * Math.PI / 6 + Math.PI / 12); x.closePath(); x.fill(); }
+  x.restore(); const d = x.getImageData(0, 0, 200, 200).data, g = new Float32Array(40000); for (let i = 0; i < 40000; i++) g[i] = d[i * 4]; return g;
+}
+function drawSlots() {
+  slotEls.forEach(({ fg, cv, cap }, k) => {
+    const o = SLOT_O[k], i = imgDist(o, AP.f), r = TARGET / 2 * i / o * PXMM, c = blurC(o), sig = c * PXMM / 4;
+    const g = targetArr(Math.max(1.5, r)); show(cv, 200, 200, sig > 0.25 ? gaussBlur(g, 200, 200, sig) : g, "clamp");
+    fg.classList.toggle("on", k === AP.sel);
+    const ok = c <= AP.cmax; cap.innerHTML = `<b>${fmt(o / 1000, o < 2000 ? 1 : 1)} m</b> c = <b>${fmt(c, 3)} mm</b> <span class="tag ${ok ? "good" : c < AP.cmax * 4 ? "warn" : "bad"}">${ok ? "sharp" : c < AP.cmax * 4 ? "soft" : "blurred"}</span>`;
+  });
+}
+function dofNums() {
+  const f = AP.f, N = AP.N, c = AP.cmax, o = AP.o0, Hh = f * f / (N * c) + f;
+  const near = o * (Hh - f) / (Hh + o - 2 * f), far = o >= Hh ? Infinity : o * (Hh - f) / (Hh - o);
+  return { H: Hh, near, far };
+}
+function drawApDiag() {
+  const cv = $("apDiag"); const { ctx: c, W, H } = hiDPI(cv, 300); c.clearRect(0, 0, W, H);
+  const o = SLOT_O[AP.sel], f = AP.f, D = f / AP.N, i0 = imgDist(AP.o0, f), i = imgDist(o, f);
+  const Y0 = H / 2, X0 = W * 0.36, L = W * 0.4, A = Math.min(100, 8 + 90 * D / 36), sx = X0 + L, srcX = 26;
+  const dx = Math.max(-L * 0.55, Math.min(L * 0.7, (i - i0) / i0 * L * 14)), Lc = L + dx, cx = X0 + Lc;
+  ln(c, 0, Y0, W, Y0, K.line, 1);
+  c.fillStyle = K.mut; c.fillRect(X0 - 3, 6, 6, Y0 - A - 6); c.fillRect(X0 - 3, Y0 + A, 6, H - 6 - Y0 - A);
+  ln(c, X0, Y0 - A, X0, Y0 + A, K.acc, 2);
+  ln(c, sx, 14, sx, H - 14, K.ink, 3);
+  // rays from source to lens edges, then to convergence point
+  for (const s of [-1, 1]) { ln(c, srcX, Y0, X0, Y0 + s * A, BLU, 1.4); ln(c, X0, Y0 + s * A, cx, Y0, BLU, 1.4); if (cx < sx) ln(c, cx, Y0, sx, Y0 - s * A * (sx - cx) / Lc, BLU, 1.4, [4, 3]); }
+  // extend rays through convergence to sensor
+  for (const s of [-1, 1]) if (cx < sx) { /* handled above */ } else ln(c, sx, Y0 + s * A * (cx - sx) / Lc, cx, Y0, BLU + "00", 0);
+  const by = A * Math.abs(cx - sx) / Lc;
+  c.fillStyle = ORG; c.fillRect(sx - 4, Y0 - by, 8, Math.max(2, 2 * by));
+  dot(c, srcX, Y0, 5, K.ink); dot(c, cx, Y0, 3.5, K.acc);
+  tx(c, `point at ${fmt(o / 1000, 1)} m`, srcX, Y0 - 12, K.mut, 11); tx(c, "aperture D", X0 + 8, Y0 - A - 4 < 16 ? 16 : Y0 - A - 4, K.acc, 11); tx(c, "sensor", sx, H - 3, K.mut, 11, "center");
+  tx(c, "focus point", cx, Y0 + 20, K.acc, 11, "center");
+  tx(c, `blur circle c = ${fmt(blurC(o), 3)} mm`, sx - 14, 18, ORG, 12, "right");
+}
+function drawApPlot() {
+  const cv = $("apPlot"); const { ctx: c, W, H } = hiDPI(cv, 240); c.clearRect(0, 0, W, H);
+  const p = 46, pr = 12, pb = 28, pt = 12, o0 = 500, o1 = 20000, X = o => p + Math.log(o / o0) / Math.log(o1 / o0) * (W - p - pr);
+  const ymax = Math.max(0.3, AP.cmax * 4), Y = v => H - pb - Math.min(v, ymax) / ymax * (H - pb - pt);
+  const dn = dofNums(); const nx = X(Math.max(o0, dn.near)), fx = isFinite(dn.far) ? X(Math.min(o1, dn.far)) : W - pr;
+  c.fillStyle = GRN + "22"; c.fillRect(nx, pt, fx - nx, H - pb - pt);
+  c.strokeStyle = K.line; c.strokeRect(p, pt, W - p - pr, H - pb - pt);
+  for (const o of [500, 1000, 2000, 5000, 10000, 20000]) { ln(c, X(o), pt, X(o), H - pb, K.line, 1, [2, 3]); tx(c, o / 1000 + " m", X(o), H - 10, K.mut, 11, "center"); }
+  for (let k = 0; k <= 3; k++) { const v = ymax * k / 3; tx(c, fmt(v, 2), p - 5, Y(v) + 4, K.mut, 11, "right"); }
+  tx(c, "c (mm)", p + 4, pt + 12, K.mut, 11);
+  ln(c, p, Y(AP.cmax), W - pr, Y(AP.cmax), ORG, 1.4, [5, 3]);
+  c.strokeStyle = K.acc; c.lineWidth = 2.5; c.beginPath(); for (let t = 0; t <= 300; t++) { const o = o0 * Math.pow(o1 / o0, t / 300); t ? c.lineTo(X(o), Y(blurC(o))) : c.moveTo(X(o), Y(blurC(o))); } c.stroke();
+  ln(c, X(AP.o0), pt, X(AP.o0), H - pb, K.ink, 1.2); tx(c, "focus", X(AP.o0) + 4, pt + 24, K.ink, 11);
+  SLOT_O.forEach((o, k) => { dot(c, X(o), Y(blurC(o)), k === AP.sel ? 7 : 5, k === AP.sel ? "#ff3b30" : K.acc); tx(c, "" + (k + 1), X(o), Y(blurC(o)) - 10, K.ink, 11, "center"); });
+}
+function readAp() {
+  AP.f = +$("apF").value; AP.N = NS[+$("apN").value]; AP.o0 = Math.round(focusFromT(+$("apFocus").value) / 10) * 10;
+  $("apFO").value = AP.f + " mm"; $("apNO").value = "f/" + AP.N; $("apFocusO").value = fmt(AP.o0 / 1000, 2) + " m";
+  const o = SLOT_O[AP.sel], D = AP.f / AP.N, i0 = imgDist(AP.o0, AP.f), i = imgDist(o, AP.f), c = blurC(o);
+  $("apRead").innerHTML = `<div class="eq">D = f/N = ${AP.f}/${AP.N} = <b>${fmt(D, 1)} mm</b>\ni(focus) = ${fmt(i0, 2)} mm   (sensor)\ni(${fmt(o / 1000, 1)} m) = ${fmt(i, 2)} mm\nc = D·|i − i<sub>focus</sub>| / i\n  = ${fmt(D, 1)}·${fmt(Math.abs(i - i0), 2)} / ${fmt(i, 2)}\n  = <b>${fmt(c, 3)} mm</b></div><p class="note">${c <= AP.cmax ? "Below the 0.03 mm limit, so this distance looks sharp." : "Above the 0.03 mm limit, so this distance looks blurred."} Halving the aperture diameter (two stops) halves c.</p>`;
+  const dn = dofNums();
+  $("apStats").innerHTML = `<span class="chip">Hyperfocal distance <b>${fmt(dn.H / 1000, 1)} m</b></span><span class="chip">Sharp from <b>${fmt(dn.near / 1000, 2)} m</b></span><span class="chip">to <b>${isFinite(dn.far) ? fmt(dn.far / 1000, 2) + " m" : "infinity"}</b></span><span class="chip">Depth of field <b>${isFinite(dn.far) ? fmt((dn.far - dn.near) / 1000, 2) + " m" : "unlimited"}</b></span>`;
+}
+const slotsDeb = deb(drawSlots, 50);
+function updAp(now) { readAp(); drawApDiag(); drawApPlot(); now ? drawSlots() : slotsDeb(); }
+["apF", "apN", "apFocus"].forEach(id => $(id).addEventListener("input", () => updAp(false)));
+$("apPlot").addEventListener("click", e => { const [mx] = ptrXY(e, $("apPlot")); const W = $("apPlot").clientWidth, p = 46, pr = 12; const o = 500 * Math.pow(40, (mx - p) / (W - p - pr)); let b = 0, bd = 1e9; SLOT_O.forEach((s, k) => { const d = Math.abs(Math.log(s / o)); if (d < bd) { bd = d; b = k; } }); AP.sel = b; updAp(true); });
+
+/* ---------- init ---------- */
+function all() { palette(); updPin(); updPers(); updLens(); updAp(true); }
+onTheme(deb(all, 80));
+$("phT").value = tFromD(PH.d); PH.d = dFromT(+$("phT").value);
+all();
+})();
+</script>
+</body>
+</html>

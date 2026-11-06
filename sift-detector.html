@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SIFT Detector, Interactively</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,500;8..60,600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="site.css">
+<style>
+.dogrows { display: grid; gap: 10px; }
+.dogrow { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; align-items: end; }
+.dogrow figure { gap: 3px; }
+.dogrow canvas { display: block; background: var(--stage); border-radius: 3px; image-rendering: pixelated; }
+.dogrow figcaption { font-size: 0.72rem; font-family: var(--mono); }
+table.calc td.c { font-weight: 600; outline: 2px solid var(--ink); outline-offset: -2px; }
+.cubes { display: flex; flex-wrap: wrap; gap: 10px; }
+.cubes div { display: grid; gap: 3px; font-size: 0.78rem; color: var(--muted); }
+canvas#ex, canvas#kpView, canvas#rpView { cursor: crosshair; }
+.oris { display: flex; gap: 6px; flex-wrap: wrap; }
+.dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 5px; vertical-align: -1px; }
+</style>
+</head>
+<body>
+<header class="site"></header>
+<main class="wrap">
+  <div class="intro">
+    <h1>SIFT Detector, Interactively</h1>
+    <p class="lead">SIFT finds blobs that look the same at any size and turns each into a 128-number fingerprint that survives rotation and scaling.</p>
+    <p>Pick a sample or use your own photo. Follows the SIFT Detector lecture in the Features chapter of First Principles of Computer Vision. This page implements the core of SIFT with a few simplifications, listed where they apply.</p>
+  </div>
+
+  <section class="stage" aria-labelledby="h0">
+    <div class="stage-head"><span class="num">00</span><div><h2 id="h0">Choose an image</h2><p>Images are converted to grayscale and shrunk to at most 300 px on the long side.</p></div></div>
+    <div id="pick"></div>
+    <p class="note" id="pickNote"></p>
+  </section>
+
+  <section class="stage" aria-labelledby="h1">
+    <div class="stage-head"><span class="num">01</span><div><h2 id="h1">Gaussian scale space</h2><p>Blurring with a Gaussian of width σ removes detail finer than σ. Stacking many blur levels gives a scale space. Drag σ, then click any image to read the numbers at one pixel.</p></div></div>
+    <div class="controls">
+      <div class="ctl"><label for="sg">Blur σ</label><input type="range" id="sg" min="0.8" max="12" step="0.1" value="3"><output id="sgO">3.0</output></div>
+    </div>
+    <div class="four">
+      <figure><canvas class="view click" id="s0"></canvas><figcaption>Original I</figcaption></figure>
+      <figure><canvas class="view click" id="s1"></canvas><figcaption>L(σ) = G<sub>σ</sub> ∗ I</figcaption></figure>
+      <figure><canvas class="view click" id="s2"></canvas><figcaption>L(kσ), with k = √2</figcaption></figure>
+      <figure><canvas class="view click" id="s3"></canvas><figcaption>D = L(kσ) − L(σ) (gray = 0)</figcaption></figure>
+    </div>
+    <div class="two">
+      <div class="math"><h3>The formulas</h3>
+        <div class="eq">G<sub>σ</sub>(x,y) = 1/(2πσ²) · exp(−(x²+y²) / 2σ²)<br>L(x,y,σ) = G<sub>σ</sub>(x,y) ∗ I(x,y)<br>D(x,y,σ) = L(x,y,kσ) − L(x,y,σ)<br>&nbsp;&nbsp;&nbsp;&nbsp;≈ (k−1) σ² ∇²G ∗ I</div>
+        <p>The difference of two blurs approximates the Laplacian of Gaussian, scaled by σ². A blob of radius r gives its strongest D when σ ≈ r/√2.</p></div>
+      <div class="math"><h3>At the selected pixel</h3><div id="sRead"></div></div>
+    </div>
+  </section>
+
+  <section class="stage" aria-labelledby="h2">
+    <div class="stage-head"><span class="num">02</span><div><h2 id="h2">Difference-of-Gaussians stack</h2><p>SIFT blurs in octaves. Each octave holds 6 blurred images with σ growing by 2<sup>1/3</sup> per step, so 5 DoG layers. The next octave starts from a half-size copy. Each row below is one octave, drawn at its true relative size.</p></div></div>
+    <div class="dogrows" id="dogRows"></div>
+    <p class="note" id="dogNote"></p>
+    <h3 style="font-size:1.1rem">Is this pixel an extremum?</h3>
+    <p class="note" style="margin-top:-8px">A keypoint candidate is a DoG value that is larger (or smaller) than all 26 neighbors in a 3×3×3 cube across space and scale. Choose a layer of octave 0 and click a pixel. Dots mark candidates that pass the contrast threshold from the next section.</p>
+    <div class="controls"><div class="ctl"><label>Layer</label><div class="seg" id="exLayer"><button type="button" data-v="1" aria-pressed="false">1</button><button type="button" data-v="2" aria-pressed="true">2</button><button type="button" data-v="3" aria-pressed="false">3</button></div></div></div>
+    <div class="main-side">
+      <figure><canvas class="view click" id="ex"></canvas><figcaption id="exCap">DoG layer, octave 0. Click a pixel.</figcaption></figure>
+      <div class="math"><h3>3×3×3 neighborhood (D × 1000)</h3><div id="exRead"></div></div>
+    </div>
+  </section>
+
+  <section class="stage" aria-labelledby="h3">
+    <div class="stage-head"><span class="num">03</span><div><h2 id="h3">Keypoints</h2><p>Each circle is one keypoint. Its radius is √2·σ, the blob size where D peaked. The line shows the dominant gradient direction. Raise the contrast threshold to drop weak blobs. Lower the edge ratio to drop points that sit on a line instead of a corner or blob. Click a circle to inspect it.</p></div></div>
+    <div class="controls">
+      <div class="ctl"><label for="ct">Contrast threshold |D|</label><input type="range" id="ct" min="0.003" max="0.06" step="0.001" value="0.015"><output id="ctO">0.015</output></div>
+      <div class="ctl"><label for="er">Edge ratio r</label><input type="range" id="er" min="2" max="30" step="1" value="10"><output id="erO">10</output></div>
+    </div>
+    <div class="main-side">
+      <figure><canvas class="view click" id="kpView"></canvas><figcaption>Click a keypoint. Colors show the octave.</figcaption></figure>
+      <div class="math">
+        <h3>Filtering</h3>
+        <div class="stats" id="kpStats" style="display:grid"></div>
+        <div class="legend"><span><i class="dot" style="background:#ef4444"></i>octave 0</span> <span><i class="dot" style="background:#f59e0b"></i>octave 1</span> <span><i class="dot" style="background:#22c55e"></i>octave 2</span> <span><i class="dot" style="background:#3b82f6"></i>octave 3</span></div>
+        <div class="eq">contrast: |D| ≥ threshold<br>edge test: tr(H)² / det(H) &lt; (r+1)² / r<br>H = [ Dxx Dxy ; Dxy Dyy ]</div>
+        <p>On an edge, D curves strongly across the edge and barely along it, so the two curvatures differ a lot and tr²/det is large. This page keeps the pixel grid location of each extremum. Real SIFT also refines the location to sub-pixel and sub-scale accuracy and starts with a 2× upsampled image, so it finds finer blobs.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="stage" aria-labelledby="h4">
+    <div class="stage-head"><span class="num">04</span><div><h2 id="h4">Orientation and descriptor of one keypoint</h2><p>Gradients around the keypoint vote into a 36-bin histogram weighted by magnitude and a Gaussian window. The peak becomes the keypoint's orientation. Any other peak above 80% of the maximum makes a second keypoint at the same place. Then the patch is rotated to that orientation and summarized as 4×4 cells of 8 direction bins each.</p></div></div>
+    <div class="oris" id="oriBtns"></div>
+    <div class="two">
+      <figure><canvas class="plot" id="hist" style="height:230px"></canvas><figcaption>36-bin orientation histogram (10° per bin), smoothed. Dashed line is 80% of the peak.</figcaption></figure>
+      <figure><canvas class="plot" id="desc" style="height:320px"></canvas><figcaption>Patch rotated to the keypoint orientation, with the 4×4×8 descriptor. Each arrow is one of 8 direction bins, and its length is the bin's weight.</figcaption></figure>
+    </div>
+    <div class="two">
+      <div class="math"><h3>This keypoint</h3><div id="kRead"></div></div>
+      <div class="math"><h3>The math with these numbers</h3><div id="kMath"></div></div>
+    </div>
+  </section>
+
+  <section class="stage" aria-labelledby="h5">
+    <div class="stage-head"><span class="num">05</span><div><h2 id="h5">Repeatability: rotate or scale, detect again, match</h2><p>The image is rotated and scaled about its center. SIFT runs again on the new image. Each descriptor is matched to its nearest neighbor in the other image, and kept only if it passes Lowe's ratio test: nearest distance &lt; ratio × second nearest. A match is correct if the point lands where the known transform says it should. Only features visible in both views are compared.</p></div></div>
+    <div class="controls">
+      <div class="ctl"><label for="rotA">Rotation</label><input type="range" id="rotA" min="-90" max="90" step="5" value="30"><output id="rotAO">30°</output></div>
+      <div class="ctl"><label for="scl">Scale</label><input type="range" id="scl" min="0.5" max="2" step="0.05" value="1"><output id="sclO">1.00×</output></div>
+      <div class="ctl"><label for="rat">Ratio test</label><input type="range" id="rat" min="0.5" max="0.95" step="0.01" value="0.8"><output id="ratO">0.80</output></div>
+    </div>
+    <figure><canvas class="view" id="rpView"></canvas><figcaption>Left: original. Right: transformed. Green lines are correct matches, red lines are wrong. Dots are visible keypoints.</figcaption></figure>
+    <div class="stats" id="rpStats"></div>
+    <p class="note" id="rpNote"></p>
+    <div class="controls">
+      <div class="ctl"><label>Sweep</label><div class="seg" id="swAxis"><button type="button" data-v="rot" aria-pressed="true">Rotation 0–90°</button><button type="button" data-v="scl" aria-pressed="false">Scale 0.5–2×</button></div></div>
+      <button class="btn primary" type="button" id="swGo">Run sweep</button>
+      <span class="note" id="swMsg"></span>
+    </div>
+    <div class="tablebox"><table id="swTable"><thead><tr><th>Transform</th><th>Visible A</th><th>Visible B</th><th>Repeated</th><th>Matches</th><th>Correct</th><th>Accuracy</th></tr></thead><tbody></tbody></table></div>
+  </section>
+</main>
+<footer class="wrap site"></footer>
+
+<script src="common.js"></script>
+<script>
+(() => {
+"use strict";
+const { $, nav, footer, SAMPLES, picker, toGray, show, showRGB, gaussBlur, imgXY, hiDPI, onTheme, cssVar, seg, segVal, arrow, fmt, bilinear } = VB;
+nav("sift-detector.html"); footer();
+const deb = (f, ms = 50) => { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => f(...a), ms); }; };
+const S = 3, SIG0 = 1.6, TAU = Math.PI * 2, OCT_COL = ["#ef4444", "#f59e0b", "#22c55e", "#3b82f6"];
+const st = { w: 0, h: 0, g: null, pyr: null, cands: [], kps: [], feats: [], sel: null, px: null, ex: null, exLayer: 2 };
+
+/* ================= SIFT core ================= */
+function buildPyramid(g, w, h) {
+  const gg = new Float32Array(g.length); for (let i = 0; i < g.length; i++) gg[i] = g[i] / 255;
+  const octs = []; let base = gaussBlur(gg, w, h, Math.sqrt(SIG0 * SIG0 - 0.25)), cw = w, ch = h;
+  for (let o = 0; o < 4; o++) {
+    const L = [base];
+    for (let i = 1; i <= S + 2; i++) { const sp = SIG0 * Math.pow(2, (i - 1) / S), sn = sp * Math.pow(2, 1 / S); L.push(gaussBlur(L[i - 1], cw, ch, Math.sqrt(sn * sn - sp * sp))); }
+    const D = []; for (let i = 0; i < S + 2; i++) { const d = new Float32Array(cw * ch); for (let k = 0; k < d.length; k++) d[k] = L[i + 1][k] - L[i][k]; D.push(d); }
+    octs.push({ w: cw, h: ch, L, D });
+    const nw = cw >> 1, nh = ch >> 1; if (Math.min(nw, nh) < 24) break;
+    base = new Float32Array(nw * nh); for (let y = 0; y < nh; y++) for (let x = 0; x < nw; x++) base[y * nw + x] = L[S][2 * y * cw + 2 * x];
+    cw = nw; ch = nh;
+  }
+  return octs;
+}
+function detect(pyr, thr0 = 0.003) {
+  const out = [];
+  pyr.forEach((oc, o) => {
+    const { w, h, D } = oc, sc = 1 << o;
+    for (let i = 1; i <= S; i++) {
+      const A = [D[i - 1], D[i], D[i + 1]], B = D[i];
+      for (let y = 5; y < h - 5; y++) for (let x = 5; x < w - 5; x++) {
+        const p = y * w + x, v = B[p]; if (v < thr0 && v > -thr0) continue;
+        let ok = true;
+        for (let a = 0; a < 3 && ok; a++) { const arr = A[a]; for (let dy = -1; dy <= 1 && ok; dy++) for (let dx = -1; dx <= 1; dx++) { if (a === 1 && !dx && !dy) continue; const n = arr[p + dy * w + dx]; if (v > 0 ? n >= v : n <= v) { ok = false; break; } } }
+        if (!ok) continue;
+        const dxx = B[p + 1] + B[p - 1] - 2 * v, dyy = B[p + w] + B[p - w] - 2 * v, dxy = (B[p + w + 1] - B[p + w - 1] - B[p - w + 1] + B[p - w - 1]) / 4;
+        const tr = dxx + dyy, det = dxx * dyy - dxy * dxy, sigOct = SIG0 * Math.pow(2, i / S);
+        out.push({ o, i, x, y, X: x * sc, Y: y * sc, sigOct, sigma: sigOct * sc, val: v, contrast: Math.abs(v), edge: det > 0 ? tr * tr / det : Infinity, dxx, dyy, dxy, tr, det });
+      }
+    }
+  });
+  return out;
+}
+const edgeLimit = R => (R + 1) * (R + 1) / R;
+const keep = (cands, thr, R) => cands.filter(c => c.contrast >= thr && c.edge < edgeLimit(R)).sort((a, b) => b.contrast - a.contrast);
+
+function orientHist(pyr, k) {
+  const oc = pyr[k.o], { w, h } = oc, L = oc.L[k.i], sw = 1.5 * k.sigOct, rad = Math.round(3 * sw), hist = new Float32Array(36);
+  for (let dy = -rad; dy <= rad; dy++) for (let dx = -rad; dx <= rad; dx++) {
+    const xx = k.x + dx, yy = k.y + dy; if (xx < 1 || yy < 1 || xx >= w - 1 || yy >= h - 1) continue;
+    const gx = L[yy * w + xx + 1] - L[yy * w + xx - 1], gy = L[(yy + 1) * w + xx] - L[(yy - 1) * w + xx];
+    const m = Math.hypot(gx, gy), wt = Math.exp(-(dx * dx + dy * dy) / (2 * sw * sw));
+    let b = Math.round(Math.atan2(gy, gx) / TAU * 36); b = ((b % 36) + 36) % 36; hist[b] += wt * m;
+  }
+  for (let it = 0; it < 6; it++) { const c = Float32Array.from(hist); for (let i = 0; i < 36; i++) hist[i] = (c[(i + 35) % 36] + c[i] + c[(i + 1) % 36]) / 3; }
+  return hist;
+}
+function histPeaks(hist) {
+  let mx = 0; for (const v of hist) mx = Math.max(mx, v); const out = [];
+  if (mx <= 0) return out;
+  for (let i = 0; i < 36; i++) {
+    const l = hist[(i + 35) % 36], c = hist[i], r = hist[(i + 1) % 36];
+    if (c > l && c > r && c >= 0.8 * mx) { const p = 0.5 * (l - r) / (l - 2 * c + r); out.push({ bin: i, theta: (((i + p) / 36 * TAU) % TAU + TAU) % TAU, val: c }); }
+  }
+  return out;
+}
+function ensureFeats(pyr, k) {
+  if (k.feats) return k.feats;
+  k.hist = orientHist(pyr, k); k.hmax = Math.max(...k.hist);
+  k.feats = histPeaks(k.hist).map(p => ({ k, theta: p.theta, bin: p.bin, peak: p.val, desc: null }));
+  return k.feats;
+}
+function descriptor(pyr, k, theta) {
+  const oc = pyr[k.o], { w, h } = oc, L = oc.L[k.i], d = 4, n = 8, bw = 3 * k.sigOct, cs = Math.cos(theta), sn = Math.sin(theta);
+  const rad = Math.round(bw * Math.SQRT2 * (d + 1) * 0.5), v = new Float32Array(d * d * n);
+  for (let dy = -rad; dy <= rad; dy++) for (let dx = -rad; dx <= rad; dx++) {
+    const rx = (cs * dx + sn * dy) / bw, ry = (-sn * dx + cs * dy) / bw, cb = rx + d / 2 - 0.5, rb = ry + d / 2 - 0.5;
+    if (rb <= -1 || rb >= d || cb <= -1 || cb >= d) continue;
+    const xx = k.x + dx, yy = k.y + dy; if (xx < 1 || yy < 1 || xx >= w - 1 || yy >= h - 1) continue;
+    const gx = L[yy * w + xx + 1] - L[yy * w + xx - 1], gy = L[(yy + 1) * w + xx] - L[(yy - 1) * w + xx];
+    let ori = Math.atan2(gy, gx) - theta; ori = ((ori % TAU) + TAU) % TAU; const ob = ori / TAU * n;
+    const wt = Math.exp(-(rx * rx + ry * ry) / (2 * (d / 2) * (d / 2))) * Math.hypot(gx, gy);
+    const r0 = Math.floor(rb), c0 = Math.floor(cb), o0 = Math.floor(ob), fr = rb - r0, fc = cb - c0, fo = ob - o0;
+    for (let a = 0; a < 2; a++) { const rr = r0 + a; if (rr < 0 || rr >= d) continue; const wr = a ? fr : 1 - fr;
+      for (let b = 0; b < 2; b++) { const cc = c0 + b; if (cc < 0 || cc >= d) continue; const wc = b ? fc : 1 - fc;
+        for (let c = 0; c < 2; c++) { const oo = (o0 + c) % n; v[(rr * d + cc) * n + oo] += wt * wr * wc * (c ? fo : 1 - fo); } } }
+  }
+  const norm = a => { let s = 0; for (const x of a) s += x * x; s = Math.sqrt(s) || 1; for (let i = 0; i < a.length; i++) a[i] /= s; return s; };
+  norm(v); let clamped = 0; for (let i = 0; i < v.length; i++) if (v[i] > 0.2) { v[i] = 0.2; clamped++; } norm(v);
+  return { v, clamped };
+}
+function featDesc(pyr, f) { if (!f.desc) { const r = descriptor(pyr, f.k, f.theta); f.desc = r.v; f.clamped = r.clamped; } return f.desc; }
+function featuresFor(pyr, kps, cap, withDesc) {
+  const out = []; for (const k of kps.slice(0, cap)) for (const f of ensureFeats(pyr, k)) { if (withDesc) featDesc(pyr, f); out.push(f); }
+  return out;
+}
+
+/* ================= drawing helpers ================= */
+function grayCanvas(g, w, h) { const t = document.createElement("canvas"); show(t, w, h, g); return t; }
+function drawBase(cv, srcCv, w, h, K, dim) {
+  cv.width = w * K; cv.height = h * K; const c = cv.getContext("2d"); c.imageSmoothingEnabled = true; c.drawImage(srcCv, 0, 0, w * K, h * K);
+  if (dim) { c.fillStyle = "rgba(0,0,0," + dim + ")"; c.fillRect(0, 0, w * K, h * K); }
+  c.setTransform(K, 0, 0, K, 0, 0); return c;
+}
+function drawKp(c, f, col, lw, K) {
+  const k = f.k, r = k.sigma * Math.SQRT2; c.strokeStyle = col; c.lineWidth = lw / K;
+  c.beginPath(); c.arc(k.X, k.Y, r, 0, TAU); c.stroke();
+  c.beginPath(); c.moveTo(k.X, k.Y); c.lineTo(k.X + r * Math.cos(f.theta), k.Y + r * Math.sin(f.theta)); c.stroke();
+}
+
+/* ================= 01 scale space ================= */
+function runScale() {
+  const { w, h, g } = st; const s = +$("sg").value; $("sgO").value = s.toFixed(1);
+  const a = gaussBlur(g, w, h, s), b = gaussBlur(g, w, h, Math.SQRT2 * s), d = new Float32Array(w * h); for (let i = 0; i < d.length; i++) d[i] = b[i] - a[i];
+  st.sc = { a, b, d, s };
+  const arrs = [[g, "clamp"], [a, "clamp"], [b, "clamp"], [d, "signed"]];
+  arrs.forEach(([arr, mode], i) => {
+    const ctx = show("s" + i, w, h, arr, mode);
+    if (st.px) { const [x, y] = st.px; ctx.strokeStyle = "#ff3b30"; ctx.lineWidth = 1.2; ctx.beginPath(); ctx.arc(x + 0.5, y + 0.5, 4, 0, TAU); ctx.moveTo(x - 8, y + 0.5); ctx.lineTo(x + 9, y + 0.5); ctx.moveTo(x + 0.5, y - 8); ctx.lineTo(x + 0.5, y + 9); ctx.stroke(); }
+  });
+  scaleRead();
+}
+function scaleRead() {
+  if (!st.px) { $("sRead").innerHTML = '<p class="note">Click any of the four images.</p>'; return; }
+  const [x, y] = st.px, i = y * st.w + x, { a, b, d, s } = st.sc;
+  $("sRead").innerHTML = `<dl class="detail" style="display:grid;grid-template-columns:auto 1fr;gap:3px 12px;margin:0"><dt>Pixel</dt><dd class="mono">(${x}, ${y})</dd><dt>I</dt><dd class="mono">${fmt(st.g[i], 1)}</dd><dt>L(σ = ${fmt(s, 1)})</dt><dd class="mono">${fmt(a[i], 1)}</dd><dt>L(kσ = ${fmt(s * Math.SQRT2, 2)})</dt><dd class="mono">${fmt(b[i], 1)}</dd><dt>D</dt><dd class="mono">${fmt(b[i], 1)} − ${fmt(a[i], 1)} = ${fmt(d[i], 2)}</dd><dt>D in [0,1] units</dt><dd class="mono">${fmt(d[i] / 255, 4)}</dd></dl><p class="note">A large |D| means this pixel differs from its blurred surroundings at this scale.</p>`;
+}
+["s0", "s1", "s2", "s3"].forEach(id => $(id).addEventListener("click", e => { st.px = imgXY(e, e.currentTarget, st.w, st.h); st.px[0] = Math.max(0, Math.min(st.w - 1, st.px[0])); st.px[1] = Math.max(0, Math.min(st.h - 1, st.px[1])); runScale(); }));
+$("sg").addEventListener("input", deb(runScale));
+
+/* ================= 02 DoG stack ================= */
+function renderDog() {
+  const host = $("dogRows"); host.innerHTML = "";
+  st.pyr.forEach((oc, o) => {
+    let m = 0; for (const d of oc.D) for (let k = 0; k < d.length; k += 3) m = Math.max(m, Math.abs(d[k])); m = Math.max(m * 0.5, 1e-4);
+    const row = document.createElement("div"); row.className = "dogrow";
+    oc.D.forEach((d, i) => {
+      const fig = document.createElement("figure"); const cv = document.createElement("canvas"); cv.style.width = (100 / (1 << o)) + "%"; cv.style.maxWidth = "100%";
+      showRGB(cv, oc.w, oc.h, k => { let v = 128 + d[k] / m * 127; v = v < 0 ? 0 : v > 255 ? 255 : v; return [v, v, v]; });
+      const cap = document.createElement("figcaption"); cap.textContent = `oct ${o}  D${i}  σ=${fmt(SIG0 * Math.pow(2, i / S) * (1 << o), 1)}`;
+      fig.append(cv, cap); row.append(fig);
+    });
+    host.append(row);
+  });
+  $("dogNote").textContent = `${st.pyr.length} octaves, ${st.pyr.length * 6} blurred images, ${st.pyr.length * 5} DoG layers. Extrema are searched in layers 1 to 3 of each octave.`;
+}
+function runEx() {
+  const { w, h, D } = st.pyr[0], i = st.exLayer; const d = D[i];
+  let m = 1e-4; for (let k = 0; k < d.length; k += 2) m = Math.max(m, Math.abs(d[k])); m *= 0.5;
+  const ctx = showRGB("ex", w, h, k => { let v = 128 + d[k] / m * 127; v = v < 0 ? 0 : v > 255 ? 255 : v; return [v, v, v]; });
+  const thr = +$("ct").value; ctx.fillStyle = "#22c55e";
+  for (const c of st.cands) if (c.o === 0 && c.i === i && c.contrast >= thr) ctx.fillRect(c.x - 1, c.y - 1, 3, 3);
+  if (st.ex && st.ex.i === i) { const [x, y] = st.ex.p; ctx.strokeStyle = "#ff3b30"; ctx.lineWidth = 1.2; ctx.strokeRect(x - 1.5, y - 1.5, 4, 4); }
+  $("exCap").textContent = `DoG layer ${i}, octave 0 (σ = ${fmt(SIG0 * Math.pow(2, i / S), 2)}). Green dots: extrema with |D| ≥ ${thr.toFixed(3)}.`;
+  exRead();
+}
+function exRead() {
+  const e = st.ex; if (!e || e.i !== st.exLayer) { $("exRead").innerHTML = '<p class="note">Click a pixel in the image.</p>'; return; }
+  const { w, h, D } = st.pyr[0], [x, y] = e.p; if (x < 2 || y < 2 || x >= w - 2 || y >= h - 2) { $("exRead").innerHTML = '<p class="note">Too close to the border. Click further in.</p>'; return; }
+  const i = e.i, v = D[i][y * w + x]; let mx = 0, gt = 0, lt = 0; const tabs = [];
+  for (let a = i - 1; a <= i + 1; a++) {
+    let t = `<div>D${a}${a === i ? " (this layer)" : a < i ? " (finer)" : " (coarser)"}<table class="calc">`;
+    for (let dy = -1; dy <= 1; dy++) { t += "<tr>"; for (let dx = -1; dx <= 1; dx++) {
+      const n = D[a][(y + dy) * w + x + dx], self = a === i && !dx && !dy; if (!self) { if (n >= v) gt++; if (n <= v) lt++; } mx = Math.max(mx, Math.abs(n));
+      t += `<td${self ? ' class="c"' : ""} data-v="${n}">${fmt(n * 1000, 1)}</td>`; } t += "</tr>"; }
+    tabs.push(t + "</table></div>");
+  }
+  $("exRead").innerHTML = `<div class="cubes">${tabs.join("")}</div>`;
+  $("exRead").querySelectorAll("td").forEach(td => { const n = +td.dataset.v, a = Math.min(0.14, Math.abs(n) / (mx || 1) * 0.14); td.style.background = n >= 0 ? `rgba(31,86,209,${a})` : `rgba(194,65,12,${a})`; });
+  const isMax = gt === 0, isMin = lt === 0, c = st.cands.find(c => c.o === 0 && c.i === i && c.x === x && c.y === y);
+  const verdict = isMax ? `<span class="tag good">maximum</span> The center is larger than all 26 neighbors.` : isMin ? `<span class="tag good">minimum</span> The center is smaller than all 26 neighbors.` : `<span class="tag bad">not an extremum</span> ${Math.max(gt, lt)} of 26 neighbors beat or tie the center.`;
+  $("exRead").insertAdjacentHTML("beforeend", `<p style="margin:8px 0 0">Center D = <b class="mono">${fmt(v * 1000, 2)}×10⁻³</b>. ${verdict}</p>` + (c ? `<p class="note">Edge test: tr²/det = ${isFinite(c.edge) ? fmt(c.edge, 1) : "∞"}, limit (r+1)²/r = ${fmt(edgeLimit(+$("er").value), 1)}.</p>` : ""));
+}
+seg("exLayer", v => { st.exLayer = +v; runEx(); });
+$("ex").addEventListener("click", e => { const [x, y] = imgXY(e, e.currentTarget, st.pyr[0].w, st.pyr[0].h); st.ex = { i: st.exLayer, p: [x, y] }; runEx(); });
+
+/* ================= 03 keypoints ================= */
+function runKp() {
+  const thr = +$("ct").value, R = +$("er").value; $("ctO").value = thr.toFixed(3); $("erO").value = R;
+  const nC = st.cands.filter(c => c.contrast >= thr).length, kps = keep(st.cands, thr, R);
+  st.kps = kps.slice(0, 600); st.feats = featuresFor(st.pyr, st.kps, 600, false);
+  if (st.sel && !st.feats.includes(st.sel)) st.sel = st.feats.find(f => f.k === st.sel.k && Math.abs(f.theta - st.sel.theta) < 1e-6) || null;
+  if (!st.sel && st.feats.length) st.sel = st.feats[0];
+  st.featsDesc = null;
+  $("kpStats").innerHTML = `<span class="chip">Extrema found <b>${st.cands.length}</b></span><span class="chip">Pass contrast <b>${nC}</b></span><span class="chip">Pass edge test <b>${kps.length}</b></span><span class="chip">Keypoints with orientation <b>${st.feats.length}</b>${kps.length > 600 ? " (strongest 600)" : ""}</span>`;
+  drawKp03(); runEx(); selChanged();
+}
+function drawKp03() {
+  const { w, h } = st, K = 2, c = drawBase($("kpView"), st.gcv, w, h, K, 0.2);
+  for (const f of st.feats) drawKp(c, f, OCT_COL[f.k.o] || "#fff", 1.4, K);
+  if (st.sel) { c.shadowColor = "#000"; c.shadowBlur = 3; drawKp(c, st.sel, "#ffffff", 3, K); c.shadowBlur = 0; }
+}
+$("kpView").addEventListener("click", e => {
+  const [x, y] = imgXY(e, e.currentTarget, st.w, st.h); let best = null, bd = 1e9;
+  for (const f of st.feats) { const r = f.k.sigma * Math.SQRT2, d = Math.hypot(f.k.X - x, f.k.Y - y); const sc = d / Math.max(r, 3); if (d <= Math.max(r, 5) && sc < bd) { bd = sc; best = f; } }
+  if (best) { st.sel = best; drawKp03(); selChanged(); }
+});
+["ct", "er"].forEach(id => $(id).addEventListener("input", deb(runKp)));
+
+/* ================= 04 inspect ================= */
+function selChanged() {
+  const f = st.sel, box = $("oriBtns"); box.innerHTML = "";
+  if (!f) { $("kRead").innerHTML = '<p class="note">No keypoints pass the thresholds. Lower the contrast threshold.</p>'; $("kMath").innerHTML = ""; drawHist(); drawDesc(); return; }
+  const k = f.k; k.feats.forEach((g, i) => { const b = document.createElement("button"); b.type = "button"; b.className = "btn"; b.textContent = `Orientation ${i + 1}: ${fmt(g.theta * 180 / Math.PI, 0)}°`; if (g === f) b.classList.add("primary"); b.onclick = () => { st.sel = g; drawKp03(); selChanged(); }; box.append(b); });
+  featDesc(st.pyr, f); drawHist(); drawDesc(); readSel();
+}
+function drawHist() {
+  const { ctx: c, W, H } = hiDPI($("hist"), 230); c.clearRect(0, 0, W, H); const f = st.sel; if (!f) return;
+  const ink = cssVar("--ink"), mut = cssVar("--muted"), acc = cssVar("--accent"), line = cssVar("--line"), hist = f.k.hist, mx = f.k.hmax, p = 28, b = 26, bw = (W - p - 8) / 36;
+  c.strokeStyle = line; c.beginPath(); c.moveTo(p, 8); c.lineTo(p, H - b); c.lineTo(W - 8, H - b); c.stroke();
+  const peaks = histPeaks(hist).map(q => q.bin);
+  for (let i = 0; i < 36; i++) { const hh = hist[i] / mx * (H - b - 14); c.fillStyle = peaks.includes(i) ? acc : mut; c.globalAlpha = peaks.includes(i) ? 1 : 0.55; c.fillRect(p + i * bw + 1, H - b - hh, bw - 2, hh); }
+  c.globalAlpha = 1; c.strokeStyle = ink; c.setLineDash([4, 4]); const y8 = H - b - 0.8 * (H - b - 14); c.beginPath(); c.moveTo(p, y8); c.lineTo(W - 8, y8); c.stroke(); c.setLineDash([]);
+  c.fillStyle = mut; c.font = "11px " + cssVar("--mono"); c.textAlign = "center";
+  for (const a of [0, 90, 180, 270, 360]) c.fillText(a + "°", p + a / 10 * bw, H - 8);
+  c.textAlign = "left"; c.fillText("80%", p + 4, y8 - 4);
+  const th = f.theta / TAU * 36; c.strokeStyle = "#ef4444"; c.lineWidth = 2; c.beginPath(); c.moveTo(p + (th + 0.5) * bw, 6); c.lineTo(p + (th + 0.5) * bw, H - b); c.stroke(); c.lineWidth = 1;
+}
+function drawDesc() {
+  const cv = $("desc"), { ctx: c, W, H } = hiDPI(cv, 320), f = st.sel; c.clearRect(0, 0, W, H); if (!f) return;
+  const k = f.k, oc = st.pyr[k.o], L = oc.L[k.i], N = Math.floor(Math.min(W, H)), ox = (W - N) / 2, bw = 3 * k.sigOct, cs = Math.cos(f.theta), sn = Math.sin(f.theta);
+  const res = 64, off = document.createElement("canvas"); off.width = off.height = res; const octx = off.getContext("2d"), im = octx.createImageData(res, res);
+  for (let v = 0; v < res; v++) for (let u = 0; u < res; u++) { const rx = ((u + 0.5) / res - 0.5) * 4 * bw, ry = ((v + 0.5) / res - 0.5) * 4 * bw; const val = bilinear(L, oc.w, oc.h, k.x + cs * rx - sn * ry, k.y + sn * rx + cs * ry) * 255; const j = (v * res + u) * 4; im.data[j] = im.data[j + 1] = im.data[j + 2] = val; im.data[j + 3] = 255; }
+  octx.putImageData(im, 0, 0); c.imageSmoothingEnabled = true; c.globalAlpha = 0.85; c.drawImage(off, ox, 0, N, N); c.globalAlpha = 1;
+  c.fillStyle = "rgba(0,0,0,.25)"; c.fillRect(ox, 0, N, N);
+  const cell = N / 4; c.strokeStyle = "rgba(255,255,255,.7)"; c.lineWidth = 1; for (let i = 0; i <= 4; i++) { c.beginPath(); c.moveTo(ox + i * cell, 0); c.lineTo(ox + i * cell, N); c.moveTo(ox, i * cell); c.lineTo(ox + N, i * cell); c.stroke(); }
+  const v = f.desc; let mx = 0; for (const x of v) mx = Math.max(mx, x);
+  for (let r = 0; r < 4; r++) for (let q = 0; q < 4; q++) for (let o = 0; o < 8; o++) {
+    const val = v[(r * 4 + q) * 8 + o]; if (val < 0.004) continue; const a = o / 8 * TAU, len = val / mx * cell * 0.46, cx = ox + (q + 0.5) * cell, cy = (r + 0.5) * cell;
+    arrow(c, cx, cy, cx + len * Math.cos(a), cy + len * Math.sin(a), "#fde047", 1.6, 5);
+  }
+  arrow(c, ox + 6, 14, ox + 46, 14, "#ef4444", 2, 7); c.fillStyle = "#fff"; c.font = "11px " + cssVar("--mono"); c.fillText("keypoint θ", ox + 50, 18);
+}
+function readSel() {
+  const f = st.sel, k = f.k, deg = a => a * 180 / Math.PI;
+  $("kRead").innerHTML = `<dl class="detail" style="display:grid;grid-template-columns:auto 1fr;gap:3px 12px;margin:0"><dt>Position</dt><dd class="mono">(${k.X}, ${k.Y}) in the image</dd><dt>Octave, layer</dt><dd class="mono">${k.o}, D${k.i}</dd><dt>Scale σ</dt><dd class="mono">${fmt(k.sigma, 2)} px (radius ${fmt(k.sigma * Math.SQRT2, 1)} px)</dd><dt>Contrast |D|</dt><dd class="mono">${fmt(k.contrast, 4)}</dd><dt>Edge tr²/det</dt><dd class="mono">${isFinite(k.edge) ? fmt(k.edge, 2) : "∞"}</dd><dt>Orientation θ</dt><dd class="mono">${fmt(deg(f.theta), 1)}° (clockwise on screen, since image y points down)</dd><dt>Orientations here</dt><dd class="mono">${k.feats.length}</dd></dl>`;
+  const hist = k.hist, mx = k.hmax, above = hist.filter(v => v >= 0.8 * mx).length;
+  $("kMath").innerHTML = `<div class="eq" style="white-space:normal">m = √(Lₓ² + L<sub>y</sub>²), φ = atan2(L<sub>y</sub>, Lₓ)<br>Each pixel adds m · exp(−d²/2(1.5σ)²) to bin ⌊φ/10°⌉.<br>Window radius = 3 × 1.5σ = ${fmt(3 * 1.5 * k.sigOct, 1)} px (σ = ${fmt(k.sigOct, 2)} in this octave)<br>Peak = ${fmt(k.hist[f.bin], 3)} in bin ${f.bin} (${f.bin * 10}°). Maximum ${fmt(mx, 3)}. 80% = ${fmt(0.8 * mx, 3)}.<br>${above} bin${above === 1 ? "" : "s"} reach 80%. Parabola through bins ${(f.bin + 35) % 36}, ${f.bin}, ${(f.bin + 1) % 36} refines θ to ${fmt(deg(f.theta), 1)}°.</div><p class="note">Descriptor: 4×4 cells, each cell 3σ = ${fmt(3 * k.sigOct, 1)} px wide, 8 direction bins per cell, giving 4·4·8 = 128 numbers. Directions are measured relative to θ, which is why rotation does not change them. Entries are normalized, clipped at 0.2 (${f.clamped} clipped here) and normalized again, so lighting changes matter less.</p>`;
+}
+onTheme(() => { if (st.sel) { drawHist(); drawDesc(); } });
+
+/* ================= 05 repeatability ================= */
+function xform(phi, s) {
+  const { w, h } = st, cx = w / 2, cy = h / 2, c = Math.cos(phi), n = Math.sin(phi);
+  return { fwd: (x, y) => [cx + s * (c * (x - cx) - n * (y - cy)), cy + s * (n * (x - cx) + c * (y - cy))], inv: (x, y) => { const u = (x - cx) / s, v = (y - cy) / s; return [cx + c * u + n * v, cy - n * u + c * v]; } };
+}
+function transformCanvas(phi, s) {
+  const { w, h } = st, cv = document.createElement("canvas"); cv.width = w; cv.height = h; const x = cv.getContext("2d");
+  x.fillStyle = "#808080"; x.fillRect(0, 0, w, h); x.imageSmoothingQuality = "high"; x.translate(w / 2, h / 2); x.rotate(phi); x.scale(s, s); x.translate(-w / 2, -h / 2); x.drawImage(st.gcv, 0, 0); return cv;
+}
+function origFeats() { if (!st.featsDesc) st.featsDesc = featuresFor(st.pyr, st.kps, 500, true); return st.featsDesc; }
+function evalTransform(phi, s, ratio) {
+  const { w, h } = st, T = xform(phi, s), tcv = transformCanvas(phi, s), t = toGray(tcv, w, h, 2000);
+  const pyr2 = buildPyramid(t.g, w, h), thr = +$("ct").value, R = +$("er").value;
+  const kp2 = keep(detect(pyr2), thr, R), F2 = featuresFor(pyr2, kp2, 500, true), F1 = origFeats();
+  const ins = (p, m) => p[0] >= m && p[1] >= m && p[0] <= w - m && p[1] <= h - m;
+  const VA = [], VB2 = [];
+  for (const a of F1) { const p = T.fwd(a.k.X, a.k.Y); a.p = p; if (ins(p, 3 * a.k.sigma * s + 4)) VA.push(a); }
+  for (const b of F2) { const q = T.inv(b.k.X, b.k.Y); if (ins(q, 3 * b.k.sigma / s + 4)) VB2.push(b); }
+  const dist = (u, v) => { let d = 0; for (let i = 0; i < 128; i++) { const e = u[i] - v[i]; d += e * e; } return d; };
+  const good = (a, b) => { const e = Math.hypot(a.p[0] - b.k.X, a.p[1] - b.k.Y), sr = b.k.sigma / (s * a.k.sigma); return e <= Math.max(3, b.k.sigma) && sr > 0.67 && sr < 1.5; };
+  const matches = [];
+  for (const a of VA) {
+    let d1 = Infinity, d2 = Infinity, bb = null;
+    for (const b of VB2) { const d = dist(a.desc, b.desc); if (d < d1) { d2 = d1; d1 = d; bb = b; } else if (d < d2) d2 = d; }
+    if (bb && Math.sqrt(d1) < ratio * Math.sqrt(d2)) matches.push({ a, b: bb, ok: good(a, bb), d1: Math.sqrt(d1), d2: Math.sqrt(d2) });
+  }
+  let rep = 0; for (const a of VA) if (F2.some(b => good(a, b))) rep++;
+  const correct = matches.filter(m => m.ok).length;
+  return { VA, VB: VB2, matches, correct, rep, acc: matches.length ? correct / matches.length : NaN, gray: t, tcv };
+}
+function runRepeat() {
+  const phi = +$("rotA").value * Math.PI / 180, s = +$("scl").value, ratio = +$("rat").value;
+  $("rotAO").value = $("rotA").value + "°"; $("sclO").value = s.toFixed(2) + "×"; $("ratO").value = ratio.toFixed(2);
+  if (!st.feats.length) { $("rpStats").innerHTML = '<span class="chip">No keypoints to track. Lower the contrast threshold.</span>'; return; }
+  const r = evalTransform(phi, s, ratio), { w, h } = st, K = 2, cv = $("rpView");
+  cv.width = 2 * w * K; cv.height = h * K; const c = cv.getContext("2d"); c.imageSmoothingEnabled = true;
+  c.drawImage(st.gcv, 0, 0, w * K, h * K); c.drawImage(grayCanvas(r.gray.g, w, h), w * K, 0, w * K, h * K);
+  c.fillStyle = "rgba(0,0,0,.2)"; c.fillRect(0, 0, 2 * w * K, h * K); c.setTransform(K, 0, 0, K, 0, 0);
+  c.strokeStyle = "#fff"; c.lineWidth = 1 / K; c.beginPath(); c.moveTo(w, 0); c.lineTo(w, h); c.stroke();
+  c.fillStyle = "#fde047"; for (const a of r.VA) c.fillRect(a.k.X - 1, a.k.Y - 1, 2, 2); for (const b of r.VB) c.fillRect(w + b.k.X - 1, b.k.Y - 1, 2, 2);
+  c.lineWidth = 1.2 / K; for (const m of r.matches) { c.strokeStyle = m.ok ? "rgba(34,197,94,.85)" : "rgba(239,68,68,.9)"; c.beginPath(); c.moveTo(m.a.k.X, m.a.k.Y); c.lineTo(w + m.b.k.X, m.b.k.Y); c.stroke(); }
+  const pct = v => isNaN(v) ? "n/a" : Math.round(v * 100) + "%";
+  $("rpStats").innerHTML = `<span class="chip">Visible in original <b>${r.VA.length}</b></span><span class="chip">Visible in transformed <b>${r.VB.length}</b></span><span class="chip">Re-detected nearby <b>${r.rep}</b> (${pct(r.rep / (r.VA.length || NaN))})</span><span class="chip">Matches <b>${r.matches.length}</b></span><span class="chip">Correct <b>${r.correct}</b></span><span class="chip">Match accuracy <b>${pct(r.acc)}</b></span>`;
+  $("rpNote").textContent = `Re-detected counts original features that have a detection within about one σ of where the transform sends them. Accuracy is correct matches divided by matches that passed the ratio test. Try 90° or 2× to see where it holds up, and note that the stored orientation changes by the rotation angle (${$("rotA").value}°) while the descriptor stays similar.`;
+}
+["rotA", "scl", "rat"].forEach(id => $(id).addEventListener("input", deb(runRepeat, 120)));
+seg("swAxis", () => {});
+$("swGo").addEventListener("click", async () => {
+  if (!st.feats.length) return; const axis = segVal("swAxis"), tb = $("swTable").tBodies[0], ratio = +$("rat").value; tb.innerHTML = "";
+  const vals = axis === "rot" ? [0, 15, 30, 45, 60, 75, 90] : [0.5, 0.7, 1, 1.4, 2], phi0 = +$("rotA").value * Math.PI / 180, s0 = +$("scl").value;
+  $("swGo").disabled = true;
+  for (const v of vals) {
+    $("swMsg").textContent = "Working on " + (axis === "rot" ? v + "°" : v + "×") + "…"; await new Promise(r => setTimeout(r, 20));
+    const phi = axis === "rot" ? v * Math.PI / 180 : phi0, s = axis === "rot" ? s0 : v, r = evalTransform(phi, s, ratio);
+    const tr = document.createElement("tr"); tr.innerHTML = `<td>${axis === "rot" ? v + "° rotation" : v + "× scale"}</td><td>${r.VA.length}</td><td>${r.VB.length}</td><td>${r.rep}</td><td>${r.matches.length}</td><td>${r.correct}</td><td>${isNaN(r.acc) ? "n/a" : Math.round(r.acc * 100) + "%"}</td>`; tb.append(tr);
+  }
+  $("swMsg").textContent = "Done. The other slider (" + (axis === "rot" ? "scale" : "rotation") + ") is held at its current value."; $("swGo").disabled = false;
+});
+
+/* ================= load ================= */
+function load(src, sw, sh) {
+  const t = toGray(src, sw, sh, 300); Object.assign(st, { w: t.w, h: t.h, g: t.g }); st.gcv = grayCanvas(t.g, t.w, t.h);
+  st.pyr = buildPyramid(t.g, t.w, t.h); st.cands = detect(st.pyr); st.sel = null; st.ex = null; st.px = null;
+  // default pixel: strongest candidate in octave 0, layer 2
+  const c0 = st.cands.filter(c => c.o === 0 && c.i === 2).sort((a, b) => b.contrast - a.contrast)[0];
+  if (c0) { st.ex = { i: 2, p: [c0.x, c0.y] }; st.px = [c0.x, c0.y]; } else st.px = [t.w >> 1, t.h >> 1];
+  setSegSafe(); runScale(); renderDog(); runKp(); setTimeout(runRepeat, 30); setTimeout(() => { if (!$("swGo").disabled) $("swGo").click(); }, 300);
+}
+function setSegSafe() { VB.setSeg("exLayer", 2); st.exLayer = 2; }
+const samples = [
+  Object.assign({}, SAMPLES.scene, { note: "<b>Scene:</b> the windows, tree and fence posts give clear blobs at different sizes. Raise the contrast threshold to keep only the strongest." }),
+  Object.assign({}, SAMPLES.blobs, { note: "<b>Blobs:</b> discs of many sizes. Each should get a circle whose radius matches the disc. This is the best sample for the repeatability test." }),
+  Object.assign({}, SAMPLES.shapes, { note: "<b>Shapes:</b> long bars and ellipses make edge-like extrema. Lower the edge ratio r and watch the points along the bars disappear." }),
+  Object.assign({}, SAMPLES.bricks, { note: "<b>Bricks:</b> repeated texture. Many descriptors look alike, so the ratio test rejects most matches. That is the test working as intended." }),
+];
+const p = picker({ el: "pick", samples, noteEl: "pickNote", onImage: load });
+p.pick(samples[0]);
+})();
+</script>
+</body>
+</html>

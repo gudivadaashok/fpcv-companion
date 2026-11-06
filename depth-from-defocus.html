@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Depth from Defocus, Interactively</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,500;8..60,600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="site.css">
+<style>
+#lens { height: 300px; }
+#blurPlot, #curve, #dfdPlot { height: 260px; }
+canvas.view { cursor: crosshair; }
+.bar-depth { height: 10px; border-radius: 5px; background: linear-gradient(90deg, hsl(0,100%,50%), hsl(60,100%,50%), hsl(120,100%,50%), hsl(180,100%,50%), hsl(240,100%,50%)); }
+.barlabels { display: flex; justify-content: space-between; font-size: 0.75rem; color: var(--muted); }
+.calc-lines { display: grid; gap: 5px; font-family: var(--mono); font-size: 0.82rem; }
+.calc-lines p { margin: 0; overflow-wrap: anywhere; }
+.calc-lines .hl { color: var(--accent); }
+table.cmp { width: 100%; }
+table.cmp th, table.cmp td { text-align: right; }
+table.cmp th:first-child, table.cmp td:first-child { text-align: left; }
+table.cmp tbody tr { cursor: default; }
+.busy { opacity: 0.55; transition: opacity 0.15s; }
+</style>
+</head>
+<body>
+<header class="site"></header>
+<main class="wrap">
+  <div class="intro">
+    <h1>Depth from Defocus, Interactively</h1>
+    <p class="lead">A lens focuses one distance sharply. Everything else blurs, and the blur grows with the distance from the focal plane. Measure the blur and you have measured depth.</p>
+    <p>The scene below is synthetic, so its true depth is known and both methods can be scored. Follows the Depth from Defocus lecture of First Principles of Computer Vision.</p>
+  </div>
+
+  <section class="stage" aria-labelledby="h0">
+    <div class="stage-head"><span class="num">00</span><div><h2 id="h0">The thin lens and its blur circle</h2><p>A point at distance <i>z</i> focuses at image distance <i>v</i>, but the sensor sits at <i>v</i>ₛ, set for the focus distance. The cone of light cuts the sensor in a disc of diameter <i>b</i>. Change the lens and the object distance and watch <i>b</i>.</p></div></div>
+    <div class="controls">
+      <div class="ctl"><label for="f">Focal length f</label><input type="range" id="f" min="25" max="100" step="1" value="50"><output id="fO"></output></div>
+      <div class="ctl"><label for="fn">f-number N (aperture A = f / N)</label><input type="range" id="fn" min="1.4" max="8" step="0.1" value="2.8"><output id="fnO"></output></div>
+      <div class="ctl"><label for="zf">Focus distance</label><input type="range" id="zf" min="0.5" max="4" step="0.05" value="1.5"><output id="zfO"></output></div>
+      <div class="ctl"><label for="zo">Object distance z</label><input type="range" id="zo" min="0.5" max="4" step="0.05" value="2.5"><output id="zoO"></output></div>
+    </div>
+    <div class="main-side">
+      <figure><canvas class="plot" id="lens" aria-label="Thin lens diagram"></canvas><figcaption>Schematic only. Distances behind the lens are stretched so the blur disc is visible.</figcaption></figure>
+      <figure><canvas class="plot" id="blurPlot" aria-label="Blur diameter against object distance"></canvas><figcaption>Blur diameter in pixels (pixel pitch 0.1 mm). Shaded: the depth range of the scene below.</figcaption></figure>
+    </div>
+    <div class="stats" id="lensStats"></div>
+    <div class="math"><h3>The equations</h3>
+      <p class="eq">1/f = 1/z + 1/v        vₛ = f·z_f / (z_f − f)        b = A · |vₛ − v| / v        A = f / N</p>
+      <p>Blur is zero at the focus distance and grows on both sides, faster on the near side. A larger aperture A makes depth of field shallower and the blur a stronger depth cue. Throughout the page, the blur is a Gaussian with σ = b / 2 pixels, a common stand-in for the true disc.</p></div>
+  </section>
+
+  <section class="stage" aria-labelledby="h1">
+    <div class="stage-head"><span class="num">01</span><div><h2 id="h1">A scene with known depth</h2><p>The texture is painted on every surface, and each pixel is blurred by the amount its true depth demands. This ignores the way blur spills across depth edges, so the real world is harder. Click any image on this page to follow one pixel.</p></div></div>
+    <div class="controls">
+      <div class="ctl"><label>Scene</label><div class="seg" id="scene"><button type="button" data-v="planes" aria-pressed="true">Planes</button><button type="button" data-v="slant" aria-pressed="false">Slanted wall</button><button type="button" data-v="mixed" aria-pressed="false">Floor and objects</button></div></div>
+      <div class="ctl"><label>Texture</label><div class="seg" id="tex"><button type="button" data-v="rich" aria-pressed="true">Rich</button><button type="button" data-v="sparse" aria-pressed="false">Sparse, with flat patches</button></div></div>
+    </div>
+    <div class="three">
+      <figure><canvas class="view click" id="vSharp"></canvas><figcaption>Everything in focus (a pinhole camera)</figcaption></figure>
+      <figure><canvas class="view click" id="vDepth"></canvas><figcaption>True depth<div class="bar-depth"></div><div class="barlabels"><span>0.7 m</span><span>near to far</span><span>3.3 m</span></div></figcaption></figure>
+      <figure><canvas class="view click" id="vFoc"></canvas><figcaption id="vFocCap">Photo with the lens focused at the distance set above</figcaption></figure>
+    </div>
+  </section>
+
+  <section class="stage" aria-labelledby="h2">
+    <div class="stage-head"><span class="num">02</span><div><h2 id="h2">Depth from focus: take a stack, find the sharpest</h2><p>Take 15 photos while moving the focus from near to far. At each pixel, measure local sharpness as the sum of the modified Laplacian |2I − I<sub>left</sub> − I<sub>right</sub>| + |2I − I<sub>up</sub> − I<sub>down</sub>| over a 7 × 7 window. The focus setting where it peaks gives the depth.</p></div></div>
+    <div class="controls"><div class="ctl"><label for="ks">Focus-stack photo</label><input type="range" id="ks" min="0" max="14" step="1" value="6" style="width:260px"><output id="ksO"></output></div></div>
+    <div class="three">
+      <figure><canvas class="view click" id="dStack"></canvas><figcaption id="dStackCap">Photo from the stack</figcaption></figure>
+      <figure><canvas class="view click" id="dSharp"></canvas><figcaption>Sharpness measure for this photo (bright = sharp)</figcaption></figure>
+      <figure><canvas class="view click" id="dAif"></canvas><figcaption>All-in-focus image: each pixel from its sharpest photo</figcaption></figure>
+    </div>
+    <div class="three">
+      <figure><canvas class="view click" id="dDepth"></canvas><figcaption>Depth from focus (argmax over the stack, parabola refined)</figcaption></figure>
+      <figure><canvas class="view click" id="dErr"></canvas><figcaption>Absolute depth error (white = 0.5 m or more)</figcaption></figure>
+      <div class="math detail"><h3 id="pxTitle"></h3><div class="calc-lines" id="dffCalc"></div></div>
+    </div>
+    <figure><canvas class="plot" id="curve" aria-label="Sharpness against focus setting for the clicked pixel"></canvas><figcaption><span class="legend"><span><i style="background:var(--accent)"></i>Local sharpness at the clicked pixel</span><span><i style="background:var(--ink)"></i>Estimated peak</span><span><i style="background:#ca8a04"></i>True depth</span><span><i style="background:var(--muted)"></i>Photo shown above</span></span></figcaption></figure>
+    <div class="stats" id="dffStats"></div>
+    <p class="note">The x axis is the focus distance, spaced evenly in 1/z. With sparse texture, flat patches have almost no sharpness at any setting. Their curves are flat and noisy, and the argmax is a guess.</p>
+  </section>
+
+  <section class="stage" aria-labelledby="h3">
+    <div class="stage-head"><span class="num">03</span><div><h2 id="h3">Depth from defocus: two photos are enough</h2><p>Take just two photos at different focus settings. Image 2 is image 1 blurred by a relative amount: σ<sub>r</sub>² = |σ₂² − σ₁²|. At each pixel, find the σ<sub>r</sub> that best matches the two images in a 9 × 9 window, then invert the optics to get depth.</p></div></div>
+    <div class="controls">
+      <div class="ctl"><label for="za">Focus of photo 1</label><input type="range" id="za" min="0.5" max="4" step="0.05" value="1.2"><output id="zaO"></output></div>
+      <div class="ctl"><label for="zb">Focus of photo 2</label><input type="range" id="zb" min="0.5" max="4" step="0.05" value="2.4"><output id="zbO"></output></div>
+    </div>
+    <div class="three">
+      <figure><canvas class="view click" id="eA"></canvas><figcaption>Photo 1</figcaption></figure>
+      <figure><canvas class="view click" id="eB"></canvas><figcaption>Photo 2</figcaption></figure>
+      <figure><canvas class="view click" id="eRel"></canvas><figcaption>Relative blur σ<sub>r</sub> (bright = large)</figcaption></figure>
+    </div>
+    <div class="three">
+      <figure><canvas class="view click" id="eDepth"></canvas><figcaption>Depth from defocus</figcaption></figure>
+      <figure><canvas class="view click" id="eErr"></canvas><figcaption>Absolute depth error (white = 0.5 m or more)</figcaption></figure>
+      <div class="math detail"><h3 id="pxTitle2"></h3><div class="calc-lines" id="dfdCalc"></div></div>
+    </div>
+    <div class="two">
+      <figure><canvas class="plot" id="dfdPlot" aria-label="Matching error against relative blur"></canvas><figcaption>Matching error of the clicked pixel against trial blur. Negative σ<sub>r</sub> means photo 1 is the blurrier one.</figcaption></figure>
+      <figure><canvas class="plot" id="gPlot" style="height:260px" aria-label="Blur difference against depth"></canvas><figcaption>The optics: σ₂² − σ₁² against true depth for these two focus settings. The measured value picks the depth.</figcaption></figure>
+    </div>
+    <div class="math"><h3>Scoreboard</h3>
+      <table class="cmp"><thead><tr><th>Method</th><th>Photos used</th><th>RMS error (m)</th><th>Median error (m)</th><th>Pixels within 10%</th></tr></thead><tbody id="cmp"></tbody></table>
+      <p class="note">Errors skip a 6 pixel border. Two photos give a coarser but much cheaper estimate. Stack depth is limited by the focus spacing, and defocus depth by the blur matching and by where the two settings sit. Place the two focus settings on either side of the depth range for the best result. If the two are equal, the images are identical and the depth cannot be found.</p></div>
+  </section>
+</main>
+<footer class="wrap site"></footer>
+
+<script src="common.js"></script>
+<script>
+(() => {
+"use strict";
+const { $, nav, footer, show, showRGB, gaussBlur, boxSum, imgXY, hiDPI, onTheme, cssVar, seg, segVal, fmt, rng, hsvToRgb } = VB;
+nav("depth-from-defocus.html"); footer();
+const W = 160, H = 120, NP = W * H, K = 15, PITCH = 0.1, ZMIN = 0.7, ZMAX = 3.3, INV0 = 1 / 3.4, INV1 = 1 / 0.7;
+const S = { scene: "planes", tex: "rich", f: 50, fn: 2.8, zf: 1.5, zo: 2.5, k: 6, za: 1.2, zb: 2.4, sel: [60, 44] };
+const mono = () => cssVar("--mono") || "monospace", f2 = (v, d = 2) => fmt(v, d);
+let T = null, depth = null, lv = null, stack = [], sharp = [], dff = null, dfd = null;
+
+/* ---------- optics ---------- */
+const aper = () => S.f / S.fn;
+function blurPx(z, zf, f = S.f, A = aper()) { const zm = z * 1000, zfm = zf * 1000, vs = f * zfm / (zfm - f), v = f * zm / (zm - f); return A * Math.abs(vs - v) / v / PITCH; }
+const sigOf = (z, zf) => Math.min(8, blurPx(z, zf) / 2);
+const focusK = k => 1 / (INV0 + (INV1 - INV0) * k / (K - 1));
+const kOf = z => (1 / z - INV0) / (INV1 - INV0) * (K - 1);
+
+/* ---------- scene ---------- */
+const smooth = (a, b, x) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+function makeDepth(kind) {
+  const z = new Float32Array(NP);
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    let d;
+    if (kind === "planes") { d = 3.1; if (x > 14 && x < 70 && y > 14 && y < 70) d = 2.2; if (Math.hypot(x - 112, y - 46) < 28) d = 1.5; if (x > 40 && x < 100 && y > 82 && y < 112) d = 0.95; }
+    else if (kind === "slant") d = 0.85 + 2.3 * x / (W - 1);
+    else { d = y < 48 ? 3.2 : 3.2 - 2.3 * (y - 48) / (H - 48); if (Math.hypot(x - 45, y - 62) < 22) d = 1.5; if (x > 95 && x < 140 && y > 28 && y < 80) d = 2.1; }
+    z[y * W + x] = d;
+  }
+  return z;
+}
+function norm(a) { let m = 0; for (const v of a) m += v; m /= a.length; let s = 0; for (const v of a) s += (v - m) ** 2; s = Math.sqrt(s / a.length) || 1; return a.map(v => (v - m) / s); }
+function makeTexture(kind) {
+  const r = rng(11), white = new Float32Array(NP); for (let i = 0; i < NP; i++) white[i] = r();
+  const n1 = norm(gaussBlur(white, W, H, 0.8)), n2 = norm(gaussBlur(white, W, H, 2.5)), n3 = norm(gaussBlur(white, W, H, 6)), m = norm(gaussBlur(white, W, H, 12)), t = new Float32Array(NP);
+  for (let i = 0; i < NP; i++) { let v = 40 * n1[i] + 30 * n2[i] + 16 * n3[i]; if (kind === "sparse") v *= smooth(-0.15, 0.35, m[i]); t[i] = Math.max(0, Math.min(255, 128 + v)); }
+  return t;
+}
+function buildLevels() { lv = []; for (let j = 0; j <= 20; j++) lv.push(j === 0 ? T : gaussBlur(T, W, H, j * 0.4)); }
+function renderAt(zf) {
+  const o = new Float32Array(NP);
+  for (let i = 0; i < NP; i++) { const s = sigOf(depth[i], zf) / 0.4, j = Math.min(19, Math.floor(s)), a = Math.min(1, s - j); o[i] = lv[j][i] * (1 - a) + lv[j + 1][i] * a; }
+  return o;
+}
+
+/* ---------- depth from focus ---------- */
+function modLap(a) { const o = new Float32Array(NP); for (let y = 1; y < H - 1; y++) for (let x = 1; x < W - 1; x++) { const i = y * W + x; o[i] = Math.abs(2 * a[i] - a[i - 1] - a[i + 1]) + Math.abs(2 * a[i] - a[i - W] - a[i + W]); } return o; }
+function computeDFF() {
+  stack = []; sharp = []; for (let k = 0; k < K; k++) { const im = renderAt(focusK(k)); stack.push(im); sharp.push(boxSum(modLap(im), W, H, 3)); }
+  const zest = new Float32Array(NP), kbest = new Float32Array(NP), aif = new Float32Array(NP);
+  for (let i = 0; i < NP; i++) {
+    let b = 0, bv = -1; for (let k = 0; k < K; k++) if (sharp[k][i] > bv) { bv = sharp[k][i]; b = k; }
+    let kk = b; if (b > 0 && b < K - 1) { const l = sharp[b - 1][i], c = sharp[b][i], r = sharp[b + 1][i], d = l - 2 * c + r; if (d < -1e-9) kk = b + 0.5 * (l - r) / d; }
+    kbest[i] = kk; zest[i] = 1 / (INV0 + (INV1 - INV0) * kk / (K - 1)); aif[i] = stack[Math.round(Math.max(0, Math.min(K - 1, kk)))][i];
+  }
+  dff = { z: zest, k: kbest, aif }; dff.m = errStats(zest);
+}
+function errStats(z) {
+  const e = []; let se = 0, ok = 0, n = 0;
+  for (let y = 6; y < H - 6; y++) for (let x = 6; x < W - 6; x++) { const i = y * W + x, d = Math.abs(z[i] - depth[i]); e.push(d); se += d * d; n++; if (d / depth[i] < 0.1) ok++; }
+  e.sort((a, b) => a - b); return { rms: Math.sqrt(se / n), med: e[e.length >> 1], within: 100 * ok / n };
+}
+
+/* ---------- depth from defocus ---------- */
+const NC = 21, CS = 0.25, ZG = [];
+for (let z = 0.5; z <= 4.0001; z += 0.01) ZG.push(z);
+function gOf(z) { const s1 = blurPx(z, S.za) / 2, s2 = blurPx(z, S.zb) / 2; return s2 * s2 - s1 * s1; }
+function computeDFD() {
+  const A = renderAt(S.za), B = renderAt(S.zb), r = 4;
+  const bA = [], bB = []; for (let j = 0; j < NC; j++) { bA.push(j ? gaussBlur(A, W, H, j * CS) : A); bB.push(j ? gaussBlur(B, W, H, j * CS) : B); }
+  const ssd = []; // ssd[j] for blur(A)->B (dir +1) and ssd2[j] for A->blur(B) (dir -1)
+  const d1 = [], d2 = [];
+  for (let j = 0; j < NC; j++) { const e1 = new Float32Array(NP), e2 = new Float32Array(NP); for (let i = 0; i < NP; i++) { e1[i] = (bA[j][i] - B[i]) ** 2; e2[i] = (A[i] - bB[j][i]) ** 2; } d1.push(boxSum(e1, W, H, r)); d2.push(boxSum(e2, W, H, r)); }
+  const g = ZG.map(gOf), z = new Float32Array(NP), rel = new Float32Array(NP);
+  for (let i = 0; i < NP; i++) {
+    let bj = 0, bd = 1, bv = d1[0][i];
+    for (let j = 1; j < NC; j++) { if (d1[j][i] < bv) { bv = d1[j][i]; bj = j; bd = 1; } if (d2[j][i] < bv) { bv = d2[j][i]; bj = j; bd = -1; } }
+    const dl = bd * (bj * CS) ** 2; rel[i] = bd * bj * CS;
+    let bz = 0, be = Infinity; for (let q = 0; q < g.length; q++) { const e = Math.abs(g[q] - dl); if (e < be) { be = e; bz = ZG[q]; } } z[i] = bz;
+  }
+  dfd = { A, B, z, rel, d1, d2, m: null }; dfd.m = errStats(z);
+}
+
+/* ---------- drawing ---------- */
+const depthRGB = z => hsvToRgb(Math.max(0, Math.min(1, (z - ZMIN) / (ZMAX - ZMIN))) * 240, 0.85, 0.95);
+const gray = a => i => { const v = Math.max(0, Math.min(255, a[i])); return [v, v, v]; };
+function put(id, fn) { const ctx = showRGB(id, W, H, fn); const [x, y] = S.sel; ctx.strokeStyle = "#ff3b30"; ctx.lineWidth = 1; ctx.strokeRect(x - 3.5, y - 3.5, 7, 7); ctx.strokeStyle = "rgba(255,255,255,0.8)"; ctx.lineWidth = 0.5; ctx.strokeRect(x - 5, y - 5, 10, 10); }
+const errRGB = (zest, i) => { const v = Math.min(255, Math.abs(zest[i] - depth[i]) / 0.5 * 255); return [v, v, v]; };
+
+function drawLens() {
+  const cv = $("lens"); const { ctx, W: w, H: h } = hiDPI(cv, 300); ctx.clearRect(0, 0, w, h);
+  const z = S.zo, zm = z * 1000, zfm = S.zf * 1000, f = S.f, A = aper(), vs = f * zfm / (zfm - f), v = f * zm / (zm - f), cy = h / 2;
+  const lx = w * 0.42, D = Math.min(210, w * 0.4), sx = lx + D, ex = 40, Apx = Math.max(12, Math.min(110, A * 3)), ip = sx + (v - vs) * 38;
+  ctx.strokeStyle = cssVar("--line"); ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(10, cy); ctx.lineTo(w - 10, cy); ctx.stroke();
+  // lens
+  ctx.strokeStyle = cssVar("--ink"); ctx.lineWidth = 2.5; ctx.beginPath(); ctx.ellipse(lx, cy, 7, 78, 0, 0, 7); ctx.stroke();
+  ctx.lineWidth = 6; ctx.strokeStyle = cssVar("--muted"); ctx.beginPath(); ctx.moveTo(lx, cy - 78); ctx.lineTo(lx, cy - Apx / 2 - 2); ctx.moveTo(lx, cy + Apx / 2 + 2); ctx.lineTo(lx, cy + 78); ctx.stroke();
+  // sensor
+  ctx.strokeStyle = cssVar("--ink"); ctx.lineWidth = 4; ctx.beginPath(); ctx.moveTo(sx, cy - 85); ctx.lineTo(sx, cy + 85); ctx.stroke();
+  // object point and rays
+  ctx.fillStyle = "#ca8a04"; ctx.beginPath(); ctx.arc(ex, cy, 6, 0, 7); ctx.fill();
+  const ra = [[lx, cy - Apx / 2], [lx, cy + Apx / 2]];
+  ctx.strokeStyle = "#ca8a04"; ctx.lineWidth = 1.5; ctx.fillStyle = "rgba(202,138,4,0.12)";
+  const farx = Math.max(ip, sx) + 30; ctx.beginPath(); ctx.moveTo(ex, cy); ctx.lineTo(ra[0][0], ra[0][1]); const t0 = (farx - lx) / (ip - lx);
+  ctx.lineTo(farx, cy - Apx / 2 + (cy - (cy - Apx / 2)) * t0 * 1); ctx.lineTo(farx, cy + Apx / 2 - Apx / 2 * t0 * 1); ctx.lineTo(ra[1][0], ra[1][1]); ctx.closePath(); ctx.fill();
+  for (const sgn of [-1, 1]) { ctx.beginPath(); ctx.moveTo(ex, cy); ctx.lineTo(lx, cy + sgn * Apx / 2); ctx.lineTo(farx, cy + sgn * Apx / 2 * (1 - t0)); ctx.stroke(); }
+  // blur disc
+  const bh = Apx / 2 * Math.abs(ip - sx) / Math.max(10, ip - lx);
+  ctx.strokeStyle = "#e11d48"; ctx.lineWidth = 5; ctx.beginPath(); ctx.moveTo(sx, cy - Math.max(bh, 0.5)); ctx.lineTo(sx, cy + Math.max(bh, 0.5)); ctx.stroke();
+  ctx.fillStyle = cssVar("--muted"); ctx.font = "11px " + mono(); ctx.textAlign = "center";
+  ctx.fillText(`object, z = ${f2(z)} m`, ex + 20, cy - 16); ctx.fillText("lens", lx, cy - 92); ctx.fillText("sensor at vₛ", sx, cy - 92);
+  ctx.fillStyle = "#e11d48"; ctx.fillText(`b = ${f2(blurPx(z, S.zf) * PITCH, 3)} mm`, sx, cy + 104);
+  ctx.fillStyle = cssVar("--muted"); ctx.fillText(Math.abs(ip - sx) < 2 ? "sharp image point lands on the sensor" : ip > sx ? "sharp point would be behind the sensor" : "sharp point is in front of the sensor", (lx + sx) / 2, h - 10); ctx.textAlign = "start";
+  ctx.strokeStyle = cssVar("--accent"); ctx.setLineDash([3, 3]); ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(ip, cy - 40); ctx.lineTo(ip, cy + 40); ctx.stroke(); ctx.setLineDash([]); ctx.fillStyle = cssVar("--accent"); ctx.fillText("v", ip - 3, cy + 54);
+}
+function drawBlurPlot() {
+  const cv = $("blurPlot"); const { ctx, W: w, H: h } = hiDPI(cv, 260); ctx.clearRect(0, 0, w, h);
+  const L = 48, R = 12, Tp = 14, B = 34, pw = w - L - R, ph = h - Tp - B, x0 = 0.5, x1 = 4; let ymax = 4; for (let z = 0.5; z <= 4; z += 0.05) ymax = Math.max(ymax, blurPx(z, S.zf));
+  ymax = Math.min(40, Math.ceil(ymax / 2) * 2); const X = z => L + (z - x0) / (x1 - x0) * pw, Y = b => Tp + ph - Math.min(b, ymax) / ymax * ph;
+  ctx.fillStyle = "rgba(128,128,128,0.15)"; ctx.fillRect(X(0.8), Tp, X(3.2) - X(0.8), ph);
+  ctx.strokeStyle = cssVar("--line"); ctx.fillStyle = cssVar("--muted"); ctx.font = "11px " + mono(); ctx.lineWidth = 1; ctx.textAlign = "right";
+  for (let k = 0; k <= 4; k++) { const y = Tp + ph * k / 4; ctx.beginPath(); ctx.moveTo(L, y); ctx.lineTo(L + pw, y); ctx.stroke(); ctx.fillText(fmt(ymax * (1 - k / 4), 0), L - 6, y + 4); }
+  ctx.textAlign = "center"; for (const t of [0.5, 1, 2, 3, 4]) ctx.fillText(t + " m", X(t), Tp + ph + 15); ctx.fillText("object distance z", L + pw / 2, h - 4);
+  ctx.save(); ctx.translate(12, Tp + ph / 2); ctx.rotate(-Math.PI / 2); ctx.fillText("blur diameter b (pixels)", 0, 0); ctx.restore(); ctx.textAlign = "start";
+  ctx.strokeStyle = cssVar("--accent"); ctx.lineWidth = 2.2; ctx.beginPath(); for (let i = 0; i <= 200; i++) { const z = x0 + (x1 - x0) * i / 200; i ? ctx.lineTo(X(z), Y(blurPx(z, S.zf))) : ctx.moveTo(X(z), Y(blurPx(z, S.zf))); } ctx.stroke();
+  ctx.setLineDash([4, 4]); ctx.strokeStyle = cssVar("--muted"); ctx.beginPath(); ctx.moveTo(X(S.zf), Tp); ctx.lineTo(X(S.zf), Tp + ph); ctx.stroke(); ctx.setLineDash([]); ctx.fillStyle = cssVar("--muted"); ctx.fillText("focus", X(S.zf) + 4, Tp + 12);
+  const b = blurPx(S.zo, S.zf); ctx.fillStyle = cssVar("--ink"); ctx.beginPath(); ctx.arc(X(S.zo), Y(b), 5.5, 0, 7); ctx.fill();
+}
+function updLens() {
+  $("fO").value = S.f + " mm"; $("fnO").value = "f/" + f2(S.fn, 1); $("zfO").value = f2(S.zf) + " m"; $("zoO").value = f2(S.zo) + " m";
+  const zm = S.zo * 1000, zfm = S.zf * 1000, vs = S.f * zfm / (zfm - S.f), v = S.f * zm / (zm - S.f), A = aper(), b = A * Math.abs(vs - v) / v;
+  $("lensStats").innerHTML = `<span class="chip">vₛ = ${S.f}·${fmt(zfm, 0)} / (${fmt(zfm, 0)} − ${S.f}) = <b>${f2(vs, 3)} mm</b></span><span class="chip">v = <b>${f2(v, 3)} mm</b></span><span class="chip">A = ${S.f} / ${f2(S.fn, 1)} = <b>${f2(A, 1)} mm</b></span><span class="chip">b = ${f2(A, 1)} × ${f2(Math.abs(vs - v), 3)} / ${f2(v, 2)} = <b>${f2(b, 3)} mm = ${f2(b / PITCH, 1)} px</b></span>`;
+  drawLens(); drawBlurPlot();
+}
+
+function drawScene() {
+  put("vSharp", gray(T)); put("vDepth", i => depthRGB(depth[i]));
+  const im = renderAt(S.zf); put("vFoc", gray(im)); $("vFocCap").textContent = `Photo with the lens focused at ${f2(S.zf)} m`;
+}
+function drawStack() {
+  const k = S.k; $("ksO").value = `${k + 1} of ${K}: focus at ${f2(focusK(k))} m`; $("dStackCap").textContent = `Stack photo ${k + 1}, focused at ${f2(focusK(k))} m`;
+  put("dStack", gray(stack[k])); let mx = 1e-6; for (const v of sharp[k]) mx = Math.max(mx, v); const g = Math.max(mx * 0.7, 1e-6); put("dSharp", i => { const v = Math.min(255, sharp[k][i] / g * 255); return [v, v, v]; });
+}
+function drawDFF() {
+  put("dAif", gray(dff.aif)); put("dDepth", i => depthRGB(dff.z[i])); put("dErr", i => errRGB(dff.z, i));
+  const m = dff.m; $("dffStats").innerHTML = `<span class="chip">RMS depth error <b>${f2(m.rms)} m</b></span><span class="chip">Median error <b>${f2(m.med)} m</b></span><span class="chip">Pixels within 10% <b>${fmt(m.within, 1)}%</b></span><span class="chip">Photos used <b>${K}</b></span>`;
+  drawCurve();
+}
+function drawCurve() {
+  const [x, y] = S.sel, i = y * W + x, cv = $("curve"); const { ctx, W: w, H: h } = hiDPI(cv, 260); ctx.clearRect(0, 0, w, h);
+  const vals = sharp.map(s => s[i]), mx = Math.max(...vals, 1e-6), L = 50, R = 14, Tp = 14, B = 36, pw = w - L - R, ph = h - Tp - B, X = k => L + k / (K - 1) * pw, Y = v => Tp + ph - v / mx * ph;
+  ctx.strokeStyle = cssVar("--line"); ctx.fillStyle = cssVar("--muted"); ctx.font = "11px " + mono(); ctx.lineWidth = 1; ctx.strokeRect(L, Tp, pw, ph);
+  ctx.textAlign = "center"; for (let k = 0; k < K; k += 2) ctx.fillText(f2(focusK(k), 1), X(k), Tp + ph + 15); ctx.fillText("focus distance of each stack photo (m)", L + pw / 2, h - 5); ctx.textAlign = "right"; ctx.fillText(fmt(mx, 0), L - 6, Tp + 10); ctx.fillText("0", L - 6, Tp + ph); ctx.textAlign = "start";
+  ctx.strokeStyle = cssVar("--muted"); ctx.setLineDash([3, 3]); ctx.beginPath(); ctx.moveTo(X(S.k), Tp); ctx.lineTo(X(S.k), Tp + ph); ctx.stroke();
+  const kt = kOf(depth[i]); ctx.strokeStyle = "#ca8a04"; ctx.setLineDash([]); ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(X(kt), Tp); ctx.lineTo(X(kt), Tp + ph); ctx.stroke();
+  ctx.strokeStyle = cssVar("--ink"); ctx.beginPath(); ctx.moveTo(X(dff.k[i]), Tp); ctx.lineTo(X(dff.k[i]), Tp + ph); ctx.stroke();
+  ctx.strokeStyle = cssVar("--accent"); ctx.lineWidth = 2.4; ctx.beginPath(); vals.forEach((v, k) => k ? ctx.lineTo(X(k), Y(v)) : ctx.moveTo(X(k), Y(v))); ctx.stroke(); ctx.fillStyle = cssVar("--accent"); vals.forEach((v, k) => { ctx.beginPath(); ctx.arc(X(k), Y(v), 3.5, 0, 7); ctx.fill(); });
+  $("pxTitle").textContent = `Pixel (${x}, ${y})`;
+  const b = Math.round(dff.k[i]), pk = vals[Math.max(0, Math.min(K - 1, b))], flat = pk < 0.3 * mx + 1e-9 || mx < 8;
+  $("dffCalc").innerHTML = `<p>True depth z = <b>${f2(depth[i])} m</b></p><p>Sharpness peak at stack index ${f2(dff.k[i], 2)}</p><p class="hl">Estimated depth = <b>${f2(dff.z[i])} m</b></p><p>Error = ${f2(dff.z[i] - depth[i])} m</p><p>Peak sharpness = ${f2(pk, 1)}, a sharpness of ${f2(mx > 0 ? 100 * Math.min(...vals) / mx : 0, 0)}% at the dullest setting</p>` + (mx < 8 ? `<p class="note" style="font-family:var(--body)">This pixel has almost no texture, so no setting is sharper than another. The estimate is unreliable.</p>` : `<p class="note" style="font-family:var(--body)">The curve peaks where the lens is focused on this pixel's depth. The blur circle there is the smallest.</p>`);
+}
+function drawDFD() {
+  const d = dfd; put("eA", gray(d.A)); put("eB", gray(d.B)); put("eRel", i => { const v = Math.min(255, Math.abs(d.rel[i]) / 5 * 255); return d.rel[i] >= 0 ? [v, v * 0.7 + 30, 30] : [30, v * 0.7 + 30, v]; });
+  put("eDepth", i => depthRGB(d.z[i])); put("eErr", i => errRGB(d.z, i));
+  $("zaO").value = f2(S.za) + " m"; $("zbO").value = f2(S.zb) + " m";
+  const row = (name, n, m) => `<tr><td>${name}</td><td>${n}</td><td>${f2(m.rms)}</td><td>${f2(m.med)}</td><td>${fmt(m.within, 1)}%</td></tr>`;
+  $("cmp").innerHTML = row("Depth from focus (stack)", K, dff.m) + row("Depth from defocus (two photos)", 2, d.m);
+  drawDFDPix();
+}
+function drawDFDPix() {
+  const d = dfd, [x, y] = S.sel, i = y * W + x; $("pxTitle2").textContent = `Pixel (${x}, ${y})`;
+  const cv = $("dfdPlot"); const { ctx, W: w, H: h } = hiDPI(cv, 260); ctx.clearRect(0, 0, w, h);
+  const ys = []; for (let j = NC - 1; j >= 1; j--) ys.push([-j * CS, d.d2[j][i]]); ys.push([0, d.d1[0][i]]); for (let j = 1; j < NC; j++) ys.push([j * CS, d.d1[j][i]]);
+  const mx = Math.max(...ys.map(a => a[1]), 1e-6), L = 50, R = 14, Tp = 14, B = 36, pw = w - L - R, ph = h - Tp - B, X = s => L + (s + 5) / 10 * pw, Y = v => Tp + ph - v / mx * ph;
+  ctx.strokeStyle = cssVar("--line"); ctx.fillStyle = cssVar("--muted"); ctx.font = "11px " + mono(); ctx.lineWidth = 1; ctx.strokeRect(L, Tp, pw, ph); ctx.textAlign = "center"; for (let s = -5; s <= 5; s += 1) ctx.fillText(s, X(s), Tp + ph + 15); ctx.fillText("trial relative blur σr (pixels)", L + pw / 2, h - 5); ctx.textAlign = "start";
+  ctx.beginPath(); ctx.moveTo(X(0), Tp); ctx.lineTo(X(0), Tp + ph); ctx.stroke();
+  ctx.strokeStyle = cssVar("--accent"); ctx.lineWidth = 2.2; ctx.beginPath(); ys.forEach(([s, v], k) => k ? ctx.lineTo(X(s), Y(v)) : ctx.moveTo(X(s), Y(v))); ctx.stroke();
+  const rel = d.rel[i]; const best = ys.find(a => Math.abs(a[0] - rel) < 1e-6); ctx.fillStyle = cssVar("--ink"); if (best) { ctx.beginPath(); ctx.arc(X(best[0]), Y(best[1]), 5, 0, 7); ctx.fill(); }
+  const zt = depth[i], s1 = blurPx(zt, S.za) / 2, s2 = blurPx(zt, S.zb) / 2, dl = s2 * s2 - s1 * s1, tr = Math.sign(dl) * Math.sqrt(Math.abs(dl)); ctx.strokeStyle = "#ca8a04"; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(X(Math.max(-5, Math.min(5, tr))), Tp); ctx.lineTo(X(Math.max(-5, Math.min(5, tr))), Tp + ph); ctx.stroke();
+  const dm = Math.sign(rel) * rel * rel;
+  $("dfdCalc").innerHTML = `<p>True depth z = <b>${f2(zt)} m</b></p><p>True σ₁ = ${f2(s1)}, σ₂ = ${f2(s2)} px</p><p>True σ₂² − σ₁² = ${f2(dl)}</p><p>Best match: σr = <b>${f2(rel)}</b> px ${rel > 0 ? "(photo 2 is blurrier)" : rel < 0 ? "(photo 1 is blurrier)" : "(equal blur)"}</p><p>Measured σ₂² − σ₁² = ${f2(dm)}</p><p class="hl">Optics lookup: depth = <b>${f2(d.z[i])} m</b> (error ${f2(d.z[i] - zt)} m)</p>`;
+  const cv2 = $("gPlot"); const c = hiDPI(cv2, 260), cx = c.ctx; cx.clearRect(0, 0, c.W, c.H);
+  const gv = ZG.map(gOf), gm = Math.max(...gv.map(Math.abs), 1), L2 = 50, pw2 = c.W - L2 - 14, ph2 = c.H - 14 - 36, X2 = z => L2 + (z - 0.5) / 3.5 * pw2, Y2 = v => 14 + ph2 / 2 - v / gm * ph2 / 2;
+  cx.strokeStyle = cssVar("--line"); cx.fillStyle = cssVar("--muted"); cx.font = "11px " + mono(); cx.lineWidth = 1; cx.strokeRect(L2, 14, pw2, ph2); cx.beginPath(); cx.moveTo(L2, Y2(0)); cx.lineTo(L2 + pw2, Y2(0)); cx.stroke(); cx.textAlign = "center"; for (const t of [0.5, 1, 2, 3, 4]) cx.fillText(t + " m", X2(t), 14 + ph2 + 15); cx.fillText("object distance z", L2 + pw2 / 2, c.H - 5); cx.textAlign = "right"; cx.fillText(fmt(gm, 0), L2 - 5, 24); cx.fillText(fmt(-gm, 0), L2 - 5, 14 + ph2); cx.textAlign = "start";
+  cx.strokeStyle = cssVar("--accent"); cx.lineWidth = 2.2; cx.beginPath(); ZG.forEach((z, k) => k ? cx.lineTo(X2(z), Y2(gv[k])) : cx.moveTo(X2(z), Y2(gv[k]))); cx.stroke();
+  cx.strokeStyle = cssVar("--ink"); cx.setLineDash([4, 4]); cx.beginPath(); cx.moveTo(L2, Y2(dm)); cx.lineTo(X2(d.z[i]), Y2(dm)); cx.lineTo(X2(d.z[i]), 14 + ph2); cx.stroke(); cx.setLineDash([]); cx.fillStyle = "#ca8a04"; cx.beginPath(); cx.arc(X2(zt), Y2(gOf(zt)), 5, 0, 7); cx.fill();
+}
+function drawAll() { updLens(); drawScene(); drawStack(); drawDFF(); drawDFD(); }
+
+/* ---------- control flow ---------- */
+let t1 = 0, t2 = 0;
+function recomputeAll() { clearTimeout(t1); t1 = setTimeout(() => { computeDFF(); computeDFD(); drawAll(); }, 90); }
+function recomputeDFD() { clearTimeout(t2); t2 = setTimeout(() => { computeDFD(); drawDFD(); }, 90); }
+for (const [id, key, fn] of [["f", "f", recomputeAll], ["fn", "fn", recomputeAll], ["zf", "zf", () => { updLens(); drawScene(); }], ["zo", "zo", updLens], ["za", "za", recomputeDFD], ["zb", "zb", recomputeDFD]])
+  $(id).addEventListener("input", e => { S[key] = +e.target.value; $("zaO").value = f2(S.za) + " m"; $("zbO").value = f2(S.zb) + " m"; if (id === "f" || id === "fn" || id === "zf" || id === "zo") updLens(); fn(); });
+$("ks").addEventListener("input", e => { S.k = +e.target.value; drawStack(); drawCurve(); });
+seg("scene", v => { S.scene = v; depth = makeDepth(v); computeDFF(); computeDFD(); drawAll(); });
+seg("tex", v => { S.tex = v; T = makeTexture(v); buildLevels(); computeDFF(); computeDFD(); drawAll(); });
+for (const id of ["vSharp", "vDepth", "vFoc", "dStack", "dSharp", "dAif", "dDepth", "dErr", "eA", "eB", "eRel", "eDepth", "eErr"]) $(id).addEventListener("click", e => { const [x, y] = imgXY(e, e.currentTarget, W, H); S.sel = [Math.max(0, Math.min(W - 1, x)), Math.max(0, Math.min(H - 1, y))]; drawScene(); drawStack(); drawDFF(); drawDFD(); });
+onTheme(() => { if (dfd) { updLens(); drawCurve(); drawDFDPix(); } });
+
+depth = makeDepth("planes"); T = makeTexture("rich"); buildLevels(); computeDFF(); computeDFD(); drawAll();
+window.__m = () => ({ dff: dff.m, dfd: dfd.m });
+})();
+</script>
+</body>
+</html>

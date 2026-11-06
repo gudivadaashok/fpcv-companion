@@ -1,0 +1,502 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Image Stitching, Interactively</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,500;8..60,600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="site.css">
+<style>
+canvas.pair { width: 100%; height: auto; display: block; background: var(--stage); border-radius: 6px; cursor: crosshair; }
+.patches { display: flex; gap: 14px; flex-wrap: wrap; align-items: flex-end; }
+.patches figure { gap: 3px; }
+.patches canvas { width: 80px; height: 80px; image-rendering: pixelated; border-radius: 3px; background: var(--stage); }
+.btnrow { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+table.calc td.l { text-align: left; }
+.hbox { display: flex; gap: 18px; flex-wrap: wrap; }
+.hbox > div { display: grid; gap: 4px; font-size: 0.82rem; color: var(--muted); }
+.dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 5px; vertical-align: -1px; }
+.up { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+@media (max-width: 760px) { .up { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<header class="site"></header>
+<main class="wrap">
+  <div class="intro">
+    <h1>Image Stitching, Interactively</h1>
+    <p class="lead">To stitch two photos, find the same points in both, then solve for the 3×3 homography that maps one image onto the other. RANSAC makes that solution survive wrong matches.</p>
+    <p>The default pair comes from one wide procedural scene, so the true homography is known and you can check the estimate against it. Follows the Image Stitching lecture in the Features chapter of First Principles of Computer Vision.</p>
+  </div>
+
+  <section class="stage" aria-labelledby="h0">
+    <div class="stage-head"><span class="num">00</span><div><h2 id="h0">Make two overlapping views</h2><p>View A is a crop of the scene. View B is the same scene seen from a rotated, tilted camera that moved to the right, with slightly different exposure and noise. You can also upload your own two overlapping photos.</p></div></div>
+    <div class="controls"><div class="ctl"><label>Source</label><div class="seg" id="source"><button type="button" data-v="synth" aria-pressed="true">Synthetic pair</button><button type="button" data-v="up" aria-pressed="false">Two of my photos</button></div></div></div>
+    <div id="synthBox" style="display:grid;gap:14px">
+      <div id="pick"></div>
+      <p class="note" id="pickNote"></p>
+      <div class="controls">
+        <div class="ctl"><label for="rot">Camera rotation</label><input type="range" id="rot" min="0" max="30" step="1" value="10"><output id="rotO">10°</output></div>
+        <div class="ctl"><label for="per">Perspective tilt</label><input type="range" id="per" min="0" max="0.0015" step="0.0001" value="0.0006"><output id="perO">0.0006</output></div>
+      </div>
+    </div>
+    <div id="upBox" style="display:none;gap:14px">
+      <div class="up"><div><p class="note"><b>Left photo (A)</b></p><div id="pickA"></div><p class="note" id="noteA"></p></div><div><p class="note"><b>Right photo (B)</b></p><div id="pickB"></div><p class="note" id="noteB"></p></div></div>
+      <p class="note">Choose two photos that overlap by about a third to a half, taken from nearly the same spot. Until you choose both, the synthetic pair stays on screen. Everything below runs on your pair. The true homography is unknown for real photos, so the comparison in section 04 is hidden.</p>
+    </div>
+    <figure id="sceneFig"><canvas class="view" id="scene"></canvas><figcaption>The wide scene. The white box is view A. The orange quadrilateral is the area camera B sees.</figcaption></figure>
+    <div class="two">
+      <figure><canvas class="view" id="vA"></canvas><figcaption>View A</figcaption></figure>
+      <figure><canvas class="view" id="vB"></canvas><figcaption>View B</figcaption></figure>
+    </div>
+    <div class="note" id="pairNote"></div>
+  </section>
+
+  <section class="stage" aria-labelledby="h1">
+    <div class="stage-head"><span class="num">01</span><div><h2 id="h1">Harris corners</h2><p>A good feature changes in every direction when you shift a small window. The structure tensor M sums the gradient products over a window. If both eigenvalues of M are large, the point is a corner. If only one is large, it is an edge. Click a pixel in view A or in the response map to see the numbers.</p></div></div>
+    <div class="controls">
+      <div class="ctl"><label for="hk">k</label><input type="range" id="hk" min="0.02" max="0.10" step="0.01" value="0.05"><output id="hkO">0.05</output></div>
+      <div class="ctl"><label for="ht">Threshold (% of max R)</label><input type="range" id="ht" min="0.2" max="10" step="0.2" value="1"><output id="htO">1.0%</output></div>
+      <div class="ctl"><label for="hn">Max corners</label><input type="range" id="hn" min="50" max="600" step="10" value="300"><output id="hnO">300</output></div>
+    </div>
+    <div class="three">
+      <figure><canvas class="view click" id="hA"></canvas><figcaption id="hAcap">View A with corners</figcaption></figure>
+      <figure><canvas class="view" id="hB"></canvas><figcaption id="hBcap">View B with corners</figcaption></figure>
+      <figure><canvas class="view click" id="hR"></canvas><figcaption>Response R of view A. <span style="color:#f59e0b">Orange</span>: corner (R &gt; 0). <span style="color:#38bdf8">Blue</span>: edge (R &lt; 0).</figcaption></figure>
+    </div>
+    <div class="two">
+      <div class="math"><h3>The formulas</h3><div class="eq">M = Σ w(x,y) [ Ix²  IxIy ; IxIy  Iy² ]   (Gaussian window σ = 1.5)<br>R = det M − k · trace(M)² = λ₁λ₂ − k(λ₁ + λ₂)²<br>Keep local maxima of R in a 9×9 window above the threshold.</div><p class="note">Corners within 16 px of the border or outside the scene are skipped so that each one has a full patch around it.</p></div>
+      <div class="math"><h3>At the selected pixel</h3><div id="hRead"></div></div>
+    </div>
+  </section>
+
+  <section class="stage" aria-labelledby="h2">
+    <div class="stage-head"><span class="num">02</span><div><h2 id="h2">Patch descriptors and ratio-test matching</h2><p>Each corner gets a descriptor: an 8×8 grid of samples spaced 4 px apart (a 32 px window) from a blurred copy of the image. Subtracting the mean and dividing by the spread removes brightness and contrast changes. Each corner in A is matched to its nearest descriptor in B, and kept only if the nearest distance is clearly smaller than the second nearest. Click a corner in A to inspect it.</p></div></div>
+    <div class="controls"><div class="ctl"><label for="rt">Ratio test</label><input type="range" id="rt" min="0.5" max="1" step="0.01" value="0.8"><output id="rtO">0.80</output></div></div>
+    <figure><canvas class="pair" id="mCv"></canvas><figcaption>Lines join matched corners. White rings mark the corner you clicked.</figcaption></figure>
+    <div class="stats" id="mStats"></div>
+    <div class="two">
+      <div class="math"><h3>Selected corner</h3><div id="mRead"></div></div>
+      <div class="math"><h3>Descriptor patches (normalized)</h3>
+        <div class="patches"><figure><canvas id="pA" width="8" height="8"></canvas><figcaption>A</figcaption></figure><figure><canvas id="pB1" width="8" height="8"></canvas><figcaption>B nearest</figcaption></figure><figure><canvas id="pB2" width="8" height="8"></canvas><figcaption>B second</figcaption></figure></div>
+        <div class="eq" id="mEq" style="white-space:normal"></div>
+        <p class="note">These patches are not rotated to a canonical direction, unlike SIFT. They tolerate small rotations and tilts only. Raise the camera rotation in step 00 and watch the match count fall.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="stage" aria-labelledby="h3">
+    <div class="stage-head"><span class="num">03</span><div><h2 id="h3">RANSAC with a normalized DLT</h2><p>Some matches are wrong, and a least-squares fit to all of them would be ruined. RANSAC repeats: pick 4 matches at random, solve for H exactly, and count how many other matches agree within a pixel threshold. The model with the most inliers wins and is refit on all its inliers. Press Step to watch it work.</p></div></div>
+    <div class="controls">
+      <div class="ctl"><label for="rth">Inlier threshold</label><input type="range" id="rth" min="1" max="10" step="0.5" value="3"><output id="rthO">3.0 px</output></div>
+      <div class="ctl"><label for="rit">Iterations</label><input type="range" id="rit" min="10" max="500" step="10" value="120"><output id="ritO">120</output></div>
+    </div>
+    <div class="btnrow"><button class="btn" type="button" id="bReset">Reset</button><button class="btn primary" type="button" id="bStep">Step</button><button class="btn" type="button" id="bPlay">Play</button><button class="btn" type="button" id="bBest">Go to best sample</button><button class="btn" type="button" id="bEnd">Show result</button><span class="note" id="itLabel"></span></div>
+    <figure><canvas class="pair" id="rCv"></canvas><figcaption id="rCap"></figcaption></figure>
+    <div class="two">
+      <figure><canvas class="plot" id="rPlot" style="height:170px"></canvas><figcaption><span class="legend"><span><i style="background:var(--muted)"></i>inliers for each sample</span><span><i style="background:var(--accent)"></i>best so far</span><span><i style="background:#f59e0b"></i>current</span></span></figcaption></figure>
+      <div class="math"><h3 id="rH3">Current sample</h3><div id="rRead"></div></div>
+    </div>
+    <div class="two">
+      <div class="math"><h3>Normalized DLT for one sample</h3><div class="eq" style="white-space:normal">1. Shift and scale each point set so its centroid is 0 and its mean distance is √2 (matrices T, T′).<br>2. Each match (x,y) → (u,v) gives two rows of A:<br>[−x −y −1 0 0 0 ux uy u]<br>[0 0 0 −x −y −1 vx vy v]<br>3. Find h with ‖Ah‖ minimal and ‖h‖ = 1. That is the eigenvector of AᵀA with the smallest eigenvalue (this page uses a Jacobi eigen solver).<br>4. Undo the normalization: H = T′⁻¹ H̃ T.</div><p class="note">Skipping step 1 makes the numbers in A span from 1 to 100,000 and the solution becomes unstable.</p></div>
+      <div class="math"><h3>How many iterations?</h3><div id="rNeed"></div></div>
+    </div>
+  </section>
+
+  <section class="stage" aria-labelledby="h4">
+    <div class="stage-head"><span class="num">04</span><div><h2 id="h4">Warp, blend, and compare with the truth</h2><p>View A is warped into view B's frame with the estimated H, and the two are blended with weights that fall to zero at each image border. The difference view shows where they disagree. If the homography is right, the overlap cancels out.</p></div></div>
+    <div class="controls"><div class="ctl"><label>Show</label><div class="seg" id="pmode"><button type="button" data-v="blend" aria-pressed="true">Blended</button><button type="button" data-v="seam" aria-pressed="false">Hard seam</button><button type="button" data-v="diff" aria-pressed="false">Difference</button></div></div></div>
+    <figure><canvas class="view" id="pano" style="image-rendering:auto"></canvas><figcaption id="panoCap"></figcaption></figure>
+    <div class="stats" id="hStats"></div>
+    <div class="two">
+      <div class="math"><h3>Estimated H (A → B)</h3><div id="hEst"></div></div>
+      <div class="math"><h3>True H (A → B)</h3><div id="hTrue"></div></div>
+    </div>
+    <p class="note" id="hNote"></p>
+  </section>
+</main>
+<footer class="wrap site"></footer>
+
+<script src="common.js"></script>
+<script>
+(() => {
+"use strict";
+const { $, nav, footer, picker, show, gaussBlur, imgXY, hiDPI, onTheme, cssVar, seg, segVal, fmt, rng, addNoise, bilinear } = VB;
+nav("image-stitching.html"); footer();
+const deb = (f, ms = 50) => { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => f(...a), ms); }; };
+const SW = 560, SH = 340, VW = 320, VH = 240, AOFF = [20, 40], BC = [340, 170], PAT = 16;
+const st = { sceneFn: null, sceneImg: null, seed: 1, scene: null, vA: null, vB: null, Ht: null, upA: null, upB: null, it: 0, timer: null, sel01: null, sel02: -1 };
+
+/* ================= linear algebra ================= */
+const mul3 = (a, b) => { const o = new Array(9).fill(0); for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) for (let k = 0; k < 3; k++) o[i * 3 + j] += a[i * 3 + k] * b[k * 3 + j]; return o; };
+function inv3(m) {
+  const [a, b, c, d, e, f, g, h, i] = m, A = e * i - f * h, B = -(d * i - f * g), C = d * h - e * g, det = a * A + b * B + c * C; if (Math.abs(det) < 1e-18) return null;
+  return [A / det, -(b * i - c * h) / det, (b * f - c * e) / det, B / det, (a * i - c * g) / det, -(a * f - c * d) / det, C / det, -(a * h - b * g) / det, (a * e - b * d) / det];
+}
+function apply(H, x, y) { const w = H[6] * x + H[7] * y + H[8]; if (Math.abs(w) < 1e-9) return [NaN, NaN]; return [(H[0] * x + H[1] * y + H[2]) / w, (H[3] * x + H[4] * y + H[5]) / w]; }
+const unit = H => { const s = H[8]; return H.map(v => v / s); };
+function jacobiMin(Ain, n) {
+  const A = Float64Array.from(Ain), V = new Float64Array(n * n); for (let i = 0; i < n; i++) V[i * n + i] = 1;
+  for (let sweep = 0; sweep < 60; sweep++) {
+    let off = 0; for (let p = 0; p < n; p++) for (let q = p + 1; q < n; q++) off += A[p * n + q] * A[p * n + q]; if (off < 1e-26) break;
+    for (let p = 0; p < n; p++) for (let q = p + 1; q < n; q++) {
+      const apq = A[p * n + q]; if (Math.abs(apq) < 1e-300) continue;
+      const th = (A[q * n + q] - A[p * n + p]) / (2 * apq), t = (th >= 0 ? 1 : -1) / (Math.abs(th) + Math.sqrt(th * th + 1)), c = 1 / Math.sqrt(t * t + 1), s = t * c;
+      for (let k = 0; k < n; k++) { const x = A[k * n + p], y = A[k * n + q]; A[k * n + p] = c * x - s * y; A[k * n + q] = s * x + c * y; }
+      for (let k = 0; k < n; k++) { const x = A[p * n + k], y = A[q * n + k]; A[p * n + k] = c * x - s * y; A[q * n + k] = s * x + c * y; }
+      for (let k = 0; k < n; k++) { const x = V[k * n + p], y = V[k * n + q]; V[k * n + p] = c * x - s * y; V[k * n + q] = s * x + c * y; }
+    }
+  }
+  let mi = 0; for (let i = 1; i < n; i++) if (A[i * n + i] < A[mi * n + mi]) mi = i;
+  const v = new Float64Array(n); for (let k = 0; k < n; k++) v[k] = V[k * n + mi]; return v;
+}
+function normT(P) {
+  let cx = 0, cy = 0; for (const p of P) { cx += p[0]; cy += p[1]; } cx /= P.length; cy /= P.length;
+  let md = 0; for (const p of P) md += Math.hypot(p[0] - cx, p[1] - cy); md /= P.length; const s = md > 1e-9 ? Math.SQRT2 / md : 1;
+  return [s, 0, -s * cx, 0, s, -s * cy, 0, 0, 1];
+}
+function dlt(P, Q) {
+  if (P.length < 4) return null; const T1 = normT(P), T2 = normT(Q), AtA = new Float64Array(81);
+  for (let i = 0; i < P.length; i++) {
+    const [x, y] = apply(T1, P[i][0], P[i][1]), [u, v] = apply(T2, Q[i][0], Q[i][1]);
+    const r1 = [-x, -y, -1, 0, 0, 0, u * x, u * y, u], r2 = [0, 0, 0, -x, -y, -1, v * x, v * y, v];
+    for (const r of [r1, r2]) for (let a = 0; a < 9; a++) for (let b = 0; b < 9; b++) AtA[a * 9 + b] += r[a] * r[b];
+  }
+  const h = jacobiMin(AtA, 9), Hn = Array.from(h), T2i = inv3(T2); if (!T2i) return null;
+  const H = mul3(T2i, mul3(Hn, T1)); if (Math.abs(H[8]) < 1e-12 || H.some(v => !isFinite(v))) return null; return unit(H);
+}
+
+/* ================= procedural scenes ================= */
+const hsl = (h, s, l) => `hsl(${Math.round(h)},${Math.round(s)}%,${Math.round(l)}%)`;
+function sceneStreet(c, w, h, r) {
+  const sky = c.createLinearGradient(0, 0, 0, 200); sky.addColorStop(0, "#7fa8d6"); sky.addColorStop(1, "#dfe9f2"); c.fillStyle = sky; c.fillRect(0, 0, w, h);
+  c.fillStyle = "rgba(255,255,255,.8)"; for (let i = 0; i < 6; i++) { const x = r() * w, y = 15 + r() * 60; for (let j = 0; j < 4; j++) { c.beginPath(); c.ellipse(x + j * 14, y + (j % 2) * 4, 16 + r() * 8, 9, 0, 0, 7); c.fill(); } }
+  const hor = 250; let x = -10;
+  while (x < w) {
+    const bw = 55 + r() * 80, bh = 90 + r() * 120, y0 = hor - bh, hue = r() < 0.6 ? 10 + r() * 40 : r() * 360;
+    c.fillStyle = hsl(hue, 22 + r() * 25, 38 + r() * 30); c.fillRect(x, y0, bw, bh);
+    c.fillStyle = hsl(hue, 20, 28); c.fillRect(x - 2, y0 - 5, bw + 4, 7);
+    const cols = Math.max(2, Math.floor(bw / (16 + r() * 8))), rows = Math.floor((bh - 40) / (22 + r() * 10)), cw = bw / cols, rh = (bh - 40) / Math.max(1, rows);
+    for (let j = 0; j < rows; j++) for (let i = 0; i < cols; i++) { const lit = r() < 0.35; c.fillStyle = lit ? hsl(45 + r() * 15, 80, 65 + r() * 20) : hsl(200 + r() * 30, 25 + r() * 30, 14 + r() * 28); c.fillRect(x + i * cw + 3, y0 + 10 + j * rh + 3, cw - 7, rh - 8); if (r() < 0.25) { c.fillStyle = "rgba(255,255,255,.5)"; c.fillRect(x + i * cw + 3, y0 + 10 + j * rh + 3, cw - 7, 2); } }
+    c.fillStyle = hsl(r() * 360, 50, 30); c.fillRect(x + bw * (0.2 + r() * 0.5), hor - 30, 16, 30);
+    if (r() < 0.5) { const ax = x + r() * (bw - 30); c.fillStyle = hsl(r() * 360, 70, 45); c.fillRect(ax, hor - 38, 30, 7); c.fillStyle = "#fff"; for (let k = 0; k < 3; k++) c.fillRect(ax + 3 + k * 10, hor - 38, 4, 7); }
+    if (r() < 0.3) { c.strokeStyle = "#333"; c.lineWidth = 1.5; c.beginPath(); c.moveTo(x + bw / 2, y0 - 5); c.lineTo(x + bw / 2, y0 - 25 - r() * 15); c.stroke(); }
+    x += bw + r() * 6;
+  }
+  c.fillStyle = "#c9c4b8"; c.fillRect(0, hor, w, 14); c.strokeStyle = "rgba(0,0,0,.25)"; c.lineWidth = 1; for (let i = 0; i < w; i += 10 + r() * 12) { c.beginPath(); c.moveTo(i, hor); c.lineTo(i, hor + 14); c.stroke(); }
+  c.fillStyle = "#4a4d54"; c.fillRect(0, hor + 14, w, h - hor - 14);
+  c.fillStyle = "#e8e2c9"; for (let i = 0; i < w; i += 46) c.fillRect(i, hor + 62, 26, 5);
+  for (let i = 0; i < 9; i++) c.fillRect(300 + i * 11, hor + 76, 6, 40);
+  for (let i = 0; i < 7; i++) { const cx = r() * w, cy = hor + 22 + r() * 28; c.fillStyle = hsl(r() * 360, 55, 45); c.fillRect(cx, cy, 44, 16); c.fillStyle = "#1c2330"; c.fillRect(cx + 8, cy - 7, 26, 8); c.fillStyle = "#111"; c.beginPath(); c.arc(cx + 10, cy + 17, 5, 0, 7); c.arc(cx + 34, cy + 17, 5, 0, 7); c.fill(); }
+  for (let i = 0; i < 9; i++) { const tx = r() * w, ty = hor - 5; c.fillStyle = "#4b3621"; c.fillRect(tx, ty - 18, 5, 22); c.fillStyle = hsl(95 + r() * 40, 45, 25 + r() * 15); c.beginPath(); c.arc(tx + 2, ty - 28, 14 + r() * 6, 0, 7); c.fill(); }
+  for (let i = 0; i < 14; i++) { const px = r() * w, py = 260 + r() * 70; c.fillStyle = hsl(r() * 360, 60, 55); c.fillRect(px, py, 10 + r() * 14, 8 + r() * 8); }
+  c.fillStyle = "#222"; c.font = "bold 13px sans-serif"; for (let i = 0; i < 12; i++) c.fillText("ABCDEFGHKMNRSTW".charAt(Math.floor(r() * 15)) + Math.floor(r() * 90), r() * (w - 30), hor + 90 + r() * 70);
+}
+function sceneField(c, w, h, r) {
+  const gr = c.createLinearGradient(0, 0, w, h); gr.addColorStop(0, "#e9e6dc"); gr.addColorStop(1, "#c9d3de"); c.fillStyle = gr; c.fillRect(0, 0, w, h);
+  for (let i = 0; i < 260; i++) {
+    const x = r() * w, y = r() * h, s = 10 + r() * 38, col = hsl(r() * 360, 35 + r() * 50, 30 + r() * 45), k = r(); c.fillStyle = col; c.strokeStyle = hsl(r() * 360, 50, 25); c.lineWidth = 2 + r() * 4;
+    c.save(); c.translate(x, y); c.rotate(r() * 6.28);
+    if (k < 0.3) c.fillRect(-s / 2, -s / 3, s, s * 0.66); else if (k < 0.55) { c.beginPath(); c.arc(0, 0, s / 2, 0, 7); c.fill(); } else if (k < 0.75) { c.beginPath(); c.moveTo(0, -s / 2); c.lineTo(s / 2, s / 2); c.lineTo(-s / 2, s / 2); c.closePath(); c.fill(); } else if (k < 0.9) { c.beginPath(); c.arc(0, 0, s / 2, 0, 7); c.stroke(); } else { c.fillRect(-s / 2, -2, s, 4); c.fillRect(-2, -s / 2, 4, s); }
+    c.restore();
+  }
+}
+function sceneMosaic(c, w, h, r) {
+  c.fillStyle = "#ddd"; c.fillRect(0, 0, w, h); const cs = 34;
+  for (let y = 0; y < h + cs; y += cs) for (let x = -(Math.floor(y / cs) % 2) * 17; x < w; x += cs) {
+    const hue = r() * 360; c.fillStyle = hsl(hue, 30 + r() * 40, 35 + r() * 40); c.fillRect(x + 1, y + 1, cs - 2, cs - 2);
+    c.fillStyle = hsl(hue + 180, 50, r() < 0.5 ? 85 : 15); const k = Math.floor(r() * 5);
+    if (k === 0) { c.font = "bold 22px Georgia"; c.textAlign = "center"; c.textBaseline = "middle"; c.fillText("ABCDEFGHJKMNPRSTUWXYZ".charAt(Math.floor(r() * 21)), x + cs / 2, y + cs / 2 + 1); }
+    else if (k === 1) { c.beginPath(); c.arc(x + cs / 2, y + cs / 2, 4 + r() * 8, 0, 7); c.fill(); }
+    else if (k === 2) { c.beginPath(); c.moveTo(x + 4, y + cs - 4); c.lineTo(x + cs - 4, y + 4 + r() * 10); c.lineTo(x + cs - 4, y + cs - 4); c.fill(); }
+    else if (k === 3) { c.fillRect(x + 6, y + cs / 2 - 2, cs - 12, 4); c.fillRect(x + cs / 2 - 2 + r() * 8 - 4, y + 6, 4, cs - 12); }
+  }
+}
+const SCENES = [
+  { name: "Street", fn: sceneStreet, note: "<b>Street:</b> buildings, windows, cars and signs. Rich in corners, so matching works well. Try raising the camera rotation to 25°." },
+  { name: "Shape field", fn: sceneField, note: "<b>Shape field:</b> 260 random shapes. Every region is different, so almost every match is unique." },
+  { name: "Mosaic", fn: sceneMosaic, note: "<b>Mosaic:</b> tiles with random letters and marks. Many tiles share a shape but differ in color and size, which gives the ratio test real work to do." },
+];
+SCENES.forEach(s => { s.draw = (c, w, h) => { c.save(); c.scale(w / SW, h / SH); s.fn(c, SW, SH, rng(11)); c.restore(); }; });
+
+function makeScene() {
+  const cv = document.createElement("canvas"); cv.width = SW; cv.height = SH; const c = cv.getContext("2d");
+  if (st.sceneImg) { const k = Math.max(SW / st.sceneImg.w, SH / st.sceneImg.h), dw = st.sceneImg.w * k, dh = st.sceneImg.h * k; c.drawImage(st.sceneImg.src, (SW - dw) / 2, (SH - dh) / 2, dw, dh); }
+  else { st.sceneFn(c, SW, SH, rng(11)); addNoise(c, SW, SH, 5, 3); }
+  st.sceneCv = cv; st.scene = c.getImageData(0, 0, SW, SH);
+}
+
+/* ================= views ================= */
+function sample(img, x, y, o) {
+  const { width: w, height: h, data } = img; if (x < 0) x = 0; if (y < 0) y = 0; if (x > w - 1.001) x = w - 1.001; if (y > h - 1.001) y = h - 1.001;
+  const x0 = Math.floor(x), y0 = Math.floor(y), fx = x - x0, fy = y - y0, i = (y0 * w + x0) * 4, j = i + w * 4;
+  for (let c = 0; c < 3; c++) o[c] = (data[i + c] * (1 - fx) + data[i + 4 + c] * fx) * (1 - fy) + (data[j + c] * (1 - fx) + data[j + 4 + c] * fx) * fy;
+}
+function trueGeometry() {
+  const th = +$("rot").value * Math.PI / 180, q = +$("per").value, c = Math.cos(th), s = Math.sin(th);
+  const T = (x, y) => [1, 0, x, 0, 1, y, 0, 0, 1];
+  const Hb = mul3(T(BC[0], BC[1]), mul3([c, -s, 0, s, c, 0, 0, 0, 1], mul3([1, 0, 0, 0, 1, 0, q, q * 0.5, 1], T(-VW / 2, -VH / 2))));
+  const HA = T(AOFF[0], AOFF[1]), Ht = unit(mul3(inv3(Hb), HA));
+  return { Hb, HA, Ht };
+}
+function finishView(w, h, rgba, mask) {
+  const g = new Float32Array(w * h); for (let i = 0; i < g.length; i++) g[i] = 0.299 * rgba.data[i * 4] + 0.587 * rgba.data[i * 4 + 1] + 0.114 * rgba.data[i * 4 + 2];
+  const cv = document.createElement("canvas"); cv.width = w; cv.height = h; cv.getContext("2d").putImageData(rgba, 0, 0); return { w, h, rgba, g, mask, cv };
+}
+function synthViews() {
+  const { Hb, HA, Ht } = trueGeometry(), rA = rng(101), rB = rng(202); const o = [0, 0, 0];
+  const mk = (H, r, gain, bias) => {
+    const im = new ImageData(VW, VH), mask = new Uint8Array(VW * VH);
+    for (let y = 0; y < VH; y++) for (let x = 0; x < VW; x++) {
+      const [sx, sy] = apply(H, x, y), i = y * VW + x; mask[i] = sx >= 3 && sy >= 3 && sx <= SW - 4 && sy <= SH - 4 ? 1 : 0;
+      sample(st.scene, sx, sy, o); const n = (r() - 0.5) * 7;
+      for (let c = 0; c < 3; c++) im.data[i * 4 + c] = mask[i] ? o[c] * gain + bias + n : 0; im.data[i * 4 + 3] = 255;
+    }
+    return finishView(VW, VH, im, mask);
+  };
+  st.vA = mk(HA, rA, 1, 0); st.vB = mk(Hb, rB, 0.92, 6); st.Ht = Ht; st.Hb = Hb;
+}
+function uploadView(img) {
+  const k = Math.min(1, 360 / Math.max(img.w, img.h)), w = Math.max(32, Math.round(img.w * k)), h = Math.max(32, Math.round(img.h * k));
+  const cv = document.createElement("canvas"); cv.width = w; cv.height = h; const c = cv.getContext("2d"); c.drawImage(img.src, 0, 0, w, h);
+  return finishView(w, h, c.getImageData(0, 0, w, h), new Uint8Array(w * h).fill(1));
+}
+function drawBig(cv, vcv, K) { cv.width = vcv.width * K; cv.height = vcv.height * K; const c = cv.getContext("2d"); c.imageSmoothingEnabled = true; c.drawImage(vcv, 0, 0, cv.width, cv.height); c.setTransform(K, 0, 0, K, 0, 0); return c; }
+
+function runPair() {
+  const up = segVal("source") === "up" && st.upA && st.upB;
+  if (up) { st.vA = uploadView(st.upA); st.vB = uploadView(st.upB); st.Ht = null; $("sceneFig").style.display = "none"; }
+  else {
+    makeScene(); synthViews(); $("sceneFig").style.display = "";
+    const c = drawBig($("scene"), st.sceneCv, 1); c.lineWidth = 2; c.strokeStyle = "#fff"; c.strokeRect(AOFF[0], AOFF[1], VW, VH);
+    c.strokeStyle = "#f59e0b"; c.beginPath(); [[0, 0], [VW, 0], [VW, VH], [0, VH], [0, 0]].forEach(([x, y], i) => { const [sx, sy] = apply(st.Hb, x, y); i ? c.lineTo(sx, sy) : c.moveTo(sx, sy); }); c.stroke();
+  }
+  drawBig($("vA"), st.vA.cv, 1); drawBig($("vB"), st.vB.cv, 1);
+  $("rotO").value = $("rot").value + "°"; $("perO").value = (+$("per").value).toFixed(4);
+  $("pairNote").innerHTML = up ? `<b>Your photos:</b> A is ${st.vA.w}×${st.vA.h}, B is ${st.vB.w}×${st.vB.h}.` : `<b>Synthetic pair:</b> two ${VW}×${VH} views. The scene is drawn from random shapes in your browser, so no image file is involved.`;
+  st.sel01 = null; st.sel02 = -1; runHarris();
+}
+
+/* ================= 01 Harris ================= */
+function harris(v, k, pct, maxN) {
+  const { w, h, g, mask } = v, s = gaussBlur(g, w, h, 1), n = w * h, xx = new Float32Array(n), yy = new Float32Array(n), xy = new Float32Array(n);
+  for (let y = 1; y < h - 1; y++) for (let x = 1; x < w - 1; x++) { const i = y * w + x, ix = (s[i + 1] - s[i - 1]) / 2, iy = (s[i + w] - s[i - w]) / 2; xx[i] = ix * ix; yy[i] = iy * iy; xy[i] = ix * iy; }
+  const A = gaussBlur(xx, w, h, 1.5), B = gaussBlur(xy, w, h, 1.5), C = gaussBlur(yy, w, h, 1.5), R = new Float32Array(n); let mx = 0, mn = 0;
+  for (let i = 0; i < n; i++) { const t = A[i] + C[i]; R[i] = A[i] * C[i] - B[i] * B[i] - k * t * t; if (R[i] > mx) mx = R[i]; if (R[i] < mn) mn = R[i]; }
+  const thr = pct / 100 * mx, pts = [];
+  for (let y = PAT; y < h - PAT; y++) for (let x = PAT; x < w - PAT; x++) {
+    const i = y * w + x, r = R[i]; if (r <= thr) continue;
+    if (!mask[i] || !mask[i - PAT * w - PAT] || !mask[i - PAT * w + PAT] || !mask[i + PAT * w - PAT] || !mask[i + PAT * w + PAT]) continue;
+    let ok = true; for (let dy = -4; dy <= 4 && ok; dy++) for (let dx = -4; dx <= 4; dx++) if (R[i + dy * w + dx] > r) { ok = false; break; }
+    if (ok) pts.push({ x, y, r });
+  }
+  pts.sort((a, b) => b.r - a.r); return { R, A, B, C, pts: pts.slice(0, maxN), nAll: pts.length, mx, mn, thr, k };
+}
+function describe(v, pts) {
+  const gb = gaussBlur(v.g, v.w, v.h, 2); const out = [];
+  for (const p of pts) {
+    const d = new Float32Array(64); let m = 0;
+    for (let j = 0; j < 8; j++) for (let i = 0; i < 8; i++) { d[j * 8 + i] = bilinear(gb, v.w, v.h, p.x + (i - 3.5) * 4, p.y + (j - 3.5) * 4); m += d[j * 8 + i]; } m /= 64;
+    let s = 0; for (let i = 0; i < 64; i++) { d[i] -= m; s += d[i] * d[i]; } s = Math.sqrt(s); if (s < 1e-3) continue;
+    for (let i = 0; i < 64; i++) d[i] /= s; p.d = d; out.push(p);
+  }
+  return out;
+}
+function runHarris() {
+  const k = +$("hk").value, pct = +$("ht").value, mx = +$("hn").value; $("hkO").value = k.toFixed(2); $("htO").value = pct.toFixed(1) + "%"; $("hnO").value = mx;
+  st.hA = harris(st.vA, k, pct, mx); st.hB = harris(st.vB, k, pct, mx);
+  st.PA = describe(st.vA, st.hA.pts); st.PB = describe(st.vB, st.hB.pts);
+  st.nn = st.PA.map(a => { let d1 = Infinity, d2 = Infinity, j1 = -1, j2 = -1; for (let j = 0; j < st.PB.length; j++) { const b = st.PB[j].d; let d = 0; for (let t = 0; t < 64; t++) { const e = a.d[t] - b[t]; d += e * e; } if (d < d1) { d2 = d1; j2 = j1; d1 = d; j1 = j; } else if (d < d2) { d2 = d; j2 = j; } } return { j1, j2, d1: Math.sqrt(d1), d2: Math.sqrt(d2) }; });
+  if (!st.sel01) { const p = st.PA[0]; st.sel01 = p ? [p.x, p.y] : [st.vA.w >> 1, st.vA.h >> 1]; }
+  drawHarris(); runMatch();
+}
+function drawHarris() {
+  const { vA, vB, hA, hB } = st, mkc = (cv, v, h) => { const c = drawBig(cv, v.cv, 2); c.fillStyle = "rgba(0,0,0,.15)"; c.fillRect(0, 0, v.w, v.h); c.strokeStyle = "#fde047"; c.lineWidth = 1.2 / 2 * 1.4; for (const p of h.pts) { c.beginPath(); c.arc(p.x, p.y, 3, 0, 7); c.stroke(); } return c; };
+  const cA = mkc($("hA"), vA, hA); mkc($("hB"), vB, hB);
+  $("hAcap").textContent = `View A: ${hA.pts.length} corners kept (${hA.nAll} above threshold). Click a pixel.`; $("hBcap").textContent = `View B: ${hB.pts.length} corners kept (${hB.nAll} above threshold)`;
+  const cv = $("hR"); cv.width = vA.w; cv.height = vA.h; const c = cv.getContext("2d"), im = c.createImageData(vA.w, vA.h), mxp = hA.mx || 1, mnn = hA.mn || -1;
+  for (let i = 0; i < hA.R.length; i++) { const r = hA.R[i], j = i * 4; if (r > 0) { const t = Math.min(1, Math.pow(r / mxp, 0.5)); im.data[j] = 245 * t; im.data[j + 1] = 158 * t; im.data[j + 2] = 11 * t; } else { const t = Math.min(1, Math.pow(r / mnn, 0.5) * 0.9); im.data[j] = 56 * t; im.data[j + 1] = 189 * t; im.data[j + 2] = 248 * t; } im.data[j + 3] = 255; }
+  c.putImageData(im, 0, 0);
+  for (const id of ["hA", "hR"]) { const cc = $(id).getContext("2d"), k = id === "hA" ? 2 : 1, [x, y] = st.sel01; cc.setTransform(1, 0, 0, 1, 0, 0); cc.strokeStyle = "#ff3b30"; cc.lineWidth = 2; cc.strokeRect((x - 8) * k, (y - 8) * k, 16 * k, 16 * k); }
+  hRead();
+}
+function hRead() {
+  const [x, y] = st.sel01, h = st.hA, i = y * st.vA.w + x, A = h.A[i], B = h.B[i], C = h.C[i], disc = Math.sqrt(((A - C) / 2) ** 2 + B * B), l1 = (A + C) / 2 + disc, l2 = (A + C) / 2 - disc, R = A * C - B * B - h.k * (A + C) ** 2;
+  const e = v => v.toExponential(2), cls = R > h.thr ? '<span class="tag good">corner</span> both eigenvalues are large' : R > 0 ? '<span class="tag warn">weak corner</span> R is positive but below the threshold' : R < -h.thr * 0.5 ? '<span class="tag bad">edge</span> one eigenvalue dominates, so R &lt; 0' : '<span class="tag warn">flat</span> both eigenvalues are small';
+  $("hRead").innerHTML = `<dl class="detail" style="display:grid;grid-template-columns:auto 1fr;gap:3px 12px;margin:0"><dt>Pixel</dt><dd class="mono">(${x}, ${y})</dd><dt>M</dt><dd class="mono">[ ${e(A)}  ${e(B)} ; ${e(B)}  ${e(C)} ]</dd><dt>λ₁, λ₂</dt><dd class="mono">${e(l1)}, ${e(Math.max(l2, 0))}</dd><dt>R</dt><dd class="mono">${e(A * C - B * B)} − ${h.k.toFixed(2)} · (${e(A + C)})² = ${e(R)}</dd><dt>Threshold</dt><dd class="mono">${e(h.thr)} (${fmt(+$("ht").value, 1)}% of max ${e(h.mx)})</dd></dl><p style="margin:6px 0 0">${cls}.</p>`;
+}
+["hA", "hR"].forEach(id => $(id).addEventListener("click", e => { const [x, y] = imgXY(e, e.currentTarget, st.vA.w, st.vA.h); st.sel01 = [Math.max(1, Math.min(st.vA.w - 2, x)), Math.max(1, Math.min(st.vA.h - 2, y))]; drawHarris(); }));
+["hk", "ht", "hn"].forEach(id => $(id).addEventListener("input", deb(runHarris)));
+
+/* ================= 02 matching ================= */
+const offB = () => st.vA.w + 10;
+function pairCtx(cv) {
+  const K = 2, { vA, vB } = st; cv.width = (vA.w + vB.w + 10) * K; cv.height = Math.max(vA.h, vB.h) * K; const c = cv.getContext("2d");
+  c.fillStyle = cssVar("--stage") || "#111"; c.fillRect(0, 0, cv.width, cv.height); c.imageSmoothingEnabled = true;
+  c.drawImage(vA.cv, 0, 0, vA.w * K, vA.h * K); c.drawImage(vB.cv, offB() * K, 0, vB.w * K, vB.h * K);
+  c.fillStyle = "rgba(0,0,0,.25)"; c.fillRect(0, 0, vA.w * K, vA.h * K); c.fillRect(offB() * K, 0, vB.w * K, vB.h * K); c.setTransform(K, 0, 0, K, 0, 0); return c;
+}
+function runMatch() {
+  const ratio = +$("rt").value; $("rtO").value = ratio.toFixed(2);
+  st.matches = []; st.nn.forEach((n, i) => { if (n.j1 >= 0 && n.d1 < ratio * n.d2) { const a = st.PA[i], b = st.PB[n.j1]; let ok = null; if (st.Ht) { const [px, py] = apply(st.Ht, a.x, a.y); ok = Math.hypot(px - b.x, py - b.y) < 4; } st.matches.push({ i, j: n.j1, d1: n.d1, d2: n.d2, ok }); } });
+  const good = st.matches.filter(m => m.ok).length;
+  $("mStats").innerHTML = `<span class="chip">Corners A / B <b>${st.PA.length} / ${st.PB.length}</b></span><span class="chip">Matches kept <b>${st.matches.length}</b></span>` + (st.Ht ? `<span class="chip">Truly correct (ground truth) <b>${good}</b> (${st.matches.length ? Math.round(100 * good / st.matches.length) : 0}%)</span>` : "");
+  if (st.sel02 < 0 || st.sel02 >= st.PA.length) { let b = 0, br = Infinity; st.nn.forEach((n, i) => { const r = n.d1 / (n.d2 || 1); if (st.matches.some(m => m.i === i) && r < br) { br = r; b = i; } }); st.sel02 = b; }
+  drawMatches(); runRansac();
+}
+function drawMatches() {
+  const c = pairCtx($("mCv")), ob = offB(); c.lineWidth = 1 / 2 * 1.4; c.strokeStyle = "rgba(56,189,248,.8)";
+  for (const m of st.matches) { const a = st.PA[m.i], b = st.PB[m.j]; c.beginPath(); c.moveTo(a.x, a.y); c.lineTo(ob + b.x, b.y); c.stroke(); }
+  c.fillStyle = "#fde047"; for (const p of st.PA) c.fillRect(p.x - 1, p.y - 1, 2, 2); for (const p of st.PB) c.fillRect(ob + p.x - 1, p.y - 1, 2, 2);
+  const n = st.nn[st.sel02], a = st.PA[st.sel02];
+  if (n && a) { c.strokeStyle = "#fff"; c.lineWidth = 1.5; c.beginPath(); c.arc(a.x, a.y, 6, 0, 7); c.stroke(); const b1 = st.PB[n.j1], b2 = st.PB[n.j2]; if (b1) { c.beginPath(); c.arc(ob + b1.x, b1.y, 6, 0, 7); c.stroke(); } if (b2) { c.strokeStyle = "#f59e0b"; c.setLineDash([3, 2]); c.beginPath(); c.arc(ob + b2.x, b2.y, 6, 0, 7); c.stroke(); c.setLineDash([]); } }
+  mRead();
+}
+function patchDraw(id, d) {
+  const cv = $(id), c = cv.getContext("2d"), im = c.createImageData(8, 8); if (!d) { c.clearRect(0, 0, 8, 8); return; }
+  let lo = Infinity, hi = -Infinity; for (const v of d) { lo = Math.min(lo, v); hi = Math.max(hi, v); }
+  for (let i = 0; i < 64; i++) { const v = (d[i] - lo) / (hi - lo || 1) * 255; im.data[i * 4] = im.data[i * 4 + 1] = im.data[i * 4 + 2] = v; im.data[i * 4 + 3] = 255; } c.putImageData(im, 0, 0);
+}
+function mRead() {
+  const a = st.PA[st.sel02], n = st.nn[st.sel02]; if (!a || !n) { $("mRead").innerHTML = '<p class="note">No corners found. Lower the Harris threshold.</p>'; return; }
+  const b1 = st.PB[n.j1], b2 = st.PB[n.j2], ratio = +$("rt").value, r = n.d1 / (n.d2 || 1), pass = n.d1 < ratio * n.d2; let truth = "";
+  if (st.Ht && b1) { const [px, py] = apply(st.Ht, a.x, a.y), e = Math.hypot(px - b1.x, py - b1.y); truth = `<dt>Ground truth</dt><dd class="mono">A maps to (${fmt(px, 1)}, ${fmt(py, 1)}) in B. Nearest match is ${fmt(e, 1)} px away: ${e < 4 ? "correct" : "wrong"}.</dd>`; }
+  $("mRead").innerHTML = `<dl class="detail" style="display:grid;grid-template-columns:auto 1fr;gap:3px 12px;margin:0"><dt>Corner in A</dt><dd class="mono">(${a.x}, ${a.y})</dd><dt>Nearest in B</dt><dd class="mono">${b1 ? `(${b1.x}, ${b1.y})` : "none"}, distance d₁ = ${fmt(n.d1, 3)}</dd><dt>Second nearest</dt><dd class="mono">${b2 ? `(${b2.x}, ${b2.y})` : "none"}, d₂ = ${fmt(n.d2, 3)}</dd><dt>Ratio</dt><dd class="mono">d₁ / d₂ = ${fmt(r, 3)} ${pass ? "&lt;" : "≥"} ${ratio.toFixed(2)}</dd>${truth}</dl><p style="margin:6px 0 0">${pass ? '<span class="tag good">kept</span> The best match is clearly better than the runner-up.' : '<span class="tag bad">rejected</span> The two best candidates are too similar, so the match is ambiguous.'}</p>`;
+  patchDraw("pA", a.d); patchDraw("pB1", b1 && b1.d); patchDraw("pB2", b2 && b2.d);
+  const cc = a.d.reduce((s, v, i) => s + v * (b1 ? b1.d[i] : 0), 0);
+  $("mEq").innerHTML = `descriptor = (patch − mean) / ‖patch − mean‖ (64 numbers)<br>distance² = 2 − 2·NCC. Here NCC(A, nearest) = ${fmt(cc, 3)}, so d₁ = √(2 − 2·${fmt(cc, 3)}) = ${fmt(Math.sqrt(Math.max(0, 2 - 2 * cc)), 3)}`;
+}
+$("mCv").addEventListener("click", e => {
+  const [x, y] = imgXY(e, e.currentTarget, st.vA.w + st.vB.w + 10, Math.max(st.vA.h, st.vB.h)); let best = -1, bd = 14; st.PA.forEach((p, i) => { const d = Math.hypot(p.x - x, p.y - y); if (d < bd) { bd = d; best = i; } });
+  if (best >= 0) { st.sel02 = best; drawMatches(); }
+});
+$("rt").addEventListener("input", deb(runMatch));
+
+/* ================= 03 RANSAC ================= */
+function degenerate(P) { for (let i = 0; i < 4; i++) for (let j = i + 1; j < 4; j++) for (let k = j + 1; k < 4; k++) { const cr = (P[j][0] - P[i][0]) * (P[k][1] - P[i][1]) - (P[j][1] - P[i][1]) * (P[k][0] - P[i][0]); if (Math.abs(cr) < 150) return true; } return false; }
+const err = (H, p, q) => { const [x, y] = apply(H, p[0], p[1]); return Math.hypot(x - q[0], y - q[1]); };
+function ransac(matches, N, t) {
+  const rnd = rng(7), P = matches.map(m => [st.PA[m.i].x, st.PA[m.i].y]), Q = matches.map(m => [st.PB[m.j].x, st.PB[m.j].y]), iters = []; let best = -1, bc = -1;
+  const flags = H => P.map((p, i) => err(H, p, Q[i]) < t);
+  if (P.length >= 4) for (let it = 0; it < N; it++) {
+    let idx = null, H = null;
+    for (let tries = 0; tries < 30 && !H; tries++) { const s = new Set(); while (s.size < 4) s.add(Math.floor(rnd() * P.length)); idx = [...s]; if (degenerate(idx.map(i => P[i])) || degenerate(idx.map(i => Q[i]))) continue; H = dlt(idx.map(i => P[i]), idx.map(i => Q[i])); }
+    let count = 0; if (H) for (let i = 0; i < P.length; i++) if (err(H, P[i], Q[i]) < t) count++;
+    iters.push({ idx, H, count }); if (count > bc) { bc = count; best = it; }
+  }
+  let fin = null;
+  if (best >= 0 && iters[best].H) {
+    let H = iters[best].H, inl = flags(H);
+    for (let r = 0; r < 3; r++) { const sp = P.filter((_, i) => inl[i]), sq = Q.filter((_, i) => inl[i]); if (sp.length < 4) break; const H2 = dlt(sp, sq); if (!H2) break; H = H2; inl = flags(H); }
+    const ie = []; inl.forEach((f, i) => { if (f) ie.push(err(H, P[i], Q[i])); });
+    fin = { H, inl, count: inl.filter(Boolean).length, rms: Math.sqrt(ie.reduce((s, v) => s + v * v, 0) / (ie.length || 1)) };
+  }
+  return { P, Q, iters, best, fin, t, N };
+}
+function runRansac() {
+  const t = +$("rth").value, N = +$("rit").value; $("rthO").value = t.toFixed(1) + " px"; $("ritO").value = N; stopPlay();
+  st.rs = ransac(st.matches, N, t); st.it = N; drawRansac();
+  runPano();
+}
+function stopPlay() { if (st.timer) { clearInterval(st.timer); st.timer = null; $("bPlay").textContent = "Play"; } }
+function drawRansac() {
+  const rs = st.rs, c = pairCtx($("rCv")), ob = offB(), N = rs.N, it = st.it, cur = it >= 1 && it < N ? (rs.iters[it - 1] || null) : null, final = it >= N;
+  const matches = st.matches; let H = null, inl = null, label = "";
+  if (cur && cur.H) { H = cur.H; inl = rs.P.map((p, i) => err(H, p, rs.Q[i]) < rs.t); } else if (final && rs.fin) { H = rs.fin.H; inl = rs.fin.inl; }
+  const line = (m, col, lw) => { const a = st.PA[m.i], b = st.PB[m.j]; c.strokeStyle = col; c.lineWidth = lw; c.beginPath(); c.moveTo(a.x, a.y); c.lineTo(ob + b.x, b.y); c.stroke(); };
+  if (!inl) matches.forEach(m => line(m, "rgba(56,189,248,.7)", 0.7));
+  else { matches.forEach((m, i) => { if (!inl[i]) line(m, "rgba(239,68,68,.45)", 0.7); }); matches.forEach((m, i) => { if (inl[i]) line(m, "rgba(34,197,94,.9)", 1); }); }
+  if (cur && cur.idx) { const cols = ["#fde047", "#f472b6", "#a78bfa", "#fb923c"]; cur.idx.forEach((k, n) => { const m = matches[k]; line(m, cols[n], 2.5); for (const [x, y] of [[st.PA[m.i].x, st.PA[m.i].y], [ob + st.PB[m.j].x, st.PB[m.j].y]]) { c.fillStyle = cols[n]; c.beginPath(); c.arc(x, y, 5, 0, 7); c.fill(); c.fillStyle = "#000"; c.font = "bold 7px sans-serif"; c.textAlign = "center"; c.textBaseline = "middle"; c.fillText(n + 1, x, y + 0.3); } }); }
+  if (H) { const pts = [[0, 0], [st.vA.w, 0], [st.vA.w, st.vA.h], [0, st.vA.h], [0, 0]].map(([x, y]) => apply(H, x, y)); if (pts.every(p => isFinite(p[0]) && Math.abs(p[0]) < 2000 && Math.abs(p[1]) < 2000)) { c.save(); c.beginPath(); c.rect(ob, 0, st.vB.w, st.vB.h); c.clip(); c.strokeStyle = "#f59e0b"; c.lineWidth = 2; c.beginPath(); pts.forEach((p, i) => i ? c.lineTo(ob + p[0], p[1]) : c.moveTo(ob + p[0], p[1])); c.stroke(); c.restore(); } }
+  $("itLabel").textContent = it === 0 ? "Press Step to draw the first sample." : final ? `Finished: ${N} samples drawn.` : `Sample ${it} of ${N}`;
+  $("rCap").innerHTML = it === 0 ? "All ratio-test matches, before RANSAC. Orange outline: view A's frame mapped by the current H." : final ? "Result. Green: inliers of the refit H. Red: rejected matches. Orange: view A's frame mapped by H." : "Colored lines are this sample's 4 matches. Green lines agree with H within the threshold. Red lines do not. The orange quadrilateral is view A's frame under this sample's H.";
+  rPlot(); rRead();
+}
+function rPlot() {
+  const cv = $("rPlot"), { ctx: c, W, H } = hiDPI(cv, 170), rs = st.rs; c.clearRect(0, 0, W, H); const n = rs.iters.length; if (!n) return;
+  const mx = Math.max(4, ...rs.iters.map(i => i.count), st.matches.length * 0.0 + 1), p = 30, b = 20, bw = (W - p - 6) / n, mut = cssVar("--muted"), acc = cssVar("--accent"); let run = 0;
+  c.strokeStyle = cssVar("--line"); c.beginPath(); c.moveTo(p, 6); c.lineTo(p, H - b); c.lineTo(W - 6, H - b); c.stroke(); c.fillStyle = mut; c.font = "10px " + cssVar("--mono"); c.textAlign = "right"; c.fillText(mx, p - 4, 14); c.fillText("0", p - 4, H - b); c.textAlign = "center"; c.fillText("sample #", W / 2, H - 4);
+  const lim = st.it >= rs.N ? n : st.it; c.beginPath();
+  rs.iters.forEach((it, i) => { const h = it.count / mx * (H - b - 10); c.globalAlpha = i < lim ? 1 : 0.2; c.fillStyle = i === st.it - 1 && st.it < rs.N ? "#f59e0b" : mut; c.fillRect(p + i * bw, H - b - h, Math.max(1, bw - (bw > 3 ? 1 : 0)), h); });
+  c.globalAlpha = 1; c.strokeStyle = acc; c.lineWidth = 2; c.beginPath(); rs.iters.forEach((it, i) => { if (i < lim) run = Math.max(run, it.count); const y = H - b - run / mx * (H - b - 10); i ? c.lineTo(p + (i + 0.5) * bw, y) : c.moveTo(p + (i + 0.5) * bw, y); }); c.stroke();
+}
+function rRead() {
+  const rs = st.rs, it = st.it, N = rs.N, nm = st.matches.length; const fmtH = H => `<table class="calc">${[0, 1, 2].map(r => "<tr>" + [0, 1, 2].map(c => `<td>${fmt(H[r * 3 + c], Math.abs(H[r * 3 + c]) < 0.01 && H[r * 3 + c] !== 0 ? 5 : 3)}</td>`).join("") + "</tr>").join("")}</table>`;
+  let bestSoFar = 0; for (let i = 0; i < Math.min(it, N, rs.iters.length); i++) bestSoFar = Math.max(bestSoFar, rs.iters[i].count);
+  const wr = nm && rs.iters.length ? (rs.fin ? rs.fin.count : bestSoFar) / nm : 0, w4 = Math.pow(wr, 4), need = w4 > 0 && w4 < 1 ? Math.ceil(Math.log(0.01) / Math.log(1 - w4)) : (w4 >= 1 ? 1 : Infinity);
+  $("rNeed").innerHTML = `<p style="margin:0">With inlier fraction w, one sample is all-inlier with probability w⁴. To find at least one such sample with probability p = 0.99 you need</p><div class="eq">N ≥ log(1 − p) / log(1 − w⁴)</div><p style="margin:0">${nm ? `Here w = ${rs.fin ? rs.fin.count : bestSoFar} / ${nm} = ${fmt(wr, 2)}, so w⁴ = ${fmt(w4, 3)} and N ≥ ${isFinite(need) ? need : "(too many)"}. You are using ${N}.` : "There are no matches yet."}</p>`;
+  if (nm < 4 || !rs.iters.length) { $("rH3").textContent = "Not enough matches"; $("rRead").innerHTML = `<p class="note">RANSAC needs at least 4 matches (found ${nm}). Lower the ratio test strictness or the Harris threshold.</p>`; return; }
+  if (it >= 1 && it < N) {
+    const cur = rs.iters[it - 1]; $("rH3").textContent = `Sample ${it}`;
+    if (!cur.H) { $("rRead").innerHTML = '<p class="note">No valid 4-point sample found (the points were nearly collinear).</p>'; return; }
+    $("rRead").innerHTML = `<table class="calc"><tr><td></td><td>A (x, y)</td><td>B (u, v)</td><td>H·A − B</td></tr>${cur.idx.map((k, n) => `<tr><td>${n + 1}</td><td>${rs.P[k][0]}, ${rs.P[k][1]}</td><td>${rs.Q[k][0]}, ${rs.Q[k][1]}</td><td>${fmt(err(cur.H, rs.P[k], rs.Q[k]), 2)} px</td></tr>`).join("")}</table><div class="hbox" style="margin-top:8px"><div>H from these 4 matches${fmtH(cur.H)}</div></div><p style="margin:6px 0 0"><b class="mono">${cur.count}</b> of ${nm} matches are inliers (error &lt; ${rs.t.toFixed(1)} px). Best so far: <b class="mono">${bestSoFar}</b>. The 4 sample points always fit exactly. Only the others tell you if H is any good.</p>`;
+  } else if (it === 0) { $("rH3").textContent = "Before RANSAC"; $("rRead").innerHTML = `<p style="margin:0">${nm} matches, some wrong. A direct fit to all of them would be pulled off by the outliers. Press Step.</p>`; }
+  else {
+    $("rH3").textContent = "Result"; if (!rs.fin) { $("rRead").innerHTML = '<p class="note">No model found.</p>'; return; }
+    $("rRead").innerHTML = `<p style="margin:0">The best sample was #${rs.best + 1} with ${rs.iters[rs.best].count} inliers. Refitting on all inliers with the same DLT gives:</p><div class="hbox" style="margin:6px 0">${fmtH(rs.fin.H)}</div><p style="margin:0"><b class="mono">${rs.fin.count}</b> of ${nm} matches are inliers, with RMS error <b class="mono">${fmt(rs.fin.rms, 2)} px</b>.</p>`;
+  }
+}
+$("bReset").onclick = () => { stopPlay(); st.it = 0; drawRansac(); };
+$("bStep").onclick = () => { stopPlay(); st.it = st.it >= st.rs.N ? 1 : st.it + 1; drawRansac(); };
+$("bEnd").onclick = () => { stopPlay(); st.it = st.rs.N; drawRansac(); };
+$("bBest").onclick = () => { stopPlay(); if (st.rs.best >= 0) { st.it = Math.min(st.rs.N - 1, st.rs.best + 1); if (st.it < 1) st.it = 1; drawRansac(); } };
+$("bPlay").onclick = () => {
+  if (st.timer) { stopPlay(); return; } if (st.it >= st.rs.N) st.it = 0; $("bPlay").textContent = "Pause"; const stp = Math.max(1, Math.ceil(st.rs.N / 100));
+  st.timer = setInterval(() => { st.it = Math.min(st.rs.N, st.it + stp); drawRansac(); if (st.it >= st.rs.N) stopPlay(); }, 140);
+};
+["rth", "rit"].forEach(id => $(id).addEventListener("input", deb(runRansac)));
+
+/* ================= 04 panorama ================= */
+function runPano() {
+  const fin = st.rs && st.rs.fin, cv = $("pano"); const mode = segVal("pmode");
+  if (!fin) { cv.width = 400; cv.height = 60; const c = cv.getContext("2d"); c.fillStyle = "#000"; c.fillRect(0, 0, 400, 60); c.fillStyle = "#fff"; c.font = "14px sans-serif"; c.fillText("No homography. Too few good matches.", 20, 34); $("panoCap").textContent = ""; $("hStats").innerHTML = ""; $("hEst").innerHTML = $("hTrue").innerHTML = ""; $("hNote").textContent = "RANSAC found no model. Try a different pair or relax the thresholds."; return; }
+  const H = fin.H, Hi = inv3(H), { vA, vB } = st;
+  const cs = [[0, 0], [vA.w, 0], [vA.w, vA.h], [0, vA.h]].map(([x, y]) => apply(H, x, y));
+  if (!Hi || cs.some(p => !isFinite(p[0]))) { $("hNote").textContent = "The estimated H is degenerate."; return; }
+  let x0 = 0, y0 = 0, x1 = vB.w, y1 = vB.h; for (const p of cs) { x0 = Math.min(x0, p[0]); y0 = Math.min(y0, p[1]); x1 = Math.max(x1, p[0]); y1 = Math.max(y1, p[1]); }
+  const bw = x1 - x0, bh = y1 - y0; if (bw > 5 * (vA.w + vB.w) || bh > 5 * (vA.h + vB.h)) { $("hNote").textContent = "The estimated H warps the image far outside any reasonable range, so the panorama is not drawn."; return; }
+  const sc = Math.min(1.4, 900 / bw, 560 / bh), PW = Math.ceil(bw * sc), PH = Math.ceil(bh * sc);
+  cv.width = PW; cv.height = PH; const c = cv.getContext("2d"), im = c.createImageData(PW, PH), oa = [0, 0, 0], ob = [0, 0, 0];
+  const wt = (x, y, w, h) => Math.max(0, Math.min(1, Math.min(x, w - 1 - x) / 24)) * Math.max(0, Math.min(1, Math.min(y, h - 1 - y) / 24));
+  const imgA = { width: vA.w, height: vA.h, data: vA.rgba.data }, imgB = { width: vB.w, height: vB.h, data: vB.rgba.data };
+  for (let y = 0; y < PH; y++) for (let x = 0; x < PW; x++) {
+    const bx = x0 + x / sc, by = y0 + y / sc, [ax, ay] = apply(Hi, bx, by), j = (y * PW + x) * 4;
+    const inB = bx >= 0 && by >= 0 && bx <= vB.w - 1 && by <= vB.h - 1 && vB.mask[Math.round(by) * vB.w + Math.round(bx)], inA = ax >= 0 && ay >= 0 && ax <= vA.w - 1 && ay <= vA.h - 1 && vA.mask[Math.round(ay) * vA.w + Math.round(ax)];
+    if (inB) sample(imgB, bx, by, ob); if (inA) sample(imgA, ax, ay, oa); let r = 18, g = 20, b = 24;
+    if (inA && inB) {
+      if (mode === "diff") { const d = (Math.abs(oa[0] - ob[0]) + Math.abs(oa[1] - ob[1]) + Math.abs(oa[2] - ob[2])) / 3 * 2.5; r = g = b = Math.min(255, d); }
+      else if (mode === "seam") { r = ob[0]; g = ob[1]; b = ob[2]; }
+      else { const wa = wt(ax, ay, vA.w, vA.h) + 1e-4, wb = wt(bx, by, vB.w, vB.h) + 1e-4, s = wa + wb; r = (oa[0] * wa + ob[0] * wb) / s; g = (oa[1] * wa + ob[1] * wb) / s; b = (oa[2] * wa + ob[2] * wb) / s; }
+    } else if (inB) { [r, g, b] = ob; if (mode === "diff") { r *= 0.3; g *= 0.3; b *= 0.3; } } else if (inA) { [r, g, b] = oa; if (mode === "diff") { r *= 0.3; g *= 0.3; b *= 0.3; } }
+    im.data[j] = r; im.data[j + 1] = g; im.data[j + 2] = b; im.data[j + 3] = 255;
+  }
+  c.putImageData(im, 0, 0);
+  const poly = (pts, col, dash) => { c.strokeStyle = col; c.lineWidth = 1.5; c.setLineDash(dash); c.beginPath(); pts.forEach((p, i) => { const X = (p[0] - x0) * sc, Y = (p[1] - y0) * sc; i ? c.lineTo(X, Y) : c.moveTo(X, Y); }); c.closePath(); c.stroke(); c.setLineDash([]); };
+  poly(cs, "#f59e0b", []); poly([[0, 0], [vB.w, 0], [vB.w, vB.h], [0, vB.h]], "rgba(255,255,255,.7)", [5, 4]);
+  if (st.Ht) poly([[0, 0], [vA.w, 0], [vA.w, vA.h], [0, vA.h]].map(([x, y]) => apply(st.Ht, x, y)), "#22d3ee", [2, 3]);
+  $("panoCap").innerHTML = `Panorama in view B's frame (${PW}×${PH}). <span style="color:#f59e0b">Orange</span>: A's frame under estimated H. White dashed: B's frame.` + (st.Ht ? ` <span style="color:#22d3ee">Cyan dotted</span>: A's frame under the true H.` : "");
+  // compare
+  if (!st.Ht) { $("hStats").innerHTML = `<span class="chip">Inliers <b>${fin.count}</b></span><span class="chip">Inlier RMS error <b>${fmt(fin.rms, 2)} px</b></span>`; $("hEst").innerHTML = hTable(H); $("hTrue").innerHTML = '<p class="note">Unknown for real photos.</p>'; $("hNote").textContent = "Check the difference view: a correct H makes static content cancel in the overlap. Anything that moved between the photos, or very close objects (parallax), will not."; return; }
+  const Ht = st.Ht, ce = [[0, 0], [vA.w, 0], [vA.w, vA.h], [0, vA.h]].map(([x, y]) => { const a = apply(H, x, y), b = apply(Ht, x, y); return Math.hypot(a[0] - b[0], a[1] - b[1]); });
+  let gm = 0, gs = 0, gn = 0; for (let y = 8; y < vA.h; y += 16) for (let x = 8; x < vA.w; x += 16) { const a = apply(H, x, y), b = apply(Ht, x, y), e = Math.hypot(a[0] - b[0], a[1] - b[1]); gm = Math.max(gm, e); gs += e; gn++; }
+  $("hStats").innerHTML = `<span class="chip">Inliers <b>${fin.count}</b> of ${st.matches.length}</span><span class="chip">Mean error over A <b>${fmt(gs / gn, 2)} px</b></span><span class="chip">Max error over A <b>${fmt(gm, 2)} px</b></span><span class="chip">Corner errors <b>${ce.map(v => fmt(v, 1)).join(", ")} px</b></span>`;
+  $("hEst").innerHTML = hTable(H); $("hTrue").innerHTML = hTable(Ht);
+  $("hNote").textContent = `Both matrices are scaled so the bottom-right entry is 1. The entries are not equally sensitive: a small error in h₇ or h₈ moves far-away points more than a small error in the translation. The pixel errors above compare what each H does to view A, which is what matters. Mean error under about 1 px means the stitch is visually seamless.`;
+}
+function hTable(H) { return `<table class="calc">${[0, 1, 2].map(r => "<tr>" + [0, 1, 2].map(c => { const v = H[r * 3 + c]; return `<td>${Math.abs(v) < 0.01 && v !== 0 ? v.toExponential(2) : fmt(v, 4)}</td>`; }).join("") + "</tr>").join("")}</table>`; }
+seg("pmode", () => runPano());
+
+/* ================= source controls ================= */
+seg("source", v => { $("synthBox").style.display = v === "synth" ? "grid" : "none"; $("upBox").style.display = v === "up" ? "grid" : "none"; runPair(); });
+["rot", "per"].forEach(id => $(id).addEventListener("input", deb(() => runPair(), 80)));
+const scenePick = picker({ el: "pick", samples: SCENES, noteEl: "pickNote", onImage: (src, w, h, info) => { if (info && info.sample) { st.sceneFn = info.sample.fn; st.sceneImg = null; } else st.sceneImg = { src, w, h }; runPair(); } });
+picker({ el: "pickA", samples: [], noteEl: "noteA", onImage: (src, w, h) => { st.upA = { src, w, h }; if (st.upB && segVal("source") === "up") runPair(); } });
+picker({ el: "pickB", samples: [], noteEl: "noteB", onImage: (src, w, h) => { st.upB = { src, w, h }; if (st.upA && segVal("source") === "up") runPair(); } });
+onTheme(() => { if (st.rs) rPlot(); });
+scenePick.pick(SCENES[0]);
+})();
+</script>
+</body>
+</html>

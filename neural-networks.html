@@ -1,0 +1,554 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Neural Networks, Interactively</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,500;8..60,600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="site.css">
+<style>
+canvas.sq { width: 100%; aspect-ratio: 1; display: block; border-radius: 6px; background: var(--bg); cursor: crosshair; touch-action: none; }
+#percCv { width: 100%; height: 340px; display: block; border-radius: 6px; background: var(--bg); cursor: crosshair; }
+#loss { height: 200px; }
+.thumbs { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.thumbs canvas { width: 40px; height: 40px; border-radius: 4px; cursor: pointer; border: 2px solid transparent; image-rendering: auto; background: var(--bg); }
+.thumbs canvas:hover { border-color: var(--muted); }
+.thumbs canvas.sel { border-color: var(--ink); }
+.thumbs .lbl { font-size: 0.78rem; color: var(--muted); margin: 0 6px 0 10px; }
+.thumbs .lbl:first-child { margin-left: 0; }
+.fbtns { display: flex; flex-wrap: wrap; gap: 8px; }
+.fbtn { display: grid; gap: 4px; justify-items: center; padding: 6px; border: 2px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--ink); cursor: pointer; font: 500 0.78rem var(--body); }
+.fbtn:hover { border-color: var(--muted); }
+.fbtn[aria-pressed="true"] { border-color: var(--accent); }
+.fbtn canvas { width: 36px; height: 36px; image-rendering: pixelated; border-radius: 3px; }
+.kernel.k3 { grid-template-columns: repeat(3, auto); }
+.kernel.k3 input { width: 4.4em; }
+.pbar { display: grid; grid-template-columns: 1.2em 1fr 3.6em; gap: 6px; align-items: center; font: 0.8rem var(--mono); }
+.pbar i { display: block; height: 10px; border-radius: 3px; background: var(--accent); }
+.pbar.top i { background: #16a34a; }
+.padrow { display: grid; grid-template-columns: auto 1fr; gap: 20px; align-items: start; }
+@media (max-width: 760px) { .padrow { grid-template-columns: 1fr; } }
+#pad { width: 224px; height: 224px; background: #000; border-radius: 8px; cursor: crosshair; touch-action: none; border: 2px solid var(--line); }
+.testgrid { display: grid; grid-template-columns: repeat(10, 1fr); gap: 4px; }
+.testgrid canvas { width: 100%; aspect-ratio: 1; image-rendering: pixelated; border: 2px solid; border-radius: 3px; cursor: pointer; background: #000; }
+.testgrid canvas.ok { border-color: #1f8a4c; } .testgrid canvas.no { border-color: #c53030; }
+progress { width: 220px; accent-color: var(--accent); }
+.calcrow { display: flex; flex-wrap: wrap; gap: 14px; align-items: center; }
+</style>
+</head>
+<body>
+<header class="site"></header>
+<main class="wrap">
+  <div class="intro">
+    <h1>Neural Networks, Interactively</h1>
+    <p class="lead">A neuron weighs its inputs, adds a bias, and squashes the sum. Wire many together and train them by gradient descent, and they carve out decision regions that no straight line can. Convolution layers do the same thing with small shared filters, which is why they suit images.</p>
+    <p>All training runs in your browser, with the forward pass and backpropagation written from scratch. Follows the Neural Networks lectures.</p>
+  </div>
+
+  <section class="stage" id="secPerc" aria-labelledby="h0">
+    <div class="stage-head"><span class="num">00</span><div><h2 id="h0">The perceptron</h2><p>One neuron with a hard threshold. It classifies a point <b>x</b> by the sign of w·x + b, so its decision boundary is a line. Click the canvas to add points, and click an existing point to remove it. Then step through the learning rule.</p></div></div>
+    <div class="controls">
+      <div class="ctl"><label>Add class</label><div class="seg" id="pClass"><button type="button" data-v="1" aria-pressed="true">Blue (+1)</button><button type="button" data-v="-1" aria-pressed="false">Orange (−1)</button></div></div>
+      <div class="ctl"><label for="pEta">Learning rate η</label><input type="range" id="pEta" min="0.1" max="1" step="0.1" value="0.5"><output id="pEtaO">0.5</output></div>
+    </div>
+    <div class="controls">
+      <button type="button" class="btn primary" id="pStep">Step: fix one mistake</button>
+      <button type="button" class="btn" id="pRun">Run to the end</button>
+      <button type="button" class="btn" id="pReset">Reset weights</button>
+      <button type="button" class="btn" id="pSep">New separable data</button>
+      <button type="button" class="btn" id="pXor">Make XOR data</button>
+      <button type="button" class="btn" id="pClear">Clear points</button>
+    </div>
+    <div class="main-side">
+      <figure><canvas id="percCv" aria-label="Perceptron canvas. Click to add or remove points."></canvas><figcaption><span class="legend"><span><i style="background:#2563eb"></i>Class +1</span><span><i style="background:#ea580c"></i>Class −1</span><span><i style="background:var(--ink)"></i>Decision line w·x + b = 0</span><span><i style="background:#16a34a"></i>Weight vector w</span></span></figcaption></figure>
+      <div style="display:grid;gap:12px">
+        <div class="math"><h3>Last update</h3><div id="pMath"></div></div>
+        <div class="stats" id="pStats"></div>
+      </div>
+    </div>
+    <div class="tablebox" style="max-height:220px"><table id="pTable"></table></div>
+    <div class="math"><h3>The rule</h3>
+      <p class="eq">ŷ = sign(w·x + b)        if y·(w·x + b) ≤ 0:   w ← w + η y x,   b ← b + η y</p>
+      <p>A mistake pulls the line toward the missed point: the weight vector tilts toward a missed +1 point, and away from a missed −1 point. If the two classes can be separated by a line, this procedure stops after a finite number of updates. Press "Make XOR data" and run it. XOR cannot be separated by any line, so the perceptron never settles. The run stops after 300 updates.</p></div>
+  </section>
+
+  <section class="stage" id="secMlp" aria-labelledby="h1">
+    <div class="stage-head"><span class="num">01</span><div><h2 id="h1">A multi-layer network, training live</h2><p>Add hidden layers of smooth neurons and the boundary can bend. The heatmap shows the network's output probability over the plane. Pick a dataset, change the network, and watch the loss fall. Click the plane to trace one point through the network, and click a hidden neuron to inspect it.</p></div></div>
+    <div class="controls">
+      <div class="ctl"><label>Dataset</label><div class="seg" id="mData"><button type="button" data-v="xor" aria-pressed="false">XOR</button><button type="button" data-v="circles" aria-pressed="false">Circles</button><button type="button" data-v="moons" aria-pressed="true">Two moons</button><button type="button" data-v="spiral" aria-pressed="false">Spiral</button></div></div>
+      <div class="ctl"><label>Hidden layers</label><div class="seg" id="mLayers"><button type="button" data-v="1" aria-pressed="true">1</button><button type="button" data-v="2" aria-pressed="false">2</button></div></div>
+      <div class="ctl"><label for="mH">Neurons per layer</label><input type="range" id="mH" min="1" max="24" value="8"><output id="mHO">8</output></div>
+    </div>
+    <div class="controls">
+      <div class="ctl"><label>Activation</label><div class="seg" id="mAct"><button type="button" data-v="tanh" aria-pressed="true">tanh</button><button type="button" data-v="relu" aria-pressed="false">ReLU</button><button type="button" data-v="sigmoid" aria-pressed="false">sigmoid</button></div></div>
+      <div class="ctl"><label for="mLr">Learning rate</label><input type="range" id="mLr" min="-3" max="-0.5" step="0.1" value="-1.5"><output id="mLrO">0.032</output></div>
+      <button type="button" class="btn primary" id="mPlay">Pause</button>
+      <button type="button" class="btn" id="mStep">Step 10 epochs</button>
+      <button type="button" class="btn" id="mInit">Re-initialize weights</button>
+      <label class="ctl"><input type="checkbox" id="mTest"> <span>Show held-out points</span></label>
+    </div>
+    <div class="main-side">
+      <figure><canvas class="sq" id="heat" aria-label="Decision regions. Click to probe a point."></canvas><figcaption id="heatCap">Blue region: network says class +1. Orange: class −1. Click to probe a point.</figcaption></figure>
+      <div style="display:grid;gap:12px;align-content:start">
+        <figure><canvas class="plot" id="loss" aria-label="Loss curve"></canvas><figcaption><span class="legend"><span><i style="background:var(--accent)"></i>Training loss</span><span><i style="background:#c2410c"></i>Held-out loss</span></span></figcaption></figure>
+        <div class="stats" id="mStats"></div>
+      </div>
+    </div>
+    <div>
+      <p class="note" style="margin-bottom:6px">Hidden neurons, drawn as the value each one outputs across the plane (blue high, orange low). Click one.</p>
+      <div class="thumbs" id="thumbs"></div>
+    </div>
+    <div class="two">
+      <div class="math"><h3>Probe point</h3><div id="probe"></div></div>
+      <div class="math"><h3>Selected neuron</h3><div id="neuron"></div></div>
+    </div>
+    <div class="math"><h3>What the training does</h3>
+      <p class="eq">a⁽ˡ⁾ = f(W⁽ˡ⁾ a⁽ˡ⁻¹⁾ + b⁽ˡ⁾),   p = σ(W⁽ᴸ⁾ a⁽ᴸ⁻¹⁾ + b⁽ᴸ⁾),   loss = −mean[ y ln p + (1−y) ln(1−p) ]</p>
+      <p class="eq">δ⁽ᴸ⁾ = p − y,   δ⁽ˡ⁾ = (W⁽ˡ⁺¹⁾ᵀ δ⁽ˡ⁺¹⁾) ⊙ f′(z⁽ˡ⁾),   ∂loss/∂W⁽ˡ⁾ = mean[ δ⁽ˡ⁾ a⁽ˡ⁻¹⁾ᵀ ]</p>
+      <p>Each epoch uses all 200 training points at once. The update uses the Adam optimizer, a gradient step with running averages that makes the slider range forgiving. Plain gradient descent would need a much longer run for the spiral. A separate set of 200 points, never trained on, gives the held-out numbers. Try 2 hidden layers with 16 neurons on the spiral, and give it a few thousand epochs. With 1 neuron, XOR cannot be solved at all. With 2 it often can.</p></div>
+  </section>
+
+  <section class="stage" id="secCnn" aria-labelledby="h2">
+    <div class="stage-head"><span class="num">02</span><div><h2 id="h2">Convolution, ReLU and pooling</h2><p>A convolutional layer slides one small filter over the image. At each position it multiplies the 3×3 patch by the filter and adds the products. ReLU then zeroes the negative responses, and max pooling keeps the strongest response in each 2×2 block. Click any output pixel to see the arithmetic.</p></div></div>
+    <div class="controls">
+      <div class="ctl"><label>Image</label><div class="seg" id="cImg"><button type="button" data-v="shapes" aria-pressed="true">Shapes</button><button type="button" data-v="text" aria-pressed="false">Text</button><button type="button" data-v="scene" aria-pressed="false">Scene</button></div></div>
+    </div>
+    <div>
+      <p class="note" style="margin-bottom:6px">Filters. The first six are hand-made. The last four are learned: a tiny network trained here to tell horizontal, vertical and two diagonal line orientations apart. <span id="cLearnNote">Training…</span></p>
+      <div class="fbtns" id="fbtns"></div>
+    </div>
+    <div class="controls">
+      <div class="ctl"><label>Kernel (editable)</label><div class="kernel k3" id="kInputs"></div></div>
+      <div class="ctl"><label for="kBias">Bias</label><input type="number" id="kBias" step="0.1" value="0" style="width:5em;font:0.85rem var(--mono);padding:4px;border:1px solid var(--line);border-radius:4px;background:var(--surface);color:var(--ink)"></div>
+      <span class="note" id="kName"></span>
+    </div>
+    <div class="four">
+      <figure><canvas class="view click" id="cIn"></canvas><figcaption>Input image</figcaption></figure>
+      <figure><canvas class="view click" id="cConv"></canvas><figcaption>Convolution (gray = 0, bright = positive)</figcaption></figure>
+      <figure><canvas class="view click" id="cRelu"></canvas><figcaption>After ReLU, max(0, ·)</figcaption></figure>
+      <figure><canvas class="view click" id="cPool"></canvas><figcaption>After 2×2 max pooling</figcaption></figure>
+    </div>
+    <div class="math"><h3>At the selected pixel</h3><div id="cCalc"></div></div>
+    <div class="math"><h3>The equations</h3>
+      <p class="eq">out(x, y) = b + Σⱼ Σᵢ K(i, j) · I(x + i, y + j),   i, j ∈ {−1, 0, 1}</p>
+      <p class="eq">relu(v) = max(0, v)        pool(x, y) = max of the 2×2 block at (2x, 2y)</p>
+      <p>Strictly this is cross-correlation, which is what CNN libraries compute and call convolution. A true convolution flips the kernel first. The output is 2 pixels smaller each way because the filter stays inside the image. Pooling halves the size and keeps a response even if the feature moves by a pixel. Learned filters usually look like the hand-made ones: oriented edges and blobs.</p></div>
+  </section>
+
+  <section class="stage" id="secDig" aria-labelledby="h3">
+    <div class="stage-head"><span class="num">03</span><div><h2 id="h3">Draw a digit</h2><p>A small network learns to read digits, and you can test it. It trains in this page on digits rendered from system fonts with random rotation, scale, thickness and noise. It has never seen handwriting, so a drawn digit is a harder test than the held-out score suggests.</p></div></div>
+    <div class="controls">
+      <progress id="dProg" max="100" value="0"></progress><span class="note" id="dStatus">Preparing…</span>
+      <button type="button" class="btn" id="dRetrain" hidden>Train again</button>
+    </div>
+    <div class="padrow">
+      <div style="display:grid;gap:8px;justify-items:start">
+        <canvas id="pad" width="224" height="224" aria-label="Drawing pad. Draw a digit with the mouse or finger."></canvas>
+        <div class="calcrow"><button type="button" class="btn" id="padClear">Clear</button><canvas id="seen" width="14" height="14" style="width:56px;height:56px;image-rendering:pixelated;border-radius:4px;background:#000"></canvas><span class="note">What the network sees: 14×14, cropped and centered.</span></div>
+      </div>
+      <div style="display:grid;gap:12px">
+        <div class="math"><h3>Prediction</h3><div id="dBars" style="display:grid;gap:3px"></div><p class="note" id="dPred">Draw a digit on the pad.</p></div>
+        <div class="stats" id="dStats"></div>
+      </div>
+    </div>
+    <div>
+      <p class="note" style="margin-bottom:6px">Held-out synthetic digits (green border: correct, red: wrong). Click one to see the network's answer.</p>
+      <div class="testgrid" id="testgrid"></div>
+    </div>
+    <div class="math"><h3>The network</h3>
+      <p class="eq">196 pixels → 48 ReLU neurons → 10 outputs, softmax:  p<sub>k</sub> = e^{z_k} / Σ e^{z_j},   loss = −ln p<sub>true</sub></p>
+      <p>The score is measured on 500 synthetic digits that the network never trained on. The training and held-out digits come from the same generator, so the score is optimistic for real handwriting. Draw one digit large and centered. Digits 1 and 7, or 4 and 9, are the usual confusions.</p></div>
+  </section>
+</main>
+<footer class="wrap site"></footer>
+
+<script src="common.js"></script>
+<script>
+(() => {
+"use strict";
+const { $, nav, footer, show, hiDPI, onTheme, cssVar, seg, setSeg, segVal, rng, fmt, toGray, SAMPLES, sampleCanvas } = VB;
+nav("neural-networks.html"); footer();
+const BLUE = [37, 99, 235], ORANGE = [234, 88, 12];
+const hex = h => { h = h.replace("#", ""); if (h.length === 3) h = h.replace(/./g, "$&$&"); return [0, 2, 4].map(i => parseInt(h.slice(i, i + 2), 16)); };
+const mono = () => "11px " + (cssVar("--mono") || "monospace");
+const gauss = r => Math.sqrt(-2 * Math.log(Math.max(1e-9, r()))) * Math.cos(6.2832 * r());
+
+/* ---------- visibility, for pausing ---------- */
+const vis = {};
+const io = new IntersectionObserver(es => { for (const e of es) vis[e.target.id] = e.isIntersecting; }, { rootMargin: "80px" });
+["secPerc", "secMlp", "secCnn", "secDig"].forEach(id => { vis[id] = false; io.observe($(id)); });
+const active = id => vis[id] && !document.hidden;
+
+/* ---------- from-scratch network ---------- */
+class Net {
+  constructor(sizes, act, out, seed) {
+    this.sizes = sizes; this.act = act; this.out = out; this.L = sizes.length - 1; const r = rng(seed); this.W = []; this.b = []; this.mW = []; this.vW = []; this.mb = []; this.vb = []; this.t = 0;
+    for (let l = 0; l < this.L; l++) {
+      const i = sizes[l], o = sizes[l + 1], w = new Float64Array(i * o), hidden = l < this.L - 1;
+      const s = hidden && act === "relu" ? Math.sqrt(2 / i) : Math.sqrt(2 / (i + o));
+      for (let k = 0; k < w.length; k++) w[k] = gauss(r) * s * (l === 0 && act === "relu" ? 1.5 : 1);
+      this.W.push(w); this.b.push(new Float64Array(o)); this.mW.push(new Float64Array(w.length)); this.vW.push(new Float64Array(w.length)); this.mb.push(new Float64Array(o)); this.vb.push(new Float64Array(o));
+      if (hidden && act === "relu") this.b[l].fill(0.05);
+    }
+    this.A = sizes.map(n => new Float64Array(n)); this.gW = this.W.map(w => new Float64Array(w.length)); this.gb = this.b.map(b => new Float64Array(b.length)); this.D = sizes.map(n => new Float64Array(n));
+  }
+  f(z) { return this.act === "tanh" ? Math.tanh(z) : this.act === "relu" ? (z > 0 ? z : 0) : 1 / (1 + Math.exp(-z)); }
+  df(a) { return this.act === "tanh" ? 1 - a * a : this.act === "relu" ? (a > 0 ? 1 : 0) : a * (1 - a); }
+  forward(x) {
+    const A = this.A; for (let i = 0; i < x.length; i++) A[0][i] = x[i];
+    for (let l = 0; l < this.L; l++) {
+      const i = this.sizes[l], o = this.sizes[l + 1], W = this.W[l], b = this.b[l], a = A[l], n = A[l + 1], last = l === this.L - 1;
+      for (let j = 0; j < o; j++) { let s = b[j]; const base = j * i; for (let k = 0; k < i; k++) s += W[base + k] * a[k]; n[j] = last ? s : this.f(s); }
+    }
+    const z = A[this.L];
+    if (this.out === "sigmoid") z[0] = 1 / (1 + Math.exp(-z[0]));
+    else { let m = -1e9; for (const v of z) m = Math.max(m, v); let s = 0; for (let k = 0; k < z.length; k++) { z[k] = Math.exp(z[k] - m); s += z[k]; } for (let k = 0; k < z.length; k++) z[k] /= s; }
+    return z;
+  }
+  trainBatch(X, Y, lr) {
+    const B = X.length, L = this.L; for (let l = 0; l < L; l++) { this.gW[l].fill(0); this.gb[l].fill(0); }
+    for (let n = 0; n < B; n++) {
+      this.forward(X[n]); const A = this.A, D = this.D, y = Y[n];
+      for (let k = 0; k < this.sizes[L]; k++) D[L][k] = A[L][k] - (this.out === "sigmoid" ? y : (k === y ? 1 : 0));
+      for (let l = L - 1; l >= 0; l--) {
+        const i = this.sizes[l], o = this.sizes[l + 1], W = this.W[l], gW = this.gW[l], gb = this.gb[l], d = D[l + 1], a = A[l];
+        for (let j = 0; j < o; j++) { const dj = d[j]; gb[j] += dj; const base = j * i; for (let k = 0; k < i; k++) gW[base + k] += dj * a[k]; }
+        if (l > 0) { const dp = D[l]; for (let k = 0; k < i; k++) { let s = 0; for (let j = 0; j < o; j++) s += W[j * i + k] * d[j]; dp[k] = s * this.df(a[k]); } }
+      }
+    }
+    this.t++; const b1 = 0.9, b2 = 0.999, c1 = 1 - Math.pow(b1, this.t), c2 = 1 - Math.pow(b2, this.t);
+    for (let l = 0; l < L; l++) for (const [P, G, M, V] of [[this.W[l], this.gW[l], this.mW[l], this.vW[l]], [this.b[l], this.gb[l], this.mb[l], this.vb[l]]])
+      for (let k = 0; k < P.length; k++) { const g = G[k] / B; M[k] = b1 * M[k] + (1 - b1) * g; V[k] = b2 * V[k] + (1 - b2) * g * g; P[k] -= lr * (M[k] / c1) / (Math.sqrt(V[k] / c2) + 1e-8); }
+  }
+  evaluate(X, Y) {
+    let loss = 0, ok = 0;
+    for (let n = 0; n < X.length; n++) { const p = this.forward(X[n]); if (this.out === "sigmoid") { const q = Math.min(1 - 1e-9, Math.max(1e-9, p[0])); loss -= Y[n] ? Math.log(q) : Math.log(1 - q); if ((p[0] > 0.5) === (Y[n] === 1)) ok++; } else { loss -= Math.log(Math.max(1e-9, p[Y[n]])); let bi = 0; for (let k = 1; k < p.length; k++) if (p[k] > p[bi]) bi = k; if (bi === Y[n]) ok++; } }
+    return { loss: loss / X.length, acc: ok / X.length };
+  }
+}
+
+/* =====================================================================
+   00 PERCEPTRON
+   ===================================================================== */
+const P = { pts: [], w: [-0.3, 0.4], b: 0.1, ptr: 0, steps: 0, eta: 0.5, last: null, running: false, sel: -1, prev: null, done: false, lastRun: 0 };
+const pCv = $("percCv");
+const pS = () => pCv.clientHeight / 2.3;
+function pMake(sep, seed) {
+  const r = rng(seed), a = 0.4 + r() * 0.8, n = [Math.cos(a), Math.sin(a)], t = [-n[1], n[0]]; P.pts = [];
+  for (let i = 0; i < 16; i++) { const c = i % 2 ? 1 : -1, off = c * (0.14 + r() * 0.7), al = (r() - 0.5) * 2.2; P.pts.push({ x: Math.max(-1.45, Math.min(1.45, n[0] * off + t[0] * al)), y: Math.max(-1.05, Math.min(1.05, n[1] * off + t[1] * al)), c }); }
+}
+function pReset() { P.w = [-0.3, 0.4]; P.b = 0.1; P.ptr = 0; P.steps = 0; P.last = null; P.prev = null; P.done = false; P.sel = -1; P.running = false; $("pRun").textContent = "Run to the end"; pDraw(); }
+const pScore = p => P.w[0] * p.x + P.w[1] * p.y + P.b;
+function pStep() {
+  const n = P.pts.length; if (!n) return false;
+  for (let k = 0; k < n; k++) { const i = (P.ptr + k) % n, p = P.pts[i], s = pScore(p);
+    if (p.c * s <= 0) {
+      P.prev = { w: P.w.slice(), b: P.b }; const e = P.eta; const w0 = P.w.slice(), b0 = P.b;
+      P.w = [w0[0] + e * p.c * p.x, w0[1] + e * p.c * p.y]; P.b = b0 + e * p.c; P.ptr = i + 1; P.steps++; P.sel = i; P.done = false;
+      P.last = { i, p, s, w0, b0, e }; pDraw(); return true;
+    } }
+  P.done = true; P.last = null; P.running = false; $("pRun").textContent = "Run to the end"; pDraw(); return false;
+}
+function pDraw() {
+  const { ctx, W, H } = hiDPI(pCv, 340); ctx.clearRect(0, 0, W, H); const S = H / 2.3, cx = W / 2, cy = H / 2, X = x => cx + x * S, Y = y => cy + y * S;
+  const ink = cssVar("--ink"), mut = cssVar("--muted"), line = cssVar("--line");
+  ctx.strokeStyle = line; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(0, cy); ctx.lineTo(W, cy); ctx.moveTo(cx, 0); ctx.lineTo(cx, H); ctx.stroke();
+  const edgeLine = (w, b) => { const pts = []; const xl = -cx / S, xr = (W - cx) / S, yt = -cy / S, yb = (H - cy) / S;
+    if (Math.abs(w[1]) > 1e-9) { pts.push([xl, -(w[0] * xl + b) / w[1]], [xr, -(w[0] * xr + b) / w[1]]); } else if (Math.abs(w[0]) > 1e-9) { pts.push([-b / w[0], yt], [-b / w[0], yb]); } return pts; };
+  // shaded side
+  const L = edgeLine(P.w, P.b);
+  if (L.length) { const [a, b] = L; ctx.fillStyle = "rgba(37,99,235,0.07)"; ctx.beginPath(); ctx.moveTo(X(a[0]), Y(a[1])); ctx.lineTo(X(b[0]), Y(b[1]));
+    const sgn = P.w[1] >= 0 ? 1 : -1; if (Math.abs(P.w[1]) > 1e-9) { const far = sgn > 0 ? H + 2000 : -2000; ctx.lineTo(X(b[0]), far); ctx.lineTo(X(a[0]), far); } else { ctx.lineTo(P.w[0] > 0 ? W + 2000 : -2000, H); ctx.lineTo(P.w[0] > 0 ? W + 2000 : -2000, 0); } ctx.closePath();
+    // note: y axis points down, so w·x+b>0 is below the line when w[1]>0
+    ctx.fill(); }
+  if (P.prev) { const q = edgeLine(P.prev.w, P.prev.b); if (q.length) { ctx.strokeStyle = mut; ctx.globalAlpha = 0.6; ctx.setLineDash([5, 4]); ctx.lineWidth = 1.4; ctx.beginPath(); ctx.moveTo(X(q[0][0]), Y(q[0][1])); ctx.lineTo(X(q[1][0]), Y(q[1][1])); ctx.stroke(); ctx.setLineDash([]); ctx.globalAlpha = 1; } }
+  if (L.length) { ctx.strokeStyle = ink; ctx.lineWidth = 2.2; ctx.beginPath(); ctx.moveTo(X(L[0][0]), Y(L[0][1])); ctx.lineTo(X(L[1][0]), Y(L[1][1])); ctx.stroke(); }
+  const wn = Math.hypot(P.w[0], P.w[1]);
+  if (wn > 1e-9) { const d = -P.b / (wn * wn), ox = P.w[0] * d, oy = P.w[1] * d, k = Math.min(0.5, 0.5 / wn * 1) ; const len = 0.5; VB.arrow(ctx, X(ox), Y(oy), X(ox + P.w[0] / wn * len), Y(oy + P.w[1] / wn * len), "#16a34a", 2.5, 8); ctx.fillStyle = "#16a34a"; ctx.font = mono(); ctx.fillText("w", X(ox + P.w[0] / wn * len) + 6, Y(oy + P.w[1] / wn * len) + 4); }
+  P.pts.forEach((p, i) => { const col = p.c > 0 ? BLUE : ORANGE, bad = p.c * pScore(p) <= 0; ctx.beginPath(); ctx.arc(X(p.x), Y(p.y), 7, 0, 7); ctx.fillStyle = `rgb(${col})`; ctx.fill(); ctx.lineWidth = 2; ctx.strokeStyle = bad ? "#c53030" : "#fff"; ctx.stroke();
+    if (bad) { ctx.beginPath(); ctx.arc(X(p.x), Y(p.y), 11, 0, 7); ctx.strokeStyle = "#c53030"; ctx.lineWidth = 1.2; ctx.stroke(); }
+    if (i === P.sel) { ctx.beginPath(); ctx.arc(X(p.x), Y(p.y), 15, 0, 7); ctx.strokeStyle = ink; ctx.lineWidth = 2; ctx.stroke(); } });
+  const wrong = P.pts.filter(p => p.c * pScore(p) <= 0).length;
+  $("pStats").innerHTML = `<span class="chip">Updates <b>${P.steps}</b></span><span class="chip">Misclassified <b>${wrong}</b> of ${P.pts.length}</span><span class="chip">w <b>(${fmt(P.w[0], 2)}, ${fmt(P.w[1], 2)})</b></span><span class="chip">b <b>${fmt(P.b, 2)}</b></span>` + (P.pts.length && !wrong ? '<span class="tag good">all correct</span>' : P.steps >= 300 ? '<span class="tag bad">not converging</span>' : "");
+  const l = P.last;
+  $("pMath").innerHTML = l ? `<p class="mono">Point #${l.i + 1}: x = (${fmt(l.p.x, 2)}, ${fmt(l.p.y, 2)}), y = ${l.p.c > 0 ? "+1" : "−1"}</p><p class="mono">score = w·x + b = ${fmt(l.w0[0], 2)}·${fmt(l.p.x, 2)} + ${fmt(l.w0[1], 2)}·${fmt(l.p.y, 2)} + ${fmt(l.b0, 2)} = ${fmt(l.s, 2)}</p><p class="mono">y·score = ${fmt(l.p.c * l.s, 2)} ≤ 0, so this is a mistake.</p><p class="mono">w ← (${fmt(l.w0[0], 2)}, ${fmt(l.w0[1], 2)}) + ${l.e} · (${l.p.c}) · (${fmt(l.p.x, 2)}, ${fmt(l.p.y, 2)}) = (${fmt(P.w[0], 2)}, ${fmt(P.w[1], 2)})</p><p class="mono">b ← ${fmt(l.b0, 2)} + ${l.e} · (${l.p.c}) = ${fmt(P.b, 2)}</p>` : P.done || (P.pts.length && !wrong) ? `<p><b>No mistakes left.</b> Every point is on the correct side, so the rule changes nothing.</p>` : `<p>Press <b>Step</b> to find the next misclassified point (red ring) and apply the rule. The dashed line shows the boundary before the last update.</p>`;
+  $("pTable").innerHTML = `<thead><tr><th>Point</th><th>x₁</th><th>x₂</th><th>y</th><th>w·x + b</th><th>Status</th></tr></thead><tbody>` + P.pts.map((p, i) => { const s = pScore(p), ok = p.c * s > 0; return `<tr data-i="${i}" class="${i === P.sel ? "sel" : ""}"><td>#${i + 1}</td><td>${fmt(p.x, 2)}</td><td>${fmt(p.y, 2)}</td><td>${p.c > 0 ? "+1" : "−1"}</td><td>${fmt(s, 2)}</td><td style="color:${ok ? "#1f8a4c" : "#c53030"}">${ok ? "correct" : "mistake"}</td></tr>`; }).join("") + "</tbody>";
+}
+$("pTable").addEventListener("click", e => { const tr = e.target.closest("tr[data-i]"); if (!tr) return; P.sel = +tr.dataset.i; const p = P.pts[P.sel], s = pScore(p); P.last = null; pDraw(); $("pMath").innerHTML = `<p class="mono">Point #${P.sel + 1}: x = (${fmt(p.x, 2)}, ${fmt(p.y, 2)}), y = ${p.c > 0 ? "+1" : "−1"}</p><p class="mono">score = ${fmt(P.w[0], 2)}·${fmt(p.x, 2)} + ${fmt(P.w[1], 2)}·${fmt(p.y, 2)} + ${fmt(P.b, 2)} = ${fmt(s, 2)}</p><p class="mono">y·score = ${fmt(p.c * s, 2)} ${p.c * s > 0 ? "> 0: classified correctly." : "≤ 0: a mistake. The next Step may use this point."}</p>`; });
+pCv.addEventListener("click", e => {
+  const r = pCv.getBoundingClientRect(), S = r.height / 2.3, x = (e.clientX - r.left - r.width / 2) / S, y = (e.clientY - r.top - r.height / 2) / S;
+  const hit = P.pts.findIndex(p => Math.hypot(p.x - x, p.y - y) * S < 11);
+  if (hit >= 0) { P.pts.splice(hit, 1); P.sel = -1; P.last = null; } else if (P.pts.length < 60) { P.pts.push({ x, y, c: +segVal("pClass") }); P.done = false; }
+  pDraw();
+});
+$("pStep").addEventListener("click", pStep);
+$("pRun").addEventListener("click", () => { P.running = !P.running; $("pRun").textContent = P.running ? "Pause" : "Run to the end"; });
+$("pReset").addEventListener("click", pReset);
+$("pSep").addEventListener("click", () => { pMake(true, (Math.random() * 1e6) | 0); pReset(); });
+$("pXor").addEventListener("click", () => { P.pts = [[-0.8, -0.6, 1], [-0.6, -0.8, 1], [0.8, 0.6, 1], [0.6, 0.8, 1], [-0.8, 0.6, -1], [-0.6, 0.8, -1], [0.8, -0.6, -1], [0.6, -0.8, -1]].map(([x, y, c]) => ({ x, y, c })); pReset(); });
+$("pClear").addEventListener("click", () => { P.pts = []; pReset(); });
+$("pEta").addEventListener("input", e => { P.eta = +e.target.value; $("pEtaO").value = P.eta.toFixed(1); });
+seg("pClass", () => {});
+function pLoop(ts) {
+  if (P.running && active("secPerc") && ts - P.lastRun > 350) { P.lastRun = ts; if (P.steps >= 300 || !pStep()) { P.running = false; $("pRun").textContent = "Run to the end"; pDraw(); } }
+}
+
+/* =====================================================================
+   01 MLP PLAYGROUND
+   ===================================================================== */
+const E = 1.25;
+function makeData(kind, n, seed) {
+  const r = rng(seed), X = [], Y = [];
+  const add = (x, y, c) => { X.push([x, y]); Y.push(c); };
+  if (kind === "xor") while (X.length < n) { const x = (r() * 2 - 1) * 1.05, y = (r() * 2 - 1) * 1.05; if (Math.abs(x) < 0.09 || Math.abs(y) < 0.09) continue; add(x + 0.04 * gauss(r), y + 0.04 * gauss(r), x * y > 0 ? 1 : 0); }
+  else if (kind === "circles") for (let i = 0; i < n; i++) { const c = i % 2, rad = (c ? 0.38 : 0.82) + 0.05 * gauss(r), a = r() * 6.2832; add(rad * Math.cos(a), rad * Math.sin(a), c); }
+  else if (kind === "moons") for (let i = 0; i < n; i++) { const c = i % 2, a = r() * Math.PI; if (c) add(0.85 * Math.cos(a) - 0.4 + 0.07 * gauss(r), 0.7 * Math.sin(a) - 0.25 + 0.07 * gauss(r), 1); else add(0.85 * Math.cos(a + Math.PI) + 0.4 + 0.07 * gauss(r), 0.7 * Math.sin(a + Math.PI) + 0.25 + 0.07 * gauss(r), 0); }
+  else for (let i = 0; i < n; i++) { const c = i % 2, t = Math.sqrt(r()) , a = t * 3.2 * Math.PI + c * Math.PI, rad = 0.1 + t * 0.85; add(rad * Math.cos(a) + 0.03 * gauss(r), rad * Math.sin(a) + 0.03 * gauss(r), c); }
+  return { X, Y };
+}
+const M = { kind: "moons", tr: null, te: null, net: null, epoch: 0, lossTr: [], lossTe: [], playing: true, sel: { layer: 0, idx: 0 }, probe: [0.2, 0.3], frame: 0, thumbs: [], seed: 5, maxEpoch: 6000 };
+const lrVal = () => Math.pow(10, +$("mLr").value);
+function mNew(keepData) {
+  if (!keepData) { M.tr = makeData(M.kind, 200, 11); M.te = makeData(M.kind, 200, 97); }
+  const L = +segVal("mLayers"), H = +$("mH").value; const sizes = [2]; for (let i = 0; i < L; i++) sizes.push(H); sizes.push(1);
+  M.net = new Net(sizes, segVal("mAct"), "sigmoid", M.seed); M.epoch = 0; M.lossTr = []; M.lossTe = []; M.sel = { layer: 0, idx: 0 };
+  buildThumbs(); mEpochs(1); mDraw(true);
+}
+function mEpochs(k) {
+  const lr = lrVal();
+  for (let i = 0; i < k; i++) {
+    M.net.trainBatch(M.tr.X, M.tr.Y, lr); M.epoch++;
+    if (M.epoch % 2 === 0 || M.epoch === 1) { const a = M.net.evaluate(M.tr.X, M.tr.Y); M.lossTr.push([M.epoch, a.loss]); M.last = a; if (M.epoch % 10 === 0 || M.epoch === 1) { const b = M.net.evaluate(M.te.X, M.te.Y); M.lossTe.push([M.epoch, b.loss]); M.lastTe = b; } }
+  }
+  if (!M.lastTe) M.lastTe = M.net.evaluate(M.te.X, M.te.Y);
+}
+const heatBuf = document.createElement("canvas"); heatBuf.width = heatBuf.height = 56;
+function colorOf(p, mid) { const t = Math.abs(2 * p - 1), e = p > 0.5 ? BLUE : ORANGE, k = 0.8 * Math.pow(t, 0.8); return [mid[0] * (1 - k) + e[0] * k, mid[1] * (1 - k) + e[1] * k, mid[2] * (1 - k) + e[2] * k]; }
+function buildThumbs() {
+  const box = $("thumbs"); box.innerHTML = ""; M.thumbs = [];
+  for (let l = 0; l < M.net.L - 1; l++) {
+    const lab = document.createElement("span"); lab.className = "lbl"; lab.textContent = `Layer ${l + 1}`; box.append(lab);
+    for (let j = 0; j < M.net.sizes[l + 1]; j++) { const c = document.createElement("canvas"); c.width = c.height = 20; c.title = `Layer ${l + 1}, neuron ${j + 1}`; c.addEventListener("click", () => { M.sel = { layer: l, idx: j }; mDraw(false); }); box.append(c); M.thumbs.push({ l, j, c }); }
+  }
+}
+function mDraw(full) {
+  const net = M.net, mid = hex(cssVar("--surface") || "#ffffff");
+  // heatmap
+  const G = 56, im = heatBuf.getContext("2d").createImageData(G, G); const T = 20; const tims = M.thumbs.map(t => t.c.getContext("2d").createImageData(T, T));
+  for (let j = 0; j < G; j++) for (let i = 0; i < G; i++) { const x = -E + (i + 0.5) / G * 2 * E, y = -E + (j + 0.5) / G * 2 * E; const p = net.forward([x, y])[0], c = colorOf(p, mid), o = 4 * (j * G + i); im.data[o] = c[0]; im.data[o + 1] = c[1]; im.data[o + 2] = c[2]; im.data[o + 3] = 255; }
+  heatBuf.getContext("2d").putImageData(im, 0, 0);
+  for (let j = 0; j < T; j++) for (let i = 0; i < T; i++) { const x = -E + (i + 0.5) / T * 2 * E, y = -E + (j + 0.5) / T * 2 * E; net.forward([x, y]);
+    M.thumbs.forEach((t, k) => { let v = net.A[t.l + 1][t.j]; v = net.act === "tanh" ? (v + 1) / 2 : net.act === "relu" ? Math.min(1, v / 1.5) : v; const c = colorOf(v, mid), o = 4 * (j * T + i); tims[k].data[o] = c[0]; tims[k].data[o + 1] = c[1]; tims[k].data[o + 2] = c[2]; tims[k].data[o + 3] = 255; }); }
+  M.thumbs.forEach((t, k) => { t.c.getContext("2d").putImageData(tims[k], 0, 0); t.c.classList.toggle("sel", t.l === M.sel.layer && t.j === M.sel.idx); });
+  const cv = $("heat"); const { ctx, W, H } = hiDPI(cv, cv.clientWidth); ctx.clearRect(0, 0, W, H); ctx.imageSmoothingEnabled = true; ctx.drawImage(heatBuf, 0, 0, W, H);
+  const X = x => (x + E) / (2 * E) * W, Y = y => (y + E) / (2 * E) * H, ink = cssVar("--ink");
+  // selected neuron line (layer 1 only)
+  if (M.sel.layer === 0) { const w = net.W[0], b = net.b[0], j = M.sel.idx, w1 = w[j * 2], w2 = w[j * 2 + 1], bb = b[j]; ctx.strokeStyle = ink; ctx.lineWidth = 1.6; ctx.setLineDash([6, 4]); ctx.beginPath();
+    if (Math.abs(w2) > 1e-6) { ctx.moveTo(X(-E), Y(-(bb + w1 * -E) / w2)); ctx.lineTo(X(E), Y(-(bb + w1 * E) / w2)); } else { ctx.moveTo(X(-bb / w1), 0); ctx.lineTo(X(-bb / w1), H); } ctx.stroke(); ctx.setLineDash([]); }
+  const dot = (x, y, c, r, hollow) => { ctx.beginPath(); ctx.arc(X(x), Y(y), r, 0, 7); if (hollow) { ctx.strokeStyle = `rgb(${c ? BLUE : ORANGE})`; ctx.lineWidth = 1.8; ctx.stroke(); } else { ctx.fillStyle = `rgb(${c ? BLUE : ORANGE})`; ctx.fill(); ctx.strokeStyle = "#fff"; ctx.lineWidth = 1.5; ctx.stroke(); } };
+  if ($("mTest").checked) M.te.X.forEach((p, i) => dot(p[0], p[1], M.te.Y[i], 3.5, true));
+  M.tr.X.forEach((p, i) => dot(p[0], p[1], M.tr.Y[i], 4));
+  ctx.beginPath(); ctx.arc(X(M.probe[0]), Y(M.probe[1]), 8, 0, 7); ctx.strokeStyle = ink; ctx.lineWidth = 2.5; ctx.stroke(); ctx.beginPath(); ctx.moveTo(X(M.probe[0]) - 12, Y(M.probe[1])); ctx.lineTo(X(M.probe[0]) + 12, Y(M.probe[1])); ctx.moveTo(X(M.probe[0]), Y(M.probe[1]) - 12); ctx.lineTo(X(M.probe[0]), Y(M.probe[1]) + 12); ctx.lineWidth = 1; ctx.stroke();
+  drawLoss(); mText();
+}
+function drawLoss() {
+  const cv = $("loss"); const { ctx, W, H } = hiDPI(cv, 200); ctx.clearRect(0, 0, W, H); const mut = cssVar("--muted"), line = cssVar("--line"), acc = cssVar("--accent");
+  const L = 36, B = 20, T = 8, Rr = 8, w = W - L - Rr, h = H - T - B; const xmax = Math.max(100, M.epoch); let ymax = 0.8; for (const [, v] of M.lossTr) ymax = Math.max(ymax, v); for (const [, v] of M.lossTe) ymax = Math.max(ymax, v); ymax = Math.min(ymax, 2);
+  ctx.strokeStyle = line; ctx.lineWidth = 1; ctx.strokeRect(L, T, w, h); ctx.fillStyle = mut; ctx.font = mono(); ctx.fillText("0", 22, T + h); ctx.fillText(fmt(ymax, 1), 6, T + 10); ctx.fillText("epoch " + xmax, L + w - 70, H - 5);
+  const ln = (arr, col) => { ctx.strokeStyle = col; ctx.lineWidth = 1.8; ctx.beginPath(); arr.forEach(([e, v], i) => { const x = L + e / xmax * w, y = T + h - Math.min(v, ymax) / ymax * h; i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }); ctx.stroke(); };
+  ln(M.lossTr, acc); ln(M.lossTe, "#c2410c");
+}
+function mText() {
+  const net = M.net, a = M.last || net.evaluate(M.tr.X, M.tr.Y), b = M.lastTe;
+  $("mStats").innerHTML = `<span class="chip">Epoch <b>${M.epoch}</b></span><span class="chip">Train loss <b>${fmt(a.loss, 3)}</b></span><span class="chip">Train acc <b>${fmt(100 * a.acc, 1)}%</b></span><span class="chip">Held-out acc <b>${fmt(100 * b.acc, 1)}%</b></span><span class="chip">Parameters <b>${net.W.reduce((s, w, l) => s + w.length + net.b[l].length, 0)}</b></span>`;
+  // probe
+  const [px, py] = M.probe, p = net.forward([px, py])[0]; let h = `<p class="mono">input (x, y) = (${fmt(px, 2)}, ${fmt(py, 2)})</p>`;
+  for (let l = 1; l < net.L; l++) { const v = Array.from(net.A[l]), shown = v.slice(0, 10).map(q => fmt(q, 2)).join(", "); h += `<p class="mono">layer ${l} = ${net.act}(W·in + b) = [${shown}${v.length > 10 ? ", …" : ""}]</p>`; }
+  h += `<p class="mono">output p = σ(W·a + b) = ${fmt(p, 3)} &rarr; class ${p > 0.5 ? "+1 (blue)" : "−1 (orange)"}</p>`; $("probe").innerHTML = h;
+  // neuron
+  const { layer: l, idx: j } = M.sel; if (!net.W[l] || j >= net.sizes[l + 1]) return; const i = net.sizes[l], w = net.W[l].subarray(j * i, j * i + i), bb = net.b[l][j]; net.forward([px, py]); const inp = net.A[l], z = Array.from(w).reduce((s, q, k) => s + q * inp[k], bb);
+  const terms = Array.from(w).slice(0, 6).map((q, k) => `${fmt(q, 2)}·${l === 0 ? ["x", "y"][k] : "a" + (k + 1)}`).join(" + ");
+  $("neuron").innerHTML = `<p><b>Layer ${l + 1}, neuron ${j + 1}</b></p><p class="mono">z = ${terms}${i > 6 ? " + …" : ""} + ${fmt(bb, 2)}</p><p class="mono">at the probe point: z = ${fmt(z, 3)}, a = ${net.act}(z) = ${fmt(net.A[l + 1][j], 3)}</p>` + (l === 0 ? `<p class="note">The dashed line on the heatmap is z = 0. The neuron switches across this line, and its weights (${fmt(w[0], 2)}, ${fmt(w[1], 2)}) point toward its high side.</p>` : `<p class="note">This neuron combines the ${i} outputs of the previous layer, so its shape is a mix of those thumbnails.</p>`);
+}
+function mLoop() {
+  if (!M.playing || !active("secMlp")) return; if (M.epoch >= M.maxEpoch) { M.playing = false; $("mPlay").textContent = "Resume"; return; }
+  M.frame++; mEpochs(4); if (M.frame % 2 === 0) mDraw(false);
+}
+seg("mData", v => { M.kind = v; mNew(false); M.playing = true; $("mPlay").textContent = "Pause"; });
+seg("mLayers", () => { mNew(true); });
+seg("mAct", () => { mNew(true); });
+$("mH").addEventListener("input", e => { $("mHO").value = e.target.value; clearTimeout(mNew._t); mNew._t = setTimeout(() => mNew(true), 120); });
+$("mLr").addEventListener("input", () => { $("mLrO").value = lrVal().toFixed(3); });
+$("mPlay").addEventListener("click", () => { if (M.epoch >= M.maxEpoch) M.maxEpoch = M.epoch + 3000; M.playing = !M.playing; $("mPlay").textContent = M.playing ? "Pause" : "Resume"; });
+$("mStep").addEventListener("click", () => { mEpochs(10); mDraw(false); });
+$("mInit").addEventListener("click", () => { M.seed = (Math.random() * 1e6) | 0; mNew(true); });
+$("mTest").addEventListener("change", () => mDraw(false));
+$("heat").addEventListener("click", e => { const r = e.currentTarget.getBoundingClientRect(); M.probe = [(e.clientX - r.left) / r.width * 2 * E - E, (e.clientY - r.top) / r.height * 2 * E - E]; mDraw(false); });
+
+/* =====================================================================
+   02 CONVOLUTION
+   ===================================================================== */
+const KERNELS = [
+  ["Vertical edge", [-1, 0, 1, -2, 0, 2, -1, 0, 1]], ["Horizontal edge", [-1, -2, -1, 0, 0, 0, 1, 2, 1]], ["Blur", Array(9).fill(1 / 9)],
+  ["Sharpen", [0, -1, 0, -1, 5, -1, 0, -1, 0]], ["Emboss", [-2, -1, 0, -1, 0, 1, 0, 1, 2]], ["Blob", [0, 1, 0, 1, -4, 1, 0, 1, 0]],
+].map(([n, k]) => ({ name: n, k, b: 0 }));
+const C = { img: null, w: 96, h: 72, k: KERNELS[0].k.slice(), b: 0, name: "Vertical edge", conv: null, relu: null, pool: null, cw: 0, ch: 0, sel: [30, 20], learned: [], bank: {} };
+function cImage(kind) {
+  if (C.bank[kind]) return C.bank[kind];
+  const c = document.createElement("canvas"); c.width = 96; c.height = 72; const x = c.getContext("2d", { willReadFrequently: true });
+  if (kind === "scene") x.drawImage(sampleCanvas(SAMPLES.scene), 0, 0, 96, 72);
+  else if (kind === "shapes") { x.fillStyle = "#101010"; x.fillRect(0, 0, 96, 72); x.fillStyle = "#f2f2f2"; x.fillRect(8, 8, 26, 18); x.beginPath(); x.arc(66, 22, 13, 0, 7); x.fill(); x.strokeStyle = "#f2f2f2"; x.lineWidth = 4; x.beginPath(); x.moveTo(6, 66); x.lineTo(40, 36); x.stroke(); x.beginPath(); x.moveTo(58, 66); x.lineTo(76, 42); x.lineTo(92, 66); x.closePath(); x.fillStyle = "#9a9a9a"; x.fill(); x.lineWidth = 2; x.strokeStyle = "#f2f2f2"; x.strokeRect(42, 40, 12, 12); }
+  else { x.fillStyle = "#101010"; x.fillRect(0, 0, 96, 72); x.fillStyle = "#f2f2f2"; x.font = "bold 32px Georgia, serif"; x.textBaseline = "middle"; x.fillText("Edge", 6, 22); x.font = "bold 26px sans-serif"; x.fillText("A7K", 8, 54); x.fillRect(66, 12, 3, 48); x.fillRect(66, 12, 22, 3); x.fillRect(66, 57, 22, 3); }
+  const g = toGray(c, 96, 72, 200); const a = new Float32Array(96 * 72); for (let i = 0; i < a.length; i++) a[i] = g.g[i] / 255; return (C.bank[kind] = a);
+}
+function corr(img, w, h, k, b) { const cw = w - 2, ch = h - 2, o = new Float32Array(cw * ch); for (let y = 0; y < ch; y++) for (let x = 0; x < cw; x++) { let s = b; for (let j = 0; j < 3; j++) for (let i = 0; i < 3; i++) s += k[j * 3 + i] * img[(y + j) * w + x + i]; o[y * cw + x] = s; } return o; }
+function cRun() {
+  const kind = segVal("cImg"); C.img = cImage(kind); const { w, h } = C;
+  C.conv = corr(C.img, w, h, C.k, C.b); C.cw = w - 2; C.ch = h - 2; C.relu = C.conv.map(v => Math.max(0, v));
+  const pw = C.cw >> 1, ph = C.ch >> 1; C.pool = new Float32Array(pw * ph); C.pw = pw; C.ph = ph;
+  for (let y = 0; y < ph; y++) for (let x = 0; x < pw; x++) { let m = 0; for (let j = 0; j < 2; j++) for (let i = 0; i < 2; i++) m = Math.max(m, C.relu[(2 * y + j) * C.cw + 2 * x + i]); C.pool[y * pw + x] = m; }
+  const i0 = show("cIn", w, h, C.img.map(v => v * 255)); show("cConv", C.cw, C.ch, C.conv, "signed"); show("cRelu", C.cw, C.ch, C.relu, "auto"); show("cPool", pw, ph, C.pool, "auto");
+  const [sx, sy] = C.sel; i0.strokeStyle = "#ef4444"; i0.lineWidth = 1; i0.strokeRect(sx - 0.5 + 0.5, sy + 0.5, 3, 3);
+  for (const [id, f, ww] of [["cConv", 1, C.cw], ["cRelu", 1, C.cw]]) { const cx = $(id).getContext("2d"); cx.strokeStyle = "#ef4444"; cx.lineWidth = 1; cx.strokeRect(sx, sy, 1, 1); }
+  const pc = $("cPool").getContext("2d"); pc.strokeStyle = "#ef4444"; pc.lineWidth = 1; pc.strokeRect(Math.min(pw - 1, sx >> 1), Math.min(ph - 1, sy >> 1), 1, 1);
+  const lo = (sy), px = sx; const f2 = v => fmt(v, 2); const patch = []; for (let j = 0; j < 3; j++) for (let i = 0; i < 3; i++) patch.push(C.img[(sy + j) * w + sx + i]);
+  const tbl = (a, fm) => `<table class="calc">${[0, 1, 2].map(r => `<tr>${[0, 1, 2].map(c => `<td>${fm(a[r * 3 + c])}</td>`).join("")}</tr>`).join("")}</table>`;
+  const prods = patch.map((v, i) => v * C.k[i]), sum = prods.reduce((s, v) => s + v, 0), cv = C.conv[sy * C.cw + sx];
+  const bx = (sx >> 1) << 1, by = (sy >> 1) << 1, blk = []; for (let j = 0; j < 2; j++) for (let i = 0; i < 2; i++) blk.push(by + j < C.ch && bx + i < C.cw ? C.relu[(by + j) * C.cw + bx + i] : 0);
+  $("cCalc").innerHTML = `<p class="mono">Output pixel (${sx}, ${sy}). Patch × kernel, summed:</p><div class="calcrow">${tbl(patch, f2)}<span>×</span>${tbl(C.k, f2)}<span>=</span>${tbl(prods, v => fmt(v, 2))}</div><p class="mono">Σ = ${f2(sum)}, plus bias ${f2(C.b)} = <b>${f2(cv)}</b>. ReLU gives <b>${f2(Math.max(0, cv))}</b>.</p><p class="mono">Pooling block (2×2 of ReLU outputs at (${bx}, ${by})): ${blk.map(f2).join(", ")} &rarr; max = <b>${f2(Math.max(...blk))}</b></p>`;
+  $("kName").textContent = C.name;
+  document.querySelectorAll("#fbtns .fbtn").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.name === C.name)));
+}
+function setKernel(name, k, b) { C.name = name; C.k = k.slice(); C.b = b; $("kBias").value = fmt(b, 2).replace(",", ""); [...$("kInputs").children].forEach((el, i) => el.value = +k[i].toFixed(3)); cRun(); }
+function kernelThumb(k) { const c = document.createElement("canvas"); c.width = c.height = 3; const x = c.getContext("2d"); const m = Math.max(...k.map(Math.abs), 1e-6); const im = x.createImageData(3, 3); k.forEach((v, i) => { const t = v / m, col = t > 0 ? [37, 99, 235] : [234, 88, 12], a = Math.abs(t); for (let q = 0; q < 3; q++) im.data[4 * i + q] = 255 * (1 - a) + col[q] * a; im.data[4 * i + 3] = 255; }); x.putImageData(im, 0, 0); return c; }
+function buildFilterButtons() {
+  const box = $("fbtns"); box.innerHTML = "";
+  for (const f of [...KERNELS, ...C.learned]) { const b = document.createElement("button"); b.type = "button"; b.className = "fbtn"; b.dataset.name = f.name; b.setAttribute("aria-pressed", "false"); b.append(kernelThumb(f.k), document.createTextNode(f.name)); b.addEventListener("click", () => setKernel(f.name, f.k, f.b)); box.append(b); }
+}
+(() => { const box = $("kInputs"); for (let i = 0; i < 9; i++) { const inp = document.createElement("input"); inp.type = "number"; inp.step = "0.1"; inp.addEventListener("input", () => { C.k = [...box.children].map(e => parseFloat(e.value) || 0); C.name = "Custom filter"; cRun(); }); box.append(inp); } })();
+$("kBias").addEventListener("input", e => { C.b = parseFloat(e.target.value) || 0; C.name = "Custom filter"; cRun(); });
+seg("cImg", () => cRun());
+for (const [id, scale] of [["cIn", 1], ["cConv", 1], ["cRelu", 1], ["cPool", 2]]) $(id).addEventListener("click", e => { const cv = e.currentTarget; const [x, y] = VB.imgXY(e, cv, cv.width, cv.height); C.sel = [Math.max(0, Math.min(C.cw - 1, x * scale)), Math.max(0, Math.min(C.ch - 1, y * scale))]; cRun(); });
+
+/* learned filters: tiny CNN (4 filters, ReLU, global max pool, softmax) trained here */
+function trainFilters() {
+  const S = 12, F = 4, r = rng(21);
+  const gen = n => { const X = [], Y = []; for (let i = 0; i < n; i++) { const c = i % 4, im = new Float32Array(S * S), t = r() < 0.5 ? 0 : 1, v = 0.75 + r() * 0.25, o = 2 + Math.floor(r() * 8), d = Math.floor(r() * 7) - 3;
+      for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) { let on = false; if (c === 0) on = y >= o && y <= o + t; else if (c === 1) on = x >= o && x <= o + t; else if (c === 2) on = Math.abs(x + y - (S - 1 + d)) <= t; else on = Math.abs(x - y - d) <= t; im[y * S + x] = (on ? v : 0) + 0.12 * gauss(r); }
+      X.push(im); Y.push(c); } return { X, Y }; };
+  const tr = gen(240), te = gen(240), K = [], Kb = new Float64Array(F), Wl = new Float64Array(4 * F), bl = new Float64Array(4);
+  for (let f = 0; f < F; f++) K.push(Float64Array.from({ length: 9 }, () => gauss(r) * 0.3)); for (let i = 0; i < Wl.length; i++) Wl[i] = gauss(r) * 0.3;
+  const O = S - 2, m = [K.map(k => new Float64Array(9)), new Float64Array(F), new Float64Array(16), new Float64Array(4)], v = [K.map(k => new Float64Array(9)), new Float64Array(F), new Float64Array(16), new Float64Array(4)];
+  const fwd = im => { const feat = new Float64Array(F), arg = new Int32Array(F); for (let f = 0; f < F; f++) { let best = 0, bi = -1; for (let y = 0; y < O; y++) for (let x = 0; x < O; x++) { let s = Kb[f]; for (let j = 0; j < 3; j++) for (let i = 0; i < 3; i++) s += K[f][j * 3 + i] * im[(y + j) * S + x + i]; if (s > best) { best = s; bi = y * O + x; } } feat[f] = best; arg[f] = bi; }
+    const z = new Float64Array(4); for (let k = 0; k < 4; k++) { let s = bl[k]; for (let f = 0; f < F; f++) s += Wl[k * F + f] * feat[f]; z[k] = s; } let mx = Math.max(...z), sm = 0; for (let k = 0; k < 4; k++) { z[k] = Math.exp(z[k] - mx); sm += z[k]; } for (let k = 0; k < 4; k++) z[k] /= sm; return { feat, arg, p: z }; };
+  const acc = D => { let ok = 0; D.X.forEach((im, i) => { const p = fwd(im).p; if (p.indexOf(Math.max(...p)) === D.Y[i]) ok++; }); return ok / D.X.length; };
+  let t = 0;
+  for (let step = 0; step < 220; step++) {
+    const gK = K.map(() => new Float64Array(9)), gb = new Float64Array(F), gW = new Float64Array(16), gl = new Float64Array(4);
+    tr.X.forEach((im, n) => { const { feat, arg, p } = fwd(im); const dz = Float64Array.from(p); dz[tr.Y[n]] -= 1; const df = new Float64Array(F);
+      for (let k = 0; k < 4; k++) { gl[k] += dz[k]; for (let f = 0; f < F; f++) { gW[k * F + f] += dz[k] * feat[f]; df[f] += Wl[k * F + f] * dz[k]; } }
+      for (let f = 0; f < F; f++) { if (arg[f] < 0) continue; const y = Math.floor(arg[f] / O), x = arg[f] % O; gb[f] += df[f]; for (let j = 0; j < 3; j++) for (let i = 0; i < 3; i++) gK[f][j * 3 + i] += df[f] * im[(y + j) * S + x + i]; } });
+    t++; const c1 = 1 - Math.pow(0.9, t), c2 = 1 - Math.pow(0.999, t), N = tr.X.length, lr = 0.03;
+    const upd = (P, G, M, V) => { for (let q = 0; q < P.length; q++) { const g = G[q] / N; M[q] = 0.9 * M[q] + 0.1 * g; V[q] = 0.999 * V[q] + 0.001 * g * g; P[q] -= lr * (M[q] / c1) / (Math.sqrt(V[q] / c2) + 1e-8); } };
+    for (let f = 0; f < F; f++) upd(K[f], gK[f], m[0][f], v[0][f]); upd(Kb, gb, m[1], v[1]); upd(Wl, gW, m[2], v[2]); upd(bl, gl, m[3], v[3]);
+  }
+  const res = { filters: K.map((k, f) => ({ k: Array.from(k), b: Kb[f] })), trainAcc: acc(tr), testAcc: acc(te) };
+  return res;
+}
+
+/* =====================================================================
+   03 DIGITS
+   ===================================================================== */
+const DS = 28, DN = 14;
+const FONTS = ["sans-serif", "serif", "monospace", "Georgia", "Arial", "Courier New", "Verdana", "Times New Roman", "Trebuchet MS"];
+const dcv = document.createElement("canvas"); dcv.width = dcv.height = DS; const dctx = dcv.getContext("2d", { willReadFrequently: true });
+const ncv = document.createElement("canvas"); ncv.width = ncv.height = DN; const nctx = ncv.getContext("2d", { willReadFrequently: true });
+function normalize(srcCanvas, noise, r) {
+  const s = srcCanvas.width, sx = srcCanvas.getContext("2d", { willReadFrequently: true }), d = sx.getImageData(0, 0, s, s).data; let x0 = s, y0 = s, x1 = -1, y1 = -1;
+  for (let y = 0; y < s; y++) for (let x = 0; x < s; x++) if (d[4 * (y * s + x)] > 70) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+  nctx.fillStyle = "#000"; nctx.fillRect(0, 0, DN, DN); if (x1 < 0) return null;
+  const bw = x1 - x0 + 1, bh = y1 - y0 + 1, k = 11 / Math.max(bw, bh), w = bw * k, h = bh * k; nctx.imageSmoothingEnabled = true; nctx.drawImage(srcCanvas, x0, y0, bw, bh, (DN - w) / 2, (DN - h) / 2, w, h);
+  const o = nctx.getImageData(0, 0, DN, DN).data, v = new Float64Array(DN * DN); for (let i = 0; i < v.length; i++) { v[i] = o[4 * i] / 255; if (noise) v[i] = Math.max(0, Math.min(1, v[i] + noise * gauss(r))); } return v;
+}
+function renderDigit(d, r) {
+  dctx.fillStyle = "#000"; dctx.fillRect(0, 0, DS, DS); dctx.save(); dctx.translate(DS / 2 + (r() - 0.5) * 4, DS / 2 + (r() - 0.5) * 4); dctx.rotate((r() - 0.5) * 0.6); dctx.scale(0.8 + r() * 0.4, 0.85 + r() * 0.35);
+  dctx.font = `${r() < 0.4 ? "bold " : ""}${r() < 0.2 ? "italic " : ""}${19 + Math.floor(r() * 5)}px ${FONTS[Math.floor(r() * FONTS.length)]}`; dctx.textAlign = "center"; dctx.textBaseline = "middle"; dctx.fillStyle = "#fff";
+  dctx.fillText(String(d), 0, 1); if (r() < 0.4) { dctx.strokeStyle = "#fff"; dctx.lineWidth = 0.6 + r() * 1.2; dctx.strokeText(String(d), 0, 1); } dctx.restore();
+  return normalize(dcv, 0.03 + r() * 0.1, r);
+}
+const DG = { tr: null, te: null, net: null, epoch: 0, step: 0, phase: "idle", r: null, testBars: [], teLabels: [], sampleSel: -1 };
+function dStart() {
+  DG.r = rng(2024 + (Math.random() * 1e5 | 0)); DG.tr = { X: [], Y: [] }; DG.te = { X: [], Y: [] }; DG.phase = "gen"; DG.net = new Net([DN * DN, 48, 10], "relu", "softmax", 3); DG.epoch = 0; DG.step = 0; $("dRetrain").hidden = true; DG.order = null;
+}
+const DTR = 2000, DTE = 500, DEPOCH = 12, DB = 50;
+function dLoop() {
+  if (!active("secDig") || DG.phase === "idle" || DG.phase === "done") return;
+  if (DG.phase === "gen") {
+    const t0 = performance.now();
+    while (performance.now() - t0 < 12 && (DG.te.X.length < DTE || DG.tr.X.length < DTR)) {
+      const tgt = DG.te.X.length < DTE ? DG.te : DG.tr, d = tgt.X.length % 10, v = renderDigit(d, DG.r); if (v) { tgt.X.push(v); tgt.Y.push(d); } }
+    const done = DG.te.X.length + DG.tr.X.length; $("dProg").value = done / (DTR + DTE) * 25; $("dStatus").textContent = `Rendering digits: ${done} of ${DTR + DTE}`;
+    if (DG.tr.X.length >= DTR && DG.te.X.length >= DTE) { DG.phase = "train"; DG.order = null; }
+  } else if (DG.phase === "train") {
+    const t0 = performance.now(), spe = Math.floor(DTR / DB);
+    while (performance.now() - t0 < 14 && DG.epoch < DEPOCH) {
+      if (!DG.order) { DG.order = Array.from({ length: DTR }, (_, i) => i); for (let i = DTR - 1; i > 0; i--) { const j = Math.floor(DG.r() * (i + 1)); [DG.order[i], DG.order[j]] = [DG.order[j], DG.order[i]]; } }
+      const idx = DG.order.slice(DG.step * DB, DG.step * DB + DB); DG.net.trainBatch(idx.map(i => DG.tr.X[i]), idx.map(i => DG.tr.Y[i]), 0.004); DG.step++;
+      if (DG.step >= spe) { DG.step = 0; DG.epoch++; DG.order = null; }
+    }
+    $("dProg").value = 25 + DG.epoch / DEPOCH * 75; const te = DG.net.evaluate(DG.te.X, DG.te.Y); $("dStatus").textContent = `Training: epoch ${DG.epoch} of ${DEPOCH}. Held-out accuracy so far ${fmt(100 * te.acc, 1)}%`;
+    if (DG.epoch >= DEPOCH) { DG.phase = "done"; dFinish(te); }
+  }
+}
+function dFinish(te) {
+  const tr = DG.net.evaluate(DG.tr.X.slice(0, 500), DG.tr.Y.slice(0, 500)); $("dProg").value = 100; $("dRetrain").hidden = false;
+  $("dStatus").textContent = "Trained. Draw a digit or click a held-out digit.";
+  $("dStats").innerHTML = `<span class="chip">Training digits <b>${DTR}</b></span><span class="chip">Held-out digits <b>${DTE}</b></span><span class="chip">Train accuracy <b>${fmt(100 * tr.acc, 1)}%</b></span><span class="chip">Held-out accuracy <b>${fmt(100 * te.acc, 1)}%</b></span><span class="chip">Epochs <b>${DEPOCH}</b></span>`;
+  const g = $("testgrid"); g.innerHTML = ""; for (let i = 0; i < 30; i++) { const k = i * 16 % DTE, c = document.createElement("canvas"); c.width = c.height = DN; const p = DG.net.forward(DG.te.X[k]), pred = p.indexOf(Math.max(...p)); c.className = pred === DG.te.Y[k] ? "ok" : "no"; c.title = `True ${DG.te.Y[k]}, predicted ${pred}`; const x = c.getContext("2d"), im = x.createImageData(DN, DN); DG.te.X[k].forEach((v, q) => { im.data[4 * q] = im.data[4 * q + 1] = im.data[4 * q + 2] = v * 255; im.data[4 * q + 3] = 255; }); x.putImageData(im, 0, 0); c.addEventListener("click", () => dPredict(DG.te.X[k], `Held-out digit, true label ${DG.te.Y[k]}.`)); g.append(c); }
+  dPredict(DG.te.X[0], `Held-out digit, true label ${DG.te.Y[0]}.`);
+}
+function dPredict(v, msg) {
+  const sc = $("seen").getContext("2d"), im = sc.createImageData(DN, DN); if (!v) { $("dPred").textContent = msg || "Draw a digit on the pad."; return; }
+  v.forEach((q, i) => { im.data[4 * i] = im.data[4 * i + 1] = im.data[4 * i + 2] = q * 255; im.data[4 * i + 3] = 255; }); sc.putImageData(im, 0, 0);
+  if (DG.phase !== "done") { $("dPred").textContent = "The network is still training. Try again in a moment."; return; }
+  const p = Array.from(DG.net.forward(v)), best = p.indexOf(Math.max(...p));
+  $("dBars").innerHTML = p.map((q, k) => `<div class="pbar ${k === best ? "top" : ""}"><span>${k}</span><div><i style="width:${(q * 100).toFixed(1)}%;display:block"></i></div><span>${(q * 100).toFixed(0)}%</span></div>`).join("");
+  $("dPred").innerHTML = `<b>Predicted ${best}</b> with ${(p[best] * 100).toFixed(0)}% confidence. ${msg || ""}`;
+}
+(() => {
+  const pad = $("pad"), x = pad.getContext("2d", { willReadFrequently: true }); x.fillStyle = "#000"; x.fillRect(0, 0, 224, 224); let down = false, lx = 0, ly = 0;
+  const pos = e => { const r = pad.getBoundingClientRect(); return [(e.clientX - r.left) / r.width * 224, (e.clientY - r.top) / r.height * 224]; };
+  const upd = () => dPredict(normalize(pad, 0), "");
+  pad.addEventListener("pointerdown", e => { down = true; pad.setPointerCapture(e.pointerId); [lx, ly] = pos(e); x.fillStyle = "#fff"; x.beginPath(); x.arc(lx, ly, 8, 0, 7); x.fill(); upd(); });
+  pad.addEventListener("pointermove", e => { if (!down) return; const [px, py] = pos(e); x.strokeStyle = "#fff"; x.lineWidth = 16; x.lineCap = "round"; x.beginPath(); x.moveTo(lx, ly); x.lineTo(px, py); x.stroke(); lx = px; ly = py; upd(); });
+  pad.addEventListener("pointerup", () => { down = false; upd(); });
+  $("padClear").addEventListener("click", () => { x.fillStyle = "#000"; x.fillRect(0, 0, 224, 224); $("dBars").innerHTML = ""; dPredict(null, "Draw a digit on the pad."); $("seen").getContext("2d").clearRect(0, 0, DN, DN); });
+  $("dRetrain").addEventListener("click", dStart);
+})();
+
+/* ---------- main loop and start ---------- */
+function frame(ts) { pLoop(ts); mLoop(); dLoop(); requestAnimationFrame(frame); }
+function start() {
+  pMake(true, 3); pReset(); pStep(); pStep(); pStep();
+  mNew(false); mEpochs(300); mDraw(false);
+  buildFilterButtons(); cRun();
+  dStart();
+  requestAnimationFrame(frame);
+  setTimeout(() => {
+    const res = trainFilters(); window.NN.filterResult = res;
+    C.learned = res.filters.map((f, i) => ({ name: "Learned " + (i + 1), k: f.k, b: f.b }));
+    $("cLearnNote").textContent = `Trained to ${fmt(100 * res.testAcc, 0)}% accuracy on held-out synthetic line images.`;
+    buildFilterButtons(); cRun();
+  }, 50);
+}
+$("kInputs").style.display = "inline-grid";
+onTheme(() => { pDraw(); mDraw(false); });
+window.NN = { Net, makeData, trainFilters, M };
+start();
+setKernel("Vertical edge", KERNELS[0].k, 0);
+})();
+</script>
+</body>
+</html>

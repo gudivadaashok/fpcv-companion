@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Image Sensing, Interactively</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,500;8..60,600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="site.css">
+<style>
+  .eq { white-space: pre; }
+  .eq b { color: var(--accent); font-weight: 500; }
+  .zoom3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; max-width: 520px; }
+  .swatch { display: inline-block; width: 14px; height: 14px; border-radius: 3px; border: 1px solid var(--line); vertical-align: -2px; margin-right: 6px; }
+  .src { display: grid; gap: 6px; }
+</style>
+</head>
+<body>
+<header class="site"></header>
+<main class="wrap">
+  <div class="intro">
+    <h1>Image Sensing, Interactively</h1>
+    <p class="lead">A sensor turns a continuous image into a grid of numbers. Sampling, quantization, noise and the color filter each throw something away or add something unwanted. See each loss, then measure it.</p>
+    <p>Pick a sample or use your own photo. Follows the Image Sensing lectures.</p>
+  </div>
+
+  <section class="stage" aria-labelledby="h0">
+    <div class="stage-head"><span class="num">00</span><div><h2 id="h0">Choose an image</h2><p>Sections 02, 03 and 04 use this image. Section 01 has its own test patterns, plus this image as a third option.</p></div></div>
+    <div id="pick"></div>
+    <p class="note" id="pickNote"></p>
+  </section>
+
+  <section class="stage" aria-labelledby="h1">
+    <div class="stage-head"><span class="num">01</span><div><h2 id="h1">Sampling and aliasing</h2><p>Keeping every k-th pixel is sampling at 1/k cycles per pixel. Patterns finer than half that rate (the Nyquist limit) cannot be represented, and they come back as false coarse patterns. Blurring first removes the fine detail, so nothing is left to alias. Click the left image to pick a row for the plot.</p></div></div>
+    <div class="controls">
+      <div class="ctl"><label>Test pattern</label><div class="seg" id="sSrc"><button type="button" data-v="zone" aria-pressed="true">Zone plate</button><button type="button" data-v="chirp" aria-pressed="false">Chirp stripes</button><button type="button" data-v="image" aria-pressed="false">Chosen image</button></div></div>
+      <div class="ctl"><label for="sK">Keep every k-th pixel, k =</label><input type="range" id="sK" min="2" max="8" step="1" value="4"><output id="sKO">4</output></div>
+    </div>
+    <div class="three">
+      <figure><canvas class="view click" id="sOrig"></canvas><figcaption id="sCap0"></figcaption></figure>
+      <figure><canvas class="view" id="sNo"></canvas><figcaption>Downsampled, no pre-filter. Rings and stripes that should not exist appear.</figcaption></figure>
+      <figure><canvas class="view" id="sYes"></canvas><figcaption>Blurred first (Gaussian, σ = k/2), then downsampled. Fine detail fades out instead of folding back.</figcaption></figure>
+    </div>
+    <figure><canvas class="plot" id="sPlot" style="height:220px"></canvas>
+      <figcaption><span class="legend"><span><i style="background:var(--muted)"></i>original row</span><span><i style="background:#c2410c"></i>samples, no pre-filter</span><span><i style="background:var(--accent)"></i>samples, with pre-filter</span></span></figcaption></figure>
+    <div class="math"><h3>The numbers</h3><div class="eq" id="sEq"></div></div>
+  </section>
+
+  <section class="stage" aria-labelledby="h2">
+    <div class="stage-head"><span class="num">02</span><div><h2 id="h2">Quantization</h2><p>Each pixel is stored with b bits, so only 2<sup>b</sup> brightness levels exist. Few levels cause false contours (bands) in smooth areas like the sky. Click the quantized image to see one pixel round to its nearest level.</p></div></div>
+    <div class="controls"><div class="ctl"><label for="qB">Bits per pixel b</label><input type="range" id="qB" min="1" max="8" step="1" value="3"><output id="qBO">3</output></div></div>
+    <div class="three">
+      <figure><canvas class="view" id="qOrig"></canvas><figcaption>Original (8 bits, grayscale)</figcaption></figure>
+      <figure><canvas class="view click" id="qQ"></canvas><figcaption>Quantized. Click a pixel.</figcaption></figure>
+      <figure><canvas class="view" id="qErr"></canvas><figcaption>Error, scaled up to fill the range (gray = 0)</figcaption></figure>
+    </div>
+    <div class="two">
+      <figure><canvas class="plot" id="qPlot" style="height:230px"></canvas><figcaption>Output level against input level. The dashed line is the ideal. The red dot is the clicked pixel.</figcaption></figure>
+      <div class="math"><h3>At the selected pixel</h3><div id="qRead"></div><div class="stats" id="qStats"></div></div>
+    </div>
+  </section>
+
+  <section class="stage" aria-labelledby="h3">
+    <div class="stage-head"><span class="num">03</span><div><h2 id="h3">Sensor noise</h2><p>Light arrives as photons, so the electron count N varies by √N (shot noise). The readout circuit adds its own fixed noise σ<sub>r</sub>. At low exposure read noise dominates. At high exposure shot noise dominates, and SNR grows only as √N. Click the noisy image to inspect a pixel.</p></div></div>
+    <div class="controls">
+      <div class="ctl"><label for="nE">Exposure (electrons at white)</label><input type="range" id="nE" min="0" max="100" step="1" value="35"><output id="nEO" style="min-width:9ch"></output></div>
+      <div class="ctl"><label for="nR">Read noise σ<sub>r</sub></label><input type="range" id="nR" min="0" max="30" step="0.5" value="5"><output id="nRO"></output></div>
+    </div>
+    <div class="three">
+      <figure><canvas class="view" id="nIdeal"></canvas><figcaption>Noise-free image (what the scene is)</figcaption></figure>
+      <figure><canvas class="view click" id="nNoisy"></canvas><figcaption>Noisy capture, rescaled to the same brightness. Click a pixel.</figcaption></figure>
+      <figure><canvas class="view" id="nDiff"></canvas><figcaption>Noise alone (capture minus ideal, gray = 0)</figcaption></figure>
+    </div>
+    <div class="two">
+      <figure><canvas class="plot" id="nPlot" style="height:250px"></canvas>
+        <figcaption><span class="legend"><span><i style="background:#c2410c"></i>shot noise only</span><span><i style="background:#16a34a"></i>read noise only</span><span><i style="background:var(--accent)"></i>both</span></span> SNR in dB against signal electrons N. The red dot is the selected pixel.</figcaption></figure>
+      <div class="math"><h3>At the selected pixel</h3><div id="nRead"></div><div class="stats" id="nStats"></div></div>
+    </div>
+  </section>
+
+  <section class="stage" aria-labelledby="h4">
+    <div class="stage-head"><span class="num">04</span><div><h2 id="h4">Bayer mosaic and demosaicing</h2><p>A sensor pixel measures one color only. The Bayer pattern (RGGB) puts a red, green or blue filter over each pixel, with twice as many green as red or blue. The camera then guesses the two missing colors from neighbors. Bilinear interpolation does this by averaging. Near sharp edges the guess is wrong, which makes color fringes. Try Star or Text, then click an edge.</p></div></div>
+    <div class="four">
+      <figure><canvas class="view click" id="bOrig"></canvas><figcaption>Original full-color image</figcaption></figure>
+      <figure><canvas class="view click" id="bMos"></canvas><figcaption>Bayer mosaic: one color per pixel</figcaption></figure>
+      <figure><canvas class="view click" id="bDem"></canvas><figcaption>Bilinear demosaic</figcaption></figure>
+      <figure><canvas class="view click" id="bErr"></canvas><figcaption>Error ×4 (black = perfect)</figcaption></figure>
+    </div>
+    <div class="stats" id="bStats"></div>
+    <div class="two">
+      <div class="src"><h3 style="font-size:1rem">Zoom on the selected pixel (9 × 9 pixels)</h3>
+        <div class="zoom3"><figure><canvas class="view" id="zO" width="9" height="9"></canvas><figcaption>original</figcaption></figure><figure><canvas class="view" id="zM" width="9" height="9"></canvas><figcaption>mosaic</figcaption></figure><figure><canvas class="view" id="zD" width="9" height="9"></canvas><figcaption>demosaic</figcaption></figure></div>
+        <p class="note">Filter layout: R G / G B repeating, with R at the top-left of each 2 × 2 tile.</p></div>
+      <div class="math"><h3>Interpolation at the selected pixel</h3><div id="bRead"></div></div>
+    </div>
+  </section>
+</main>
+<footer class="wrap site"></footer>
+
+<script src="common.js"></script>
+<script>
+(() => {
+"use strict";
+const { $, nav, footer, SAMPLES, picker, show, showRGB, gaussBlur, conv2, imgXY, hiDPI, onTheme, cssVar, seg, segVal, fmt, rng } = VB;
+nav("image-sensing.html"); footer();
+const deb = (fn, ms = 50) => { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; };
+const st = { w: 0, h: 0, rgb: null, g: null, q: [0, 0], n: [0, 0], b: [0, 0] };
+let K = {}; const pal = () => { K = { ink: cssVar("--ink"), mut: cssVar("--muted"), acc: cssVar("--accent"), line: cssVar("--line"), mono: cssVar("--mono") || "monospace" }; }; pal();
+const ORG = "#c2410c", GRN = "#16a34a", RED = "#ff3b30";
+const tx = (c, s, x, y, col, size = 11, al = "left") => { c.fillStyle = col; c.font = size + "px " + K.mono; c.textAlign = al; c.fillText(s, x, y); };
+const ln = (c, x1, y1, x2, y2, col, lw = 1, d) => { c.strokeStyle = col; c.lineWidth = lw; c.setLineDash(d || []); c.beginPath(); c.moveTo(x1, y1); c.lineTo(x2, y2); c.stroke(); c.setLineDash([]); };
+const dot = (c, x, y, r, col) => { c.fillStyle = col; c.beginPath(); c.arc(x, y, r, 0, 7); c.fill(); };
+const dl = rows => `<dl class="detail" style="display:grid;grid-template-columns:auto 1fr;gap:3px 12px;margin:0">${rows.map(([a, b]) => `<dt>${a}</dt><dd class="mono">${b}</dd>`).join("")}</dl>`;
+const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
+
+/* ---------- 01 sampling ---------- */
+const N = 256, SA = { src: "zone", k: 4, row: 128, base: null, orig: null, no: null, yes: null, no_w: 0, srcGray: null };
+function makeSrc(kind) {
+  const a = new Float32Array(N * N), A = Math.PI / 256;
+  if (kind === "image") { const c = document.createElement("canvas"); c.width = N; c.height = N; const x = c.getContext("2d"); const k = Math.max(N / st.w, N / st.h); const cv = st.cv; x.drawImage(cv, (N - st.w * k) / 2, (N - st.h * k) / 2, st.w * k, st.h * k); const d = x.getImageData(0, 0, N, N).data; for (let i = 0; i < a.length; i++) a[i] = 0.299 * d[i * 4] + 0.587 * d[i * 4 + 1] + 0.114 * d[i * 4 + 2]; return a; }
+  for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) { const dx = x - 128, dy = y - 128; a[y * N + x] = 127.5 + 127.5 * Math.cos(A * (kind === "zone" ? dx * dx + dy * dy : dx * dx)); }
+  return a;
+}
+function runSampling() {
+  const k = +$("sK").value; SA.k = k; $("sKO").value = k;
+  const o = SA.srcGray, n = Math.floor(N / k), off = k >> 1, bl = gaussBlur(o, N, N, 0.5 * k);
+  const no = new Float32Array(n * n), ye = new Float32Array(n * n);
+  for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) { const i = (y * k + off) * N + x * k + off; no[y * n + x] = o[i]; ye[y * n + x] = bl[i]; }
+  SA.no = no; SA.yes = ye; SA.n = n; SA.bl = bl;
+  const c0 = show("sOrig", N, N, o);
+  const rN = 128 / k;
+  if (SA.src !== "image") { c0.strokeStyle = "#ff3b30"; c0.lineWidth = 1.5; c0.setLineDash([4, 3]); c0.beginPath(); if (SA.src === "zone") c0.arc(128, 128, rN, 0, 7); else { c0.moveTo(128 - rN, 0); c0.lineTo(128 - rN, N); c0.moveTo(128 + rN, 0); c0.lineTo(128 + rN, N); } c0.stroke(); c0.setLineDash([]); }
+  c0.fillStyle = "rgba(31,86,209,.9)"; c0.fillRect(0, SA.row - 0.5, N, 1.5);
+  show("sNo", n, n, no); show("sYes", n, n, ye);
+  $("sCap0").textContent = SA.src === "image" ? `Chosen image, cropped to 256 × 256. Output is ${n} × ${n}. Click to choose a row.` : `Original 256 × 256. The red dashed ${SA.src === "zone" ? "circle" : "lines"} mark where the pattern reaches the Nyquist limit for this k. Click to choose a row.`;
+  $("sEq").innerHTML = `Sampling rate        f<sub>s</sub> = 1/k = 1/${k} = <b>${fmt(1 / k, 3)} cycles/pixel</b>
+Nyquist limit        f<sub>N</sub> = f<sub>s</sub>/2 = <b>${fmt(0.5 / k, 3)} cycles/pixel</b>
+Zone plate           I = ½ + ½·cos(π r² / 256), so local frequency f(r) = r / 256
+f(r) = f<sub>N</sub> at       r = 256 · ${fmt(0.5 / k, 3)} = <b>${fmt(rN, 1)} pixels</b> from the center  (the red marker)
+Beyond that radius a frequency f &gt; f<sub>N</sub> appears as the alias  |f − m·f<sub>s</sub>|  for the nearest integer m.`;
+  plotRow();
+}
+function plotRow() {
+  const cv = $("sPlot"); const { ctx: c, W, H } = hiDPI(cv, 220); c.clearRect(0, 0, W, H);
+  const p = 8, k = SA.k, n = SA.n, off = k >> 1, y = SA.row, X = x => p + x / (N - 1) * (W - 2 * p), Y = v => H - 14 - v / 255 * (H - 28);
+  const row = (a) => { c.beginPath(); for (let x = 0; x < N; x++) x ? c.lineTo(X(x), Y(a[y * N + x])) : c.moveTo(X(x), Y(a[y * N + x])); c.stroke(); };
+  c.strokeStyle = K.line; c.strokeRect(p, 6, W - 2 * p, H - 12);
+  c.strokeStyle = K.mut; c.lineWidth = 1.2; row(SA.srcGray);
+  c.strokeStyle = K.acc + "88"; c.lineWidth = 1; row(SA.bl);
+  for (let j = 0; j < n; j++) { const x = j * k + off; ln(c, X(x), Y(0), X(x), Y(SA.srcGray[y * N + x]), ORG + "66", 1); dot(c, X(x), Y(SA.srcGray[y * N + x]), 3, ORG); dot(c, X(x), Y(SA.bl[y * N + x]), 2.5, K.acc); }
+  tx(c, `row y = ${y}`, p + 6, 20, K.mut);
+}
+$("sOrig").addEventListener("click", e => { SA.row = clamp(imgXY(e, e.currentTarget, N, N)[1], 0, N - 1); runSampling(); });
+seg("sSrc", v => { SA.src = v; SA.srcGray = makeSrc(v); runSampling(); });
+$("sK").addEventListener("input", deb(runSampling, 20));
+
+/* ---------- 02 quantization ---------- */
+function runQuant() {
+  const { w, h, g } = st, b = +$("qB").value, L = 2 ** b, step = 255 / (L - 1); $("qBO").value = b;
+  const qv = new Float32Array(w * h), er = new Float32Array(w * h); let se = 0;
+  for (let i = 0; i < g.length; i++) { qv[i] = Math.round(g[i] / step) * step; er[i] = qv[i] - g[i]; se += er[i] * er[i]; }
+  st.qv = qv; show("qOrig", w, h, g); const c = show("qQ", w, h, qv); show("qErr", w, h, er, "signed");
+  const [x, y] = st.q; c.strokeStyle = RED; c.lineWidth = 2; c.beginPath(); c.arc(x, y, 6, 0, 7); c.stroke();
+  const rmse = Math.sqrt(se / g.length), v = g[y * w + x], q = qv[y * w + x];
+  $("qRead").innerHTML = `<div class="eq">pixel (${x}, ${y}) has value v = <b>${fmt(v, 1)}</b>
+levels L = 2<sup>${b}</sup> = <b>${L}</b>,  step Δ = 255 / (L − 1) = ${fmt(step, 1)}
+index = round(v / Δ) = round(${fmt(v / step, 2)}) = ${Math.round(v / step)}
+output = index · Δ = <b>${fmt(q, 1)}</b>
+error = ${fmt(q - v, 1)}   (never more than Δ/2 = ${fmt(step / 2, 1)})</div>`;
+  $("qStats").innerHTML = `<span class="chip">RMS error <b>${fmt(rmse, 2)}</b></span><span class="chip">PSNR <b>${rmse > 0 ? fmt(20 * Math.log10(255 / rmse), 1) + " dB" : "∞"}</b></span><span class="chip">Size <b>${b} bits/pixel</b> (${fmt(b / 8 * 100, 0)}% of 8-bit)</span>`;
+  const cv = $("qPlot"); const { ctx: cc, W, H } = hiDPI(cv, 230); cc.clearRect(0, 0, W, H);
+  const p = 30, X = u => p + u / 255 * (W - p - 10), Y = u => H - 22 - u / 255 * (H - 34);
+  cc.strokeStyle = K.line; cc.strokeRect(p, 12, W - p - 10, H - 34); ln(cc, X(0), Y(0), X(255), Y(255), K.mut, 1, [4, 4]);
+  cc.strokeStyle = K.acc; cc.lineWidth = 2; cc.beginPath(); for (let u = 0; u <= 255; u++) { const q2 = Math.round(u / step) * step; u ? cc.lineTo(X(u), Y(q2)) : cc.moveTo(X(u), Y(q2)); } cc.stroke();
+  dot(cc, X(v), Y(q), 5, RED); tx(cc, "input", W - 12, H - 6, K.mut, 11, "right"); tx(cc, "output", p + 4, 24, K.mut, 11);
+  for (const t of [0, 128, 255]) tx(cc, t + "", X(t), H - 8, K.mut, 10, "center");
+}
+$("qQ").addEventListener("click", e => { st.q = imgXY(e, e.currentTarget, st.w, st.h); runQuant(); });
+$("qB").addEventListener("input", runQuant);
+
+/* ---------- 03 noise ---------- */
+const eFromT = t => Math.round(20 * Math.pow(1000, t / 100));
+function normal(r) { let u = 0; while (!u) u = r(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * r()); }
+function poisson(mu, r) { if (mu > 40) return Math.max(0, mu + Math.sqrt(mu) * normal(r)); const Lm = Math.exp(-mu); let k = 0, p = 1; do { k++; p *= r(); } while (p > Lm); return k - 1; }
+const nz = { buf: null };
+function runNoise() {
+  const { w, h, g } = st, Nmax = eFromT(+$("nE").value), sr = +$("nR").value; $("nEO").value = Nmax.toLocaleString() + " e⁻"; $("nRO").value = fmt(sr, 1) + " e⁻";
+  const r = rng(12345), out = new Float32Array(w * h), df = new Float32Array(w * h); let se = 0;
+  for (let i = 0; i < out.length; i++) { const mu = g[i] / 255 * Nmax; const e = poisson(mu, r) + sr * normal(r); out[i] = e / Nmax * 255; df[i] = out[i] - g[i]; se += df[i] * df[i]; }
+  show("nIdeal", w, h, g); const c = show("nNoisy", w, h, out); show("nDiff", w, h, df, "signed");
+  const [x, y] = st.n; c.strokeStyle = RED; c.lineWidth = 2; c.beginPath(); c.arc(x, y, 6, 0, 7); c.stroke();
+  const mu = Math.max(0.01, g[y * w + x] / 255 * Nmax), sS = Math.sqrt(mu), sT = Math.hypot(sS, sr), snr = mu / sT;
+  $("nRead").innerHTML = `<div class="eq">ideal signal  N = ${fmt(g[y * w + x], 0)}/255 · ${Nmax.toLocaleString()} = <b>${fmt(mu, 1)} e⁻</b>
+shot noise    σ<sub>s</sub> = √N = ${fmt(sS, 2)} e⁻
+read noise    σ<sub>r</sub> = ${fmt(sr, 1)} e⁻
+total         σ = √(N + σ<sub>r</sub>²) = <b>${fmt(sT, 2)} e⁻</b>
+SNR = N / σ = ${fmt(snr, 2)}  =  <b>${fmt(20 * Math.log10(snr), 1)} dB</b></div>
+<p class="note">${sS > sr ? "Shot noise is the larger term here." : "Read noise is the larger term here."} Four times the light only doubles the shot-noise SNR.</p>`;
+  const rmse = Math.sqrt(se / out.length);
+  $("nStats").innerHTML = `<span class="chip">Measured noise RMS <b>${fmt(rmse, 2)}</b> gray levels</span><span class="chip">Image SNR <b>${fmt(20 * Math.log10(Math.sqrt(g.reduce((a, v) => a + v * v, 0) / g.length) / rmse), 1)} dB</b></span>`;
+  const cv = $("nPlot"); const { ctx: cc, W, H } = hiDPI(cv, 250); cc.clearRect(0, 0, W, H);
+  const p = 36, X = n => p + Math.log10(n) / Math.log10(30000) * (W - p - 10), lo = -10, hi = 50, Y = d => H - 24 - (clamp(d, lo, hi) - lo) / (hi - lo) * (H - 36);
+  cc.strokeStyle = K.line; cc.strokeRect(p, 12, W - p - 10, H - 36);
+  for (const n of [1, 10, 100, 1000, 10000]) { ln(cc, X(n), 12, X(n), H - 24, K.line, 1, [2, 3]); tx(cc, n + "", X(n), H - 9, K.mut, 10, "center"); }
+  for (const d of [0, 20, 40]) { ln(cc, p, Y(d), W - 10, Y(d), K.line, 1, [2, 3]); tx(cc, d + " dB", p - 4, Y(d) + 4, K.mut, 10, "right"); }
+  const cur = (fn, col, lw) => { cc.strokeStyle = col; cc.lineWidth = lw; cc.beginPath(); for (let t = 0; t <= 200; t++) { const n = Math.pow(30000, t / 200); const v = 20 * Math.log10(fn(n)); t ? cc.lineTo(X(n), Y(v)) : cc.moveTo(X(n), Y(v)); } cc.stroke(); };
+  cur(n => Math.sqrt(n), ORG, 1.5); if (sr > 0) cur(n => n / sr, GRN, 1.5); cur(n => n / Math.hypot(Math.sqrt(n), sr), K.acc, 2.6);
+  dot(cc, X(mu), Y(20 * Math.log10(snr)), 5, RED); tx(cc, "signal N (electrons, log scale)", W - 12, 26, K.mut, 10, "right");
+}
+$("nNoisy").addEventListener("click", e => { st.n = imgXY(e, e.currentTarget, st.w, st.h); runNoise(); });
+$("nE").addEventListener("input", deb(runNoise, 30)); $("nR").addEventListener("input", deb(runNoise, 30));
+
+/* ---------- 04 bayer ---------- */
+const site = (x, y) => (y & 1) === 0 ? ((x & 1) === 0 ? 0 : 1) : ((x & 1) === 0 ? 1 : 2); // 0 R, 1 G, 2 B
+const KRB = [1, 2, 1, 2, 4, 2, 1, 2, 1], KG = [0, 1, 0, 1, 4, 1, 0, 1, 0];
+function runBayer() {
+  const { w, h, rgb } = st, n = w * h, raw = new Float32Array(n), m = [0, 1, 2].map(() => new Float32Array(n)), mr = [0, 1, 2].map(() => new Float32Array(n));
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { const i = y * w + x, s = site(x, y); raw[i] = rgb[i * 4 + s]; m[s][i] = 1; mr[s][i] = raw[i]; }
+  const dem = [0, 1, 2].map(c => { const k = c === 1 ? KG : KRB, a = conv2(mr[c], w, h, k, 3, 3), d = conv2(m[c], w, h, k, 3, 3), o = new Float32Array(n); for (let i = 0; i < n; i++) o[i] = a[i] / d[i]; return o; });
+  st.raw = raw; st.dem = dem; st.site = site;
+  showRGB("bOrig", w, h, i => [rgb[i * 4], rgb[i * 4 + 1], rgb[i * 4 + 2]]);
+  showRGB("bMos", w, h, i => { const s = site(i % w, (i / w) | 0), v = raw[i]; return s === 0 ? [v, 0, 0] : s === 1 ? [0, v, 0] : [0, 0, v]; });
+  showRGB("bDem", w, h, i => [dem[0][i], dem[1][i], dem[2][i]]);
+  let se = 0; const err = new Float32Array(n);
+  for (let i = 0; i < n; i++) { let e = 0; for (let c = 0; c < 3; c++) { const d = dem[c][i] - rgb[i * 4 + c]; e += Math.abs(d); se += d * d; } err[i] = e / 3; }
+  showRGB("bErr", w, h, i => { const v = Math.min(255, err[i] * 4); return [v, v, v]; });
+  const mse = se / (3 * n); let sum = 0; for (const v of err) sum += v;
+  $("bStats").innerHTML = `<span class="chip">Mean abs. error <b>${fmt(sum / n, 2)}</b> / 255</span><span class="chip">PSNR <b>${mse > 0 ? fmt(10 * Math.log10(255 * 255 / mse), 1) + " dB" : "∞"}</b></span><span class="chip">Measured samples <b>${fmt(100 / 3, 0)}%</b> of all color values</span><span class="chip">Guessed <b>${fmt(200 / 3, 0)}%</b></span>`;
+  drawZoom();
+}
+function drawZoom() {
+  const { w, h, rgb, raw, dem } = st; const [px, py] = st.b, cx = clamp(px, 1, w - 2), cy = clamp(py, 1, h - 2);
+  // markers on the four canvases
+  for (const id of ["bOrig", "bMos", "bDem", "bErr"]) { const c = $(id).getContext("2d"); c.strokeStyle = RED; c.lineWidth = 2; c.strokeRect(cx - 5, cy - 5, 11, 11); }
+  const patch = (id, fn) => { const cv = $(id), c = cv.getContext("2d"), im = c.createImageData(9, 9); for (let j = 0; j < 9; j++) for (let i = 0; i < 9; i++) { const x = clamp(cx - 4 + i, 0, w - 1), y = clamp(cy - 4 + j, 0, h - 1), v = fn(y * w + x, x, y), o = (j * 9 + i) * 4; im.data[o] = v[0]; im.data[o + 1] = v[1]; im.data[o + 2] = v[2]; im.data[o + 3] = 255; } c.putImageData(im, 0, 0); };
+  patch("zO", i => [rgb[i * 4], rgb[i * 4 + 1], rgb[i * 4 + 2]]);
+  patch("zM", (i, x, y) => { const s = site(x, y), v = raw[i]; return s === 0 ? [v, 0, 0] : s === 1 ? [0, v, 0] : [0, 0, v]; });
+  patch("zD", i => [dem[0][i], dem[1][i], dem[2][i]]);
+  const x = cx, y = cy, s = site(x, y), R = (xx, yy) => fmt(raw[clamp(yy, 0, h - 1) * w + clamp(xx, 0, w - 1)], 0);
+  const v = i => raw[clamp(y + i[1], 0, h - 1) * w + clamp(x + i[0], 0, w - 1)];
+  const avg = pts => pts.reduce((a, p) => a + v(p), 0) / pts.length, str = pts => pts.map(p => R(x + p[0], y + p[1])).join(" + ");
+  const U = [0, -1], D = [0, 1], Lf = [-1, 0], Rt = [1, 0], diag = [[-1, -1], [1, -1], [-1, 1], [1, 1]];
+  const true3 = [0, 1, 2].map(c => rgb[(y * w + x) * 4 + c]), est = [0, 1, 2].map(c => dem[c][y * w + x]);
+  const names = ["R", "G", "B"]; let lines = [];
+  const L1 = (c, pts) => `${names[c]} = (${str(pts)}) / ${pts.length} = <b>${fmt(avg(pts), 1)}</b>`;
+  if (s === 0) { lines = [`measured: R = <b>${R(x, y)}</b>`, L1(1, [U, D, Lf, Rt]), L1(2, diag)]; }
+  else if (s === 2) { lines = [`measured: B = <b>${R(x, y)}</b>`, L1(1, [U, D, Lf, Rt]), L1(0, diag)]; }
+  else if ((y & 1) === 0) lines = [`measured: G = <b>${R(x, y)}</b>`, L1(0, [Lf, Rt]), L1(2, [U, D])];
+  else lines = [`measured: G = <b>${R(x, y)}</b>`, L1(2, [Lf, Rt]), L1(0, [U, D])];
+  const sw = a => `<span class="swatch" style="background:rgb(${a.map(Math.round)})"></span>`;
+  $("bRead").innerHTML = `<p style="margin:0">Pixel (${x}, ${y}) sits under a <b>${names[s]}</b> filter.</p><div class="eq">${lines.join("\n")}</div><p style="margin:0">${sw(true3)}true RGB (${true3.map(a => fmt(a, 0)).join(", ")})<br>${sw(est)}estimate (${est.map(a => fmt(a, 0)).join(", ")})</p><p class="note">Error per channel: ${est.map((a, c) => fmt(a - true3[c], 0)).join(", ")}. It is large when the neighbors lie across an edge.</p>`;
+}
+for (const id of ["bOrig", "bMos", "bDem", "bErr"]) $(id).addEventListener("click", e => { st.b = imgXY(e, e.currentTarget, st.w, st.h); runBayer(); });
+
+/* ---------- load ---------- */
+const star = { name: "Star", note: "<b>Star:</b> black and white spokes get finer toward the center, with thin colored lines. Bayer demosaicing shows color fringes there. Sampling section: choose the chosen-image pattern to alias it.", draw(c, w, h) {
+  c.fillStyle = "#fff"; c.fillRect(0, 0, w, h); c.fillStyle = "#000"; for (let a = 0; a < 48; a++) { c.beginPath(); c.moveTo(240, 180); c.arc(240, 180, 170, a * Math.PI / 24, (a + 0.5) * Math.PI / 24); c.closePath(); c.fill(); }
+  c.lineWidth = 2; c.strokeStyle = "#e11d48"; c.beginPath(); c.moveTo(10, 20); c.lineTo(110, 60); c.stroke(); c.strokeStyle = "#2563eb"; c.beginPath(); c.moveTo(370, 40); c.lineTo(470, 20); c.stroke(); c.strokeStyle = "#16a34a"; c.beginPath(); c.moveTo(20, 340); c.lineTo(120, 300); c.stroke();
+} };
+function load(src, sw, sh) {
+  const k = Math.min(1, 320 / Math.max(sw, sh)), w = Math.max(8, Math.floor(sw * k / 2) * 2), h = Math.max(8, Math.floor(sh * k / 2) * 2);
+  const c = document.createElement("canvas"); c.width = w; c.height = h; const x = c.getContext("2d"); x.fillStyle = "#fff"; x.fillRect(0, 0, w, h); x.drawImage(src, 0, 0, w, h);
+  const d = x.getImageData(0, 0, w, h).data, g = new Float32Array(w * h); for (let i = 0; i < g.length; i++) g[i] = 0.299 * d[i * 4] + 0.587 * d[i * 4 + 1] + 0.114 * d[i * 4 + 2];
+  Object.assign(st, { w, h, rgb: d, g, cv: c, q: [(w / 2) | 0, (h * 0.12) | 0], n: [(w * 0.42) | 0, (h * 0.55) | 0], b: [(w * 0.5) | 0, (h * 0.5) | 0] });
+  if (st.src === undefined) st.src = 1;
+  if (SA.src === "image") SA.srcGray = makeSrc("image");
+  runSampling(); runQuant(); runNoise(); runBayer();
+}
+const samples = [
+  Object.assign({}, SAMPLES.scene, { note: "<b>Scene:</b> the smooth sky shows banding at 3 bits or fewer. The fence and roof edges show demosaicing errors." }),
+  star,
+  Object.assign({}, SAMPLES.text, { note: "<b>Text:</b> thin dark strokes on white. Demosaicing leaves colored fringes around letters." }),
+  Object.assign({}, SAMPLES.bricks, { note: "<b>Bricks:</b> fine, regular texture. Good for the aliasing demo with the chosen-image pattern." }),
+];
+const pk = picker({ el: "pick", samples, noteEl: "pickNote", onImage: load });
+onTheme(deb(() => { pal(); if (st.g) { plotRow(); runQuant(); runNoise(); } }, 80));
+SA.srcGray = makeSrc("zone");
+pk.pick(samples[0]);
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Image Segmentation, Interactively</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,500;8..60,600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="site.css">
+<style>
+canvas.view.click { cursor: crosshair; }
+canvas.view { image-rendering: auto; }
+.msg { min-height: 3em; font-size: 0.92rem; margin: 0; }
+.dbar { display: grid; grid-template-columns: 8em 1fr 4em; align-items: center; gap: 8px; font: 0.8rem var(--mono); }
+.dbar .tr { height: 8px; background: var(--line); border-radius: 4px; overflow: hidden; }
+.dbar .tr i { display: block; height: 100%; background: var(--muted); }
+.dbar.win .tr i { background: var(--accent); }
+.dbar.win { color: var(--ink); font-weight: 500; }
+.rd { display: grid; gap: 6px; }
+</style>
+</head>
+<body>
+<header class="site"></header>
+<main class="wrap">
+  <div class="intro">
+    <h1>Image Segmentation, Interactively</h1>
+    <p class="lead">Split an image into regions of similar pixels. Compare k-means on color, mean shift, and graph-based segmentation, and click any pixel to see why it landed where it did.</p>
+    <p>Pick a sample or upload a photo. Everything runs on a small copy of the image in your browser. Follows the Image Segmentation lectures of First Principles of Computer Vision.</p>
+  </div>
+
+  <section class="stage" aria-labelledby="h0">
+    <div class="stage-head"><span class="num">00</span><div><h2 id="h0">Choose an image</h2><p>Colorful images with distinct objects work best. Large photos are shrunk to 160 px (100 px for mean shift) before segmenting.</p></div></div>
+    <div id="pick"></div>
+    <p class="note" id="pickNote"></p>
+  </section>
+
+  <section class="stage" aria-labelledby="h1">
+    <div class="stage-head"><span class="num">01</span><div><h2 id="h1">K-means on color (and position)</h2><p>Each pixel becomes a point in CIE Lab color space. K-means picks <i>k</i> centroids, then alternates two steps: assign every pixel to its nearest centroid, and move each centroid to the mean of its pixels. Press Step to watch each half-step. Click the images to inspect a pixel.</p></div></div>
+    <div class="controls">
+      <div class="ctl"><label for="kK">Clusters k</label><input type="range" id="kK" min="2" max="10" value="5"><output id="kKO"></output></div>
+      <div class="ctl"><label for="kL">Position weight λ</label><input type="range" id="kL" min="0" max="1" step="0.05" value="0"><output id="kLO"></output></div>
+      <div class="ctl"><label>Scatter axes</label><div class="seg" id="kAx"><button type="button" data-v="ab" aria-pressed="true">a – b</button><button type="button" data-v="La" aria-pressed="false">a – L</button><button type="button" data-v="Lb" aria-pressed="false">b – L</button></div></div>
+    </div>
+    <div class="controls">
+      <button type="button" class="btn primary" id="kStep">Step</button><button type="button" class="btn" id="kRun">Run to convergence</button><button type="button" class="btn" id="kRestart">Restart from the initial centroids</button><button type="button" class="btn" id="kNew">New random start</button>
+    </div>
+    <div class="stats" id="kStat"></div>
+    <p class="msg" id="kMsg"></p>
+    <div class="three">
+      <figure><canvas class="view click" id="kReg" aria-label="K-means region colors. Click to inspect a pixel."></canvas><figcaption>Region colors (each cluster's mean color)</figcaption></figure>
+      <figure><canvas class="view click" id="kBnd" aria-label="K-means boundaries over the image. Click to inspect a pixel."></canvas><figcaption>Boundaries over the image</figcaption></figure>
+      <figure><canvas class="plot" id="kSc" style="height:300px" aria-label="Scatter plot of pixels in Lab color space with centroids"></canvas><figcaption>Pixels in color space. Rings are centroids, lines are their paths. White cross: the pixel you clicked.</figcaption></figure>
+    </div>
+    <div class="main-side">
+      <div class="math detail rd" id="kRead"></div>
+      <div class="math"><h3>The two steps</h3>
+        <p class="eq">assign:  cᵢ = argmin_j ‖ fᵢ − μ_j ‖²</p>
+        <p class="eq">update:  μ_j = mean { fᵢ : cᵢ = j }</p>
+        <p class="eq">objective:  J = Σᵢ ‖ fᵢ − μ_{cᵢ} ‖²</p>
+        <p>The feature f is (L, a, b), or (L, a, b, λx, λy) when position weight is on. Each full iteration lowers J or leaves it unchanged, so the process stops. It may stop at a poor answer: try New random start. With λ above 0, nearby pixels prefer the same cluster, so regions become compact. The result depends on k, and a gradient such as sky gets split in bands.</p></div>
+    </div>
+  </section>
+
+  <section class="stage" aria-labelledby="h2">
+    <div class="stage-head"><span class="num">02</span><div><h2 id="h2">Mean-shift segmentation</h2><p>Mean shift needs no <i>k</i>. Each pixel climbs the density of nearby, similar pixels in a joint space of position (x, y) and color (L, a, b) until it stops at a peak. Pixels that reach the same peak form one region. Click a pixel to see its climb.</p></div></div>
+    <div class="controls">
+      <div class="ctl"><label for="mHs">Spatial bandwidth hₛ</label><input type="range" id="mHs" min="3" max="18" value="8"><output id="mHsO"></output></div>
+      <div class="ctl"><label for="mHr">Color bandwidth hᵣ</label><input type="range" id="mHr" min="4" max="45" value="18"><output id="mHrO"></output></div>
+      <div class="ctl"><label for="mMin">Min region size</label><input type="range" id="mMin" min="1" max="150" value="25"><output id="mMinO"></output></div>
+    </div>
+    <div class="stats" id="mStat"></div>
+    <div class="three">
+      <figure><canvas class="view click" id="mFilt" aria-label="Mean-shift filtered image. Click to inspect a pixel."></canvas><figcaption>Each pixel replaced by its peak color (mean-shift filtering)</figcaption></figure>
+      <figure><canvas class="view click" id="mReg" aria-label="Mean-shift regions. Click to inspect a pixel."></canvas><figcaption>Regions (mean color)</figcaption></figure>
+      <figure><canvas class="view click" id="mBnd" aria-label="Mean-shift boundaries. Click to inspect a pixel."></canvas><figcaption>Boundaries over the image</figcaption></figure>
+    </div>
+    <div class="main-side">
+      <figure><canvas class="plot" id="mPath" style="height:300px" aria-label="Path of one pixel's mean shift in a-b color space"></canvas><figcaption>The clicked pixel's climb in a – b space. The ring has radius hᵣ, the color window of the first step.</figcaption></figure>
+      <div class="math detail rd" id="mRead"></div>
+    </div>
+    <div class="math"><h3>The mean-shift step</h3>
+      <p class="eq">y ← mean { zⱼ : ‖xⱼ − xᵧ‖ ≤ hₛ  and  ‖cⱼ − cᵧ‖ ≤ hᵣ }</p>
+      <p>Here z = (x, y, L, a, b) and the window is flat. Repeat until y stops moving. The converged y is the pixel's mode. This page merges neighboring pixels whose modes lie within hₛ/2 in position and hᵣ/2 in color, then merges regions smaller than the minimum size into their most similar neighbor. Larger bandwidths give fewer, smoother regions. Small hᵣ keeps fine color differences apart. The image is downsampled to 100 px to keep this fast.</p></div>
+  </section>
+
+  <section class="stage" aria-labelledby="h3">
+    <div class="stage-head"><span class="num">03</span><div><h2 id="h3">Graph-based segmentation (Felzenszwalb–Huttenlocher)</h2><p>Treat pixels as graph nodes joined to their neighbors by edges weighted by color difference. Sort the edges from lightest to heaviest. Merge two regions across an edge when the edge is light compared with how varied each region already is. Slide the progress bar to replay the merging.</p></div></div>
+    <div class="controls">
+      <div class="ctl"><label for="gK">Scale k</label><input type="range" id="gK" min="20" max="1500" step="10" value="300"><output id="gKO"></output></div>
+      <div class="ctl"><label for="gSig">Smoothing σ</label><input type="range" id="gSig" min="0" max="2" step="0.1" value="0.8"><output id="gSigO"></output></div>
+      <div class="ctl"><label for="gMin">Min region size</label><input type="range" id="gMin" min="1" max="200" value="30"><output id="gMinO"></output></div>
+      <div class="ctl"><label for="gProg">Merge progress</label><input type="range" id="gProg" min="0" max="100" value="100"><output id="gProgO"></output></div>
+    </div>
+    <div class="stats" id="gStat"></div>
+    <div class="three">
+      <figure><canvas class="view click" id="gReg" aria-label="Graph-based regions. Click to inspect a pixel."></canvas><figcaption>Regions (mean color)</figcaption></figure>
+      <figure><canvas class="view click" id="gBnd" aria-label="Graph-based boundaries. Click to inspect a pixel."></canvas><figcaption>Boundaries over the image</figcaption></figure>
+      <figure><canvas class="view click" id="gW" aria-label="Edge weights. Click to inspect a pixel."></canvas><figcaption>Heaviest edge at each pixel. Bright means a strong color change.</figcaption></figure>
+    </div>
+    <div class="main-side">
+      <div class="math detail rd" id="gRead"></div>
+      <div class="math"><h3>The merge rule</h3>
+        <p class="eq">Int(C) = largest edge inside C's minimum spanning tree</p>
+        <p class="eq">merge C₁, C₂ across edge w   if   w ≤ min( Int(C₁) + k/|C₁|,  Int(C₂) + k/|C₂| )</p>
+        <p>A region's internal variation Int(C) is the heaviest edge needed to hold it together. The term k/|C| gives small regions extra tolerance, so single pixels merge easily and large regions only merge across clearly lighter edges. A larger k favors larger regions. After the main pass, any region below the minimum size merges into a neighbor across its lightest edge. Edge weights are RGB distances between 8-connected neighbors of the smoothed image.</p></div>
+    </div>
+  </section>
+
+  <section class="stage" aria-labelledby="h4">
+    <div class="stage-head"><span class="num">04</span><div><h2 id="h4">Side by side</h2><p>The three methods answer the same question with different assumptions. K-means needs k and ignores layout unless you add position. Mean shift needs bandwidths. Graph-based segmentation needs a scale and respects connectivity.</p></div></div>
+    <div class="tablebox"><table><thead><tr><th>Method</th><th>Parameters</th><th>Regions</th><th>Compute time</th></tr></thead><tbody id="cmpT"></tbody></table></div>
+    <p class="note">K-means clusters can be split into several disconnected regions, so its region count is the number of connected pieces. Times come from your browser and include only the algorithm. Simplification: all methods use a small copy of your image and a fixed set of sensible defaults for the details not shown here.</p>
+  </section>
+</main>
+<footer class="wrap site"></footer>
+
+<script src="common.js"></script>
+<script>
+(() => {
+"use strict";
+const { $, nav, footer, SAMPLES, picker, onTheme, cssVar, seg, segVal, rng, fmt, gaussBlur, imgXY } = VB;
+nav("image-segmentation.html"); footer();
+const S = { img: null, imgM: null, selN: [0.5, 0.55], km: null, seed: 3, ms: null, fh: null, times: {}, src: null };
+
+/* ---------- color ---------- */
+const LIN = Float64Array.from({ length: 256 }, (_, i) => { const c = i / 255; return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4); });
+const FL = t => t > 0.008856 ? Math.cbrt(t) : 7.787 * t + 16 / 116;
+function rgb2lab(r, g, b, o, j) { const R = LIN[r], G = LIN[g], B = LIN[b]; const x = FL((0.4124 * R + 0.3576 * G + 0.1805 * B) / 0.95047), y = FL(0.2126 * R + 0.7152 * G + 0.0722 * B), z = FL((0.0193 * R + 0.1192 * G + 0.9505 * B) / 1.08883); o[j] = 116 * y - 16; o[j + 1] = 500 * (x - y); o[j + 2] = 200 * (y - z); }
+function prep(src, sw, sh, maxd) {
+  const k = Math.min(1, maxd / Math.max(sw, sh)), w = Math.max(8, Math.round(sw * k)), h = Math.max(8, Math.round(sh * k)); const c = document.createElement("canvas"); c.width = w; c.height = h; const x = c.getContext("2d", { willReadFrequently: true });
+  x.fillStyle = "#fff"; x.fillRect(0, 0, w, h); x.drawImage(src, 0, 0, w, h); const d = x.getImageData(0, 0, w, h).data, n = w * h, rgb = new Uint8Array(n * 3), lab = new Float32Array(n * 3);
+  for (let i = 0; i < n; i++) { rgb[3 * i] = d[4 * i]; rgb[3 * i + 1] = d[4 * i + 1]; rgb[3 * i + 2] = d[4 * i + 2]; rgb2lab(d[4 * i], d[4 * i + 1], d[4 * i + 2], lab, 3 * i); }
+  const lo = [1e9, 1e9, 1e9], hi = [-1e9, -1e9, -1e9]; for (let i = 0; i < n; i++) for (let c2 = 0; c2 < 3; c2++) { lo[c2] = Math.min(lo[c2], lab[3 * i + c2]); hi[c2] = Math.max(hi[c2], lab[3 * i + c2]); }
+  return { w, h, n, rgb, lab, lo, hi };
+}
+const selPx = img => [Math.min(img.w - 1, Math.floor(S.selN[0] * img.w)), Math.min(img.h - 1, Math.floor(S.selN[1] * img.h))];
+const sw = (r, g, b) => `<i class="sw" style="background:rgb(${r | 0},${g | 0},${b | 0})"></i>`;
+
+/* ---------- drawing helpers ---------- */
+const Z = 3;
+function big(cv, w, h, data) { const t = document.createElement("canvas"); t.width = w; t.height = h; const tc = t.getContext("2d"); tc.putImageData(new ImageData(data, w, h), 0, 0); const ctx = VB.sized(cv, w * Z, h * Z); ctx.imageSmoothingEnabled = false; ctx.drawImage(t, 0, 0, w * Z, h * Z); return ctx; }
+const rgbData = img => { const d = new Uint8ClampedArray(img.n * 4); for (let i = 0; i < img.n; i++) { d[4 * i] = img.rgb[3 * i]; d[4 * i + 1] = img.rgb[3 * i + 1]; d[4 * i + 2] = img.rgb[3 * i + 2]; d[4 * i + 3] = 255; } return d; };
+const labelData = (labels, cols, n) => { const d = new Uint8ClampedArray(n * 4); for (let i = 0; i < n; i++) { const c = cols[labels[i]] || [110, 110, 110]; d[4 * i] = c[0]; d[4 * i + 1] = c[1]; d[4 * i + 2] = c[2]; d[4 * i + 3] = 255; } return d; };
+function bounds(ctx, w, h, lab) { ctx.fillStyle = "rgb(255,36,100)"; for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { const i = y * w + x; if (x + 1 < w && lab[i] !== lab[i + 1]) ctx.fillRect((x + 1) * Z - 1, y * Z, 2, Z); if (y + 1 < h && lab[i] !== lab[i + w]) ctx.fillRect(x * Z, (y + 1) * Z - 1, Z, 2); } }
+function marker(ctx, img) { const [x, y] = selPx(img); const cx = (x + 0.5) * Z, cy = (y + 0.5) * Z; for (const [c, lw] of [["#000", 4], ["#fff", 2]]) { ctx.strokeStyle = c; ctx.lineWidth = lw; ctx.beginPath(); ctx.arc(cx, cy, 7, 0, 7); ctx.stroke(); } }
+function regionColors(img, labels, count) { const s = new Float64Array(count * 4); for (let i = 0; i < img.n; i++) { const l = labels[i]; if (l < 0) continue; s[4 * l] += img.rgb[3 * i]; s[4 * l + 1] += img.rgb[3 * i + 1]; s[4 * l + 2] += img.rgb[3 * i + 2]; s[4 * l + 3]++; } const cols = []; for (let l = 0; l < count; l++) cols.push(s[4 * l + 3] ? [s[4 * l] / s[4 * l + 3], s[4 * l + 1] / s[4 * l + 3], s[4 * l + 2] / s[4 * l + 3]] : [110, 110, 110]); return cols; }
+function components(labels, w, h) { const n = w * h, seen = new Uint8Array(n); let c = 0; const st = []; for (let s = 0; s < n; s++) { if (seen[s]) continue; c++; seen[s] = 1; st.push(s); while (st.length) { const i = st.pop(), x = i % w, y = (i / w) | 0; for (const j of [x > 0 ? i - 1 : -1, x < w - 1 ? i + 1 : -1, y > 0 ? i - w : -1, y < h - 1 ? i + w : -1]) if (j >= 0 && !seen[j] && labels[j] === labels[i]) { seen[j] = 1; st.push(j); } } } return c; }
+const AX = { ab: [1, 2, "a", "b"], La: [1, 0, "a", "L"], Lb: [2, 0, "b", "L"] };
+function scatterBase(cv, img, ax, cssH) {
+  const { ctx, W, H } = VB.hiDPI(cv, cssH); ctx.clearRect(0, 0, W, H); const [xi, yi, xn, yn] = AX[ax]; const pad = 26; const xr = [img.lo[xi], img.hi[xi]], yr = [img.lo[yi], img.hi[yi]]; const mx = (xr[1] - xr[0]) * 0.08 + 2, my = (yr[1] - yr[0]) * 0.08 + 2; xr[0] -= mx; xr[1] += mx; yr[0] -= my; yr[1] += my;
+  const sc = Math.min((W - pad - 8) / (xr[1] - xr[0]), (H - pad - 8) / (yr[1] - yr[0])); const X = v => pad + (v - xr[0]) * sc, Y = v => H - pad - (v - yr[0]) * sc;
+  ctx.strokeStyle = cssVar("--line"); ctx.lineWidth = 1; ctx.fillStyle = cssVar("--muted"); ctx.font = "11px " + (cssVar("--mono") || "monospace"); if (xr[0] < 0 && xr[1] > 0) { ctx.beginPath(); ctx.moveTo(X(0), 8); ctx.lineTo(X(0), H - pad); ctx.stroke(); } if (yr[0] < 0 && yr[1] > 0) { ctx.beginPath(); ctx.moveTo(pad, Y(0)); ctx.lineTo(W - 8, Y(0)); ctx.stroke(); } ctx.strokeRect(pad, 8, W - pad - 8, H - pad - 8);
+  ctx.fillText(xn + " →", W - 40, H - 8); ctx.fillText("↑ " + yn, 4, 18);
+  const step = Math.max(1, Math.floor(img.n / 3000)); for (let i = 0; i < img.n; i += step) { ctx.fillStyle = `rgb(${img.rgb[3 * i]},${img.rgb[3 * i + 1]},${img.rgb[3 * i + 2]})`; ctx.fillRect(X(img.lab[3 * i + xi]) - 1.2, Y(img.lab[3 * i + yi]) - 1.2, 2.4, 2.4); }
+  return { ctx, X, Y, xi, yi, sc, W, H };
+}
+function crossAt(g, v) { const px = g.X(v[g.xi]), py = g.Y(v[g.yi]); const c = g.ctx; for (const [col, lw] of [["#000", 4], ["#fff", 2]]) { c.strokeStyle = col; c.lineWidth = lw; c.beginPath(); c.moveTo(px - 7, py); c.lineTo(px + 7, py); c.moveTo(px, py - 7); c.lineTo(px, py + 7); c.stroke(); } }
+function bindClick(ids, getImg) { for (const id of ids) $(id).addEventListener("click", e => { const r = e.currentTarget.getBoundingClientRect(); S.selN = [Math.min(0.999, Math.max(0, (e.clientX - r.left) / r.width)), Math.min(0.999, Math.max(0, (e.clientY - r.top) / r.height))]; drawAll(); }); }
+
+/* ---------- K-means ---------- */
+function kmInit(run) {
+  const img = S.img, k = +$("kK").value, lam = +$("kL").value, d = lam > 0 ? 5 : 3, n = img.n, F = new Float32Array(n * d);
+  for (let i = 0; i < n; i++) { F[i * d] = img.lab[3 * i]; F[i * d + 1] = img.lab[3 * i + 1]; F[i * d + 2] = img.lab[3 * i + 2]; if (d === 5) { F[i * d + 3] = lam * (i % img.w) / (img.w - 1) * 100; F[i * d + 4] = lam * ((i / img.w) | 0) / (img.h - 1) * 100; } }
+  const r = rng(S.seed * 7919 + k), cent = new Float64Array(k * d); const first = Math.floor(r() * n); for (let j = 0; j < d; j++) cent[j] = F[first * d + j]; const dist = new Float64Array(n).fill(Infinity);
+  for (let c = 1; c < k; c++) { let tot = 0; for (let i = 0; i < n; i++) { let s = 0; for (let j = 0; j < d; j++) { const e = F[i * d + j] - cent[(c - 1) * d + j]; s += e * e; } dist[i] = Math.min(dist[i], s); tot += dist[i]; } let t = r() * tot, pick = n - 1; for (let i = 0; i < n; i++) { t -= dist[i]; if (t <= 0) { pick = i; break; } } for (let j = 0; j < d; j++) cent[c * d + j] = F[pick * d + j]; }
+  S.km = { k, d, F, n, cent, labels: new Int16Array(n).fill(-1), hist: [Float64Array.from(cent)], iter: 0, phase: "init", J: null, moved: 0, shift: 0, done: false, lam };
+  if (run) kmRun();
+}
+function kmStep() {
+  const m = S.km; if (m.done) return; const { k, d, F, n, cent } = m;
+  if (m.phase !== "assigned") { let moved = 0, J = 0; for (let i = 0; i < n; i++) { let best = 0, bd = Infinity; for (let c = 0; c < k; c++) { let s = 0; for (let j = 0; j < d; j++) { const e = F[i * d + j] - cent[c * d + j]; s += e * e; } if (s < bd) { bd = s; best = c; } } if (m.labels[i] !== best) moved++; m.labels[i] = best; J += bd; } m.moved = moved; m.J = J; m.phase = "assigned"; if (moved === 0) m.done = true; }
+  else { const sum = new Float64Array(k * d), cnt = new Float64Array(k); for (let i = 0; i < n; i++) { const c = m.labels[i]; cnt[c]++; for (let j = 0; j < d; j++) sum[c * d + j] += F[i * d + j]; } let sh = 0; for (let c = 0; c < k; c++) if (cnt[c]) { let s = 0; for (let j = 0; j < d; j++) { const v = sum[c * d + j] / cnt[c]; s += (v - cent[c * d + j]) ** 2; cent[c * d + j] = v; } sh = Math.max(sh, Math.sqrt(s)); } m.shift = sh; m.hist.push(Float64Array.from(cent)); m.iter++; m.phase = "updated"; }
+}
+function kmRun() { const t = performance.now(); while (!S.km.done && S.km.iter < 100) kmStep(); S.times.km = performance.now() - t; }
+function kmDraw() {
+  const m = S.km, img = S.img, k = m.k, d = m.d; $("kKO").value = k; $("kLO").value = (+$("kL").value).toFixed(2);
+  const cols = regionColors(img, m.labels, k), lab = m.phase === "init" ? new Int16Array(img.n).fill(-1) : m.labels;
+  const c1 = big($("kReg"), img.w, img.h, labelData(lab, cols, img.n)); const c2 = big($("kBnd"), img.w, img.h, rgbData(img)); if (m.phase !== "init") bounds(c2, img.w, img.h, lab); marker(c1, img); marker(c2, img);
+  const comps = m.phase === "init" ? 0 : components(lab, img.w, img.h); let used = 0; if (m.phase !== "init") { const u = new Set(lab); used = u.size; }
+  $("kStat").innerHTML = `<span class="chip">Iteration <b>${m.iter}</b></span><span class="chip">Phase <b>${m.phase === "init" ? "start" : m.phase === "assigned" ? "assign" : "update"}</b></span><span class="chip">Objective J <b>${m.J === null ? "–" : fmt(m.J, 0)}</b></span><span class="chip">Clusters <b>${m.phase === "init" ? k : used}</b></span><span class="chip">Connected regions <b>${m.phase === "init" ? "–" : comps}</b></span> ${m.done ? '<span class="tag good">converged</span>' : '<span class="tag warn">not converged</span>'}`;
+  $("kMsg").innerHTML = m.phase === "init" ? `<b>Start.</b> ${k} centroids were chosen by k-means++ (random pixels that are far from each other). Press <b>Step</b> to assign every pixel to its nearest centroid.` :
+    m.phase === "assigned" ? (m.done ? `<b>Iteration ${m.iter + 1}, assign:</b> no pixel changed cluster, so the centroids would not move again. K-means has converged.` : `<b>Iteration ${m.iter + 1}, assign:</b> every pixel joined its nearest centroid. ${m.moved} pixels changed cluster. Next: update the centroids.`) :
+    `<b>Iteration ${m.iter}, update:</b> each centroid moved to the mean of its pixels. The largest move was ${fmt(m.shift, 2)} units. Next: assign again.`;
+  // scatter
+  const g = scatterBase($("kSc"), img, segVal("kAx"), 300), ctx = g.ctx;
+  for (let c = 0; c < k; c++) { ctx.strokeStyle = cssVar("--ink"); ctx.globalAlpha = 0.6; ctx.lineWidth = 1.3; ctx.beginPath(); m.hist.forEach((h, i) => { const x = g.X(h[c * d + g.xi]), y = g.Y(h[c * d + g.yi]); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }); ctx.stroke(); ctx.globalAlpha = 1; }
+  for (let c = 0; c < k; c++) { const x = g.X(m.cent[c * d + g.xi]), y = g.Y(m.cent[c * d + g.yi]); const col = cols[c]; ctx.beginPath(); ctx.arc(x, y, 10, 0, 7); ctx.fillStyle = `rgb(${col[0] | 0},${col[1] | 0},${col[2] | 0})`; ctx.fill(); ctx.lineWidth = 3; ctx.strokeStyle = "#000"; ctx.stroke(); ctx.lineWidth = 1.5; ctx.strokeStyle = "#fff"; ctx.stroke(); ctx.fillStyle = (col[0] * 0.3 + col[1] * 0.6 + col[2] * 0.1) > 130 ? "#000" : "#fff"; ctx.font = "bold 11px sans-serif"; ctx.textAlign = "center"; ctx.fillText(c + 1, x, y + 4); ctx.textAlign = "left"; }
+  const [sx, sy] = selPx(img), si = sy * img.w + sx; crossAt(g, [img.lab[3 * si], img.lab[3 * si + 1], img.lab[3 * si + 2]]);
+  kmRead(cols);
+}
+function kmRead(cols) {
+  const m = S.km, img = S.img, [x, y] = selPx(img), i = y * img.w + x, { k, d, F, cent } = m; const f = []; for (let j = 0; j < d; j++) f.push(F[i * d + j]); const names = ["L", "a", "b", "λx", "λy"];
+  const dists = []; for (let c = 0; c < k; c++) { let s = 0; for (let j = 0; j < d; j++) s += (f[j] - cent[c * d + j]) ** 2; dists.push(Math.sqrt(s)); }
+  const nearest = dists.indexOf(Math.min(...dists)), order = [...dists.keys()].sort((a, b) => dists[a] - dists[b]), mx = Math.max(...dists);
+  const lab = m.phase === "init" ? -1 : m.labels[i];
+  const rgb = [img.rgb[3 * i], img.rgb[3 * i + 1], img.rgb[3 * i + 2]];
+  let html = `<h3>Pixel (${x}, ${y}) ${sw(...rgb)}</h3><p class="note">RGB (${rgb.join(", ")}). Feature vector f = (${f.map(v => fmt(v, 1)).join(", ")}).</p>`;
+  html += `<p><b>${lab < 0 ? "Not assigned yet." : "Cluster " + (lab + 1)}</b> ${lab >= 0 ? sw(...cols[lab]) : ""}</p>`;
+  html += dists.map((v, c) => `<div class="dbar ${c === nearest ? "win" : ""}"><span>${sw(...cols[c])}Cluster ${c + 1}</span><span class="tr"><i style="width:${100 * v / Math.max(mx, 1e-9)}%"></i></span><span>${fmt(v, 1)}</span></div>`).join("");
+  const sec = order[1] !== undefined ? ` The runner-up, cluster ${order[1] + 1}, is ${fmt(dists[order[1]], 1)} away.` : "";
+  html += `<p class="note"><b>Why:</b> the nearest centroid is cluster ${nearest + 1} at distance ${fmt(dists[nearest], 1)}.${sec} ${m.phase === "init" ? "Step to apply it." : ""}</p>`;
+  html += `<table class="calc"><tr><td></td>${f.map((_, j) => `<td>${names[j]}</td>`).join("")}</tr><tr><td>f</td>${f.map(v => `<td>${fmt(v, 1)}</td>`).join("")}</tr><tr><td>μ${nearest + 1}</td>${f.map((_, j) => `<td>${fmt(cent[nearest * d + j], 1)}</td>`).join("")}</tr><tr><td>(f−μ)²</td>${f.map((v, j) => `<td>${fmt((v - cent[nearest * d + j]) ** 2, 1)}</td>`).join("")}</tr></table><p class="eq">‖f − μ${nearest + 1}‖ = √${fmt(dists[nearest] ** 2, 1)} = ${fmt(dists[nearest], 2)}</p>`;
+  $("kRead").innerHTML = html;
+}
+
+/* ---------- Mean shift ---------- */
+function msPoint(img, i, hs, hr, path) {
+  const { w, h, lab } = img, R = Math.ceil(hs), hs2 = hs * hs, hr2 = hr * hr; let x = i % w, y = (i / w) | 0, L = lab[3 * i], A = lab[3 * i + 1], B = lab[3 * i + 2], it = 0;
+  if (path) path.push({ x, y, L, A, B, cnt: 1 });
+  for (; it < 10; it++) {
+    const cx = Math.round(x), cy = Math.round(y); let sx = 0, sy = 0, sL = 0, sA = 0, sB = 0, cnt = 0;
+    for (let yy = Math.max(0, cy - R); yy <= Math.min(h - 1, cy + R); yy++) for (let xx = Math.max(0, cx - R); xx <= Math.min(w - 1, cx + R); xx++) { const dx = xx - x, dy = yy - y; if (dx * dx + dy * dy > hs2) continue; const j = 3 * (yy * w + xx), dL = lab[j] - L, dA = lab[j + 1] - A, dB = lab[j + 2] - B; if (dL * dL + dA * dA + dB * dB > hr2) continue; sx += xx; sy += yy; sL += lab[j]; sA += lab[j + 1]; sB += lab[j + 2]; cnt++; }
+    if (!cnt) break; const nx = sx / cnt, ny = sy / cnt, nL = sL / cnt, nA = sA / cnt, nB = sB / cnt, sh = (nx - x) ** 2 + (ny - y) ** 2 + (nL - L) ** 2 + (nA - A) ** 2 + (nB - B) ** 2; x = nx; y = ny; L = nL; A = nA; B = nB; if (path) path.push({ x, y, L, A, B, cnt }); if (sh < 0.01) { it++; break; }
+  }
+  return [x, y, L, A, B, it];
+}
+function msRun() {
+  const t = performance.now(), img = S.imgM, hs = +$("mHs").value, hr = +$("mHr").value, minS = +$("mMin").value, n = img.n, w = img.w, h = img.h; const modes = new Float32Array(n * 5), its = new Uint8Array(n);
+  for (let i = 0; i < n; i++) { const r = msPoint(img, i, hs, hr, null); for (let j = 0; j < 5; j++) modes[5 * i + j] = r[j]; its[i] = r[5]; }
+  const par = Int32Array.from({ length: n }, (_, i) => i); const find = a => { while (par[a] !== a) { par[a] = par[par[a]]; a = par[a]; } return a; };
+  const close = (a, b) => { const dx = modes[5 * a] - modes[5 * b], dy = modes[5 * a + 1] - modes[5 * b + 1]; if (dx * dx + dy * dy > hs * hs / 4) return false; let s = 0; for (let j = 2; j < 5; j++) s += (modes[5 * a + j] - modes[5 * b + j]) ** 2; return s <= hr * hr / 4; };
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { const i = y * w + x; if (x + 1 < w && close(i, i + 1)) par[find(i)] = find(i + 1); if (y + 1 < h && close(i, i + w)) par[find(i)] = find(i + w); }
+  const id = new Map(); const labels = new Int32Array(n); for (let i = 0; i < n; i++) { const r = find(i); if (!id.has(r)) id.set(r, id.size); labels[i] = id.get(r); }
+  let cnt = id.size; const size = new Float64Array(cnt), mean = new Float64Array(cnt * 3), adj = Array.from({ length: cnt }, () => new Set());
+  for (let i = 0; i < n; i++) { const l = labels[i]; size[l]++; for (let j = 0; j < 3; j++) mean[3 * l + j] += img.lab[3 * i + j]; const x = i % w; if (x + 1 < w && labels[i + 1] !== l) { adj[l].add(labels[i + 1]); adj[labels[i + 1]].add(l); } if (i + w < n && labels[i + w] !== l) { adj[l].add(labels[i + w]); adj[labels[i + w]].add(l); } }
+  for (let l = 0; l < cnt; l++) for (let j = 0; j < 3; j++) mean[3 * l + j] /= size[l];
+  const to = Int32Array.from({ length: cnt }, (_, i) => i), alive = new Uint8Array(cnt).fill(1);
+  for (;;) { let r = -1; for (let l = 0; l < cnt; l++) if (alive[l] && size[l] < minS && adj[l].size && (r < 0 || size[l] < size[r])) r = l; if (r < 0) break;
+    let tg = -1, bd = Infinity; for (const nb of adj[r]) { let s = 0; for (let j = 0; j < 3; j++) s += (mean[3 * nb + j] - mean[3 * r + j]) ** 2; if (s < bd) { bd = s; tg = nb; } }
+    for (let j = 0; j < 3; j++) mean[3 * tg + j] = (mean[3 * tg + j] * size[tg] + mean[3 * r + j] * size[r]) / (size[tg] + size[r]); size[tg] += size[r]; alive[r] = 0; to[r] = tg; for (const nb of adj[r]) { adj[nb].delete(r); if (nb !== tg) { adj[nb].add(tg); adj[tg].add(nb); } } adj[r].clear(); }
+  const fin = a => { while (to[a] !== a) a = to[a]; return a; }; const id2 = new Map(); for (let i = 0; i < n; i++) { const r = fin(labels[i]); if (!id2.has(r)) id2.set(r, id2.size); labels[i] = id2.get(r); }
+  S.ms = { modes, its, labels, nreg: id2.size, hs, hr, rawModes: id.size }; S.times.ms = performance.now() - t;
+}
+function msDraw() {
+  const m = S.ms, img = S.imgM; $("mHsO").value = m.hs; $("mHrO").value = m.hr; $("mMinO").value = $("mMin").value;
+  const fd = new Uint8ClampedArray(img.n * 4); for (let i = 0; i < img.n; i++) { const mi = 5 * i; const t = new Float32Array(1); fd[4 * i + 3] = 255; const rgb = lab2rgb(m.modes[mi + 2], m.modes[mi + 3], m.modes[mi + 4]); fd[4 * i] = rgb[0]; fd[4 * i + 1] = rgb[1]; fd[4 * i + 2] = rgb[2]; }
+  const cols = regionColors(img, m.labels, m.nreg); const a = big($("mFilt"), img.w, img.h, fd), b = big($("mReg"), img.w, img.h, labelData(m.labels, cols, img.n)), c = big($("mBnd"), img.w, img.h, rgbData(img)); bounds(c, img.w, img.h, m.labels); [a, b, c].forEach(x => marker(x, img));
+  $("mStat").innerHTML = `<span class="chip">Regions <b>${m.nreg}</b></span><span class="chip">Distinct peaks before merging <b>${m.rawModes}</b></span><span class="chip">Mean iterations per pixel <b>${fmt(m.its.reduce((s, v) => s + v, 0) / img.n, 1)}</b></span><span class="chip">Working size <b>${img.w} × ${img.h}</b></span>`;
+  msRead(cols);
+}
+function lab2rgb(L, a, b) { const fy = (L + 16) / 116, fx = fy + a / 500, fz = fy - b / 200; const f = t => t * t * t > 0.008856 ? t * t * t : (t - 16 / 116) / 7.787; const X = f(fx) * 0.95047, Y = f(fy), Zc = f(fz) * 1.08883; const lin = [3.2406 * X - 1.5372 * Y - 0.4986 * Zc, -0.9689 * X + 1.8758 * Y + 0.0415 * Zc, 0.0557 * X - 0.2040 * Y + 1.0570 * Zc]; return lin.map(c => { c = Math.max(0, Math.min(1, c)); return 255 * (c <= 0.0031308 ? 12.92 * c : 1.055 * Math.pow(c, 1 / 2.4) - 0.055); }); }
+function msRead(cols) {
+  const m = S.ms, img = S.imgM, [x, y] = selPx(img), i = y * img.w + x, path = []; msPoint(img, i, m.hs, m.hr, path); const lab = m.labels[i]; const reg = cols[lab]; let size = 0; for (let j = 0; j < img.n; j++) if (m.labels[j] === lab) size++;
+  const g = scatterBase($("mPath"), img, "ab", 300), ctx = g.ctx; ctx.strokeStyle = cssVar("--accent"); ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(g.X(path[0].A), g.Y(path[0].B), m.hr * g.sc, 0, 7); ctx.stroke();
+  ctx.strokeStyle = "#fff"; ctx.lineWidth = 4; ctx.beginPath(); path.forEach((p, k) => k ? ctx.lineTo(g.X(p.A), g.Y(p.B)) : ctx.moveTo(g.X(p.A), g.Y(p.B))); ctx.stroke(); ctx.strokeStyle = "#e11d48"; ctx.lineWidth = 2; ctx.beginPath(); path.forEach((p, k) => k ? ctx.lineTo(g.X(p.A), g.Y(p.B)) : ctx.moveTo(g.X(p.A), g.Y(p.B))); ctx.stroke(); path.forEach((p, k) => { ctx.beginPath(); ctx.arc(g.X(p.A), g.Y(p.B), k === path.length - 1 ? 6 : 3.5, 0, 7); ctx.fillStyle = k === path.length - 1 ? "#22d3ee" : "#fff"; ctx.fill(); ctx.strokeStyle = "#000"; ctx.lineWidth = 1; ctx.stroke(); });
+  const last = path[path.length - 1], rgb = [img.rgb[3 * i], img.rgb[3 * i + 1], img.rgb[3 * i + 2]];
+  const rows = path.map((p, k) => `<tr><td>${k}</td><td>${fmt(p.x, 1)}, ${fmt(p.y, 1)}</td><td>${fmt(p.L, 1)}, ${fmt(p.A, 1)}, ${fmt(p.B, 1)}</td><td>${k ? p.cnt : "–"}</td></tr>`).join("");
+  $("mRead").innerHTML = `<h3>Pixel (${x}, ${y}) ${sw(...rgb)} reaches its peak in ${path.length - 1} step${path.length === 2 ? "" : "s"}</h3><div class="tablebox" style="max-height:200px"><table class="calc" style="width:100%"><thead><tr><th>step</th><th>position</th><th>color L, a, b</th><th>count</th></tr></thead><tbody>${rows}</tbody></table></div>
+  <p><b>Region ${lab + 1}</b> ${sw(...reg)} has ${size} pixels.</p><p class="note"><b>Why:</b> the pixel moved by ${fmt(Math.hypot(last.x - path[0].x, last.y - path[0].y), 1)} px and ${fmt(Math.sqrt((last.L - path[0].L) ** 2 + (last.A - path[0].A) ** 2 + (last.B - path[0].B) ** 2), 1)} color units to a peak where the window average stops changing. Neighbors that end at nearly the same peak (within hₛ/2 and hᵣ/2) share this region.</p>`;
+}
+
+/* ---------- Felzenszwalb–Huttenlocher ---------- */
+let edgeCache = null;
+function fhEdges(sigma) {
+  const img = S.img; if (edgeCache && edgeCache.img === img && edgeCache.sigma === sigma) return edgeCache; const { w, h, n } = img; const ch = [0, 1, 2].map(c => { const a = new Float32Array(n); for (let i = 0; i < n; i++) a[i] = img.rgb[3 * i + c]; return sigma > 0 ? gaussBlur(a, w, h, sigma) : a; });
+  const eu = [], ev = [], ew = []; const add = (a, b) => { const dr = ch[0][a] - ch[0][b], dg = ch[1][a] - ch[1][b], db = ch[2][a] - ch[2][b]; eu.push(a); ev.push(b); ew.push(Math.sqrt(dr * dr + dg * dg + db * db)); };
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { const i = y * w + x; if (x + 1 < w) add(i, i + 1); if (y + 1 < h) { add(i, i + w); if (x + 1 < w) add(i, i + w + 1); if (x > 0) add(i, i + w - 1); } }
+  const E = ew.length, idx = new Uint32Array(E); for (let i = 0; i < E; i++) idx[i] = i; idx.sort((a, b) => ew[a] - ew[b]); const U = new Int32Array(E), V = new Int32Array(E), Wt = new Float32Array(E); for (let i = 0; i < E; i++) { U[i] = eu[idx[i]]; V[i] = ev[idx[i]]; Wt[i] = ew[idx[i]]; }
+  const mx = new Float32Array(n); for (let e = 0; e < E; e++) { mx[U[e]] = Math.max(mx[U[e]], Wt[e]); mx[V[e]] = Math.max(mx[V[e]], Wt[e]); }
+  return (edgeCache = { img, sigma, U, V, Wt, E, mx });
+}
+function fhRun() {
+  const t = performance.now(), img = S.img, n = img.n, k = +$("gK").value, minS = +$("gMin").value, prog = +$("gProg").value / 100, ed = fhEdges(+$("gSig").value);
+  const par = Int32Array.from({ length: n }, (_, i) => i), size = new Int32Array(n).fill(1), intd = new Float32Array(n); const find = a => { while (par[a] !== a) { par[a] = par[par[a]]; a = par[a]; } return a; };
+  const uni = (a, b, w) => { if (size[a] < size[b]) [a, b] = [b, a]; par[b] = a; size[a] += size[b]; intd[a] = Math.max(intd[a], intd[b], w); };
+  const m = Math.floor(prog * ed.E); for (let e = 0; e < m; e++) { const a = find(ed.U[e]), b = find(ed.V[e]); if (a !== b && ed.Wt[e] <= Math.min(intd[a] + k / size[a], intd[b] + k / size[b])) uni(a, b, ed.Wt[e]); }
+  if (prog >= 1) for (let e = 0; e < ed.E; e++) { const a = find(ed.U[e]), b = find(ed.V[e]); if (a !== b && (size[a] < minS || size[b] < minS)) uni(a, b, ed.Wt[e]); }
+  const id = new Map(), labels = new Int32Array(n); for (let i = 0; i < n; i++) { const r = find(i); if (!id.has(r)) id.set(r, id.size); labels[i] = id.get(r); }
+  S.fh = { labels, nreg: id.size, find, size, intd, k, ed, id, prog, minS }; S.times.fh = performance.now() - t;
+}
+function fhDraw() {
+  const f = S.fh, img = S.img; $("gKO").value = f.k; $("gSigO").value = (+$("gSig").value).toFixed(1); $("gMinO").value = f.minS; $("gProgO").value = $("gProg").value + "%";
+  const cols = regionColors(img, f.labels, f.nreg); const a = big($("gReg"), img.w, img.h, labelData(f.labels, cols, img.n)), b = big($("gBnd"), img.w, img.h, rgbData(img)); bounds(b, img.w, img.h, f.labels);
+  const wd = new Uint8ClampedArray(img.n * 4); const mxw = Math.max(...f.ed.mx, 1); for (let i = 0; i < img.n; i++) { const v = 255 * Math.sqrt(f.ed.mx[i] / mxw); wd[4 * i] = wd[4 * i + 1] = wd[4 * i + 2] = v; wd[4 * i + 3] = 255; } const c = big($("gW"), img.w, img.h, wd); [a, b, c].forEach(x => marker(x, img));
+  $("gStat").innerHTML = `<span class="chip">Regions <b>${f.nreg}</b></span><span class="chip">Edges processed <b>${fmt(100 * f.prog, 0)}%</b> of ${f.ed.E.toLocaleString()}</span><span class="chip">Largest region <b>${Math.max(...[...f.id.keys()].map(r => f.size[r])).toLocaleString()} px</b></span>${f.prog < 1 ? '<span class="tag warn">minimum-size merge runs at 100%</span>' : ""}`;
+  fhRead(cols);
+}
+function fhRead(cols) {
+  const f = S.fh, img = S.img, [x, y] = selPx(img), i = y * img.w + x, r = f.find(i), lab = f.labels[i], k = f.k, ed = f.ed; const rgb = [img.rgb[3 * i], img.rgb[3 * i + 1], img.rgb[3 * i + 2]];
+  const nbs = new Map(); for (let e = 0; e < ed.E && nbs.size < 400; e++) { const a = f.find(ed.U[e]), b = f.find(ed.V[e]); if (a === b || (a !== r && b !== r)) continue; const o = a === r ? b : a; if (!nbs.has(o)) nbs.set(o, ed.Wt[e]); }
+  const own = f.intd[r] + k / f.size[r]; const rows = [...nbs.entries()].slice(0, 5).map(([o, w]) => { const thr = Math.min(own, f.intd[o] + k / f.size[o]); const oc = cols[f.labels[(() => { for (let j = 0; j < img.n; j++) if (f.find(j) === o) return j; return 0; })()]]; return `<tr><td>${sw(...oc)}${f.size[o]} px</td><td>${fmt(w, 1)}</td><td>${fmt(thr, 1)}</td><td>${w > thr ? '<span class="tag good">kept apart</span>' : '<span class="tag warn">close call</span>'}</td></tr>`; }).join("");
+  $("gRead").innerHTML = `<h3>Pixel (${x}, ${y}) ${sw(...rgb)} in region ${lab + 1} ${sw(...cols[lab])}</h3>
+  <dl><dt>Size |C|</dt><dd>${f.size[r].toLocaleString()} px</dd><dt>Int(C)</dt><dd>${fmt(f.intd[r], 1)}</dd><dt>k / |C|</dt><dd>${fmt(k / f.size[r], 1)}</dd><dt>Int(C) + k/|C|</dt><dd>${fmt(own, 1)}</dd></dl>
+  <p class="note">Cheapest edge from this region to each neighbor (up to 5), against the merge threshold min(Int + k/|C|) of the two regions, using final sizes:</p>
+  ${rows ? `<div class="tablebox" style="max-height:200px"><table class="calc" style="width:100%"><thead><tr><th>Neighbor</th><th>Edge w</th><th>Threshold</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>` : "<p>This region touches no other region.</p>"}
+  <p class="note"><b>Why:</b> an edge joins two regions only if its weight w is at most the threshold. Edges were tested earlier, when regions were smaller, so a near-threshold row can be a close call.</p>`;
+}
+
+/* ---------- comparison and wiring ---------- */
+function cmp() {
+  const km = S.km, ms = S.ms, fh = S.fh, lab = km.phase === "init" ? null : km.labels;
+  const rows = [["K-means", `k = ${km.k}, λ = ${(+$("kL").value).toFixed(2)}`, lab ? components(lab, S.img.w, S.img.h) + " connected (" + km.k + " clusters)" : "–", S.times.km], ["Mean shift", `hₛ = ${ms.hs}, hᵣ = ${ms.hr}`, ms.nreg, S.times.ms], ["Graph-based", `k = ${fh.k}, σ = ${(+$("gSig").value).toFixed(1)}`, fh.nreg, S.times.fh]];
+  $("cmpT").innerHTML = rows.map(r => `<tr><td>${r[0]}</td><td>${r[1]}</td><td>${r[2]}</td><td>${fmt(r[3] || 0, 0)} ms</td></tr>`).join("");
+}
+function drawAll() { kmDraw(); msDraw(); fhDraw(); cmp(); }
+function loadImage(src, sw0, sh0) { S.src = src; S.img = prep(src, sw0, sh0, 160); S.imgM = prep(src, sw0, sh0, 100); edgeCache = null; kmInit(true); msRun(); fhRun(); drawAll(); }
+let tmr = 0; const later = fn => { clearTimeout(tmr); tmr = setTimeout(fn, 120); };
+$("kK").addEventListener("input", () => later(() => { kmInit(true); kmDraw(); cmp(); }));
+$("kL").addEventListener("input", () => later(() => { kmInit(true); kmDraw(); cmp(); }));
+seg("kAx", kmDraw);
+$("kStep").addEventListener("click", () => { kmStep(); kmDraw(); cmp(); });
+$("kRun").addEventListener("click", () => { kmRun(); kmDraw(); cmp(); });
+$("kRestart").addEventListener("click", () => { kmInit(false); kmDraw(); });
+$("kNew").addEventListener("click", () => { S.seed++; kmInit(false); kmDraw(); });
+for (const id of ["mHs", "mHr", "mMin"]) $(id).addEventListener("input", () => { $("mHsO").value = $("mHs").value; $("mHrO").value = $("mHr").value; $("mMinO").value = $("mMin").value; later(() => { msRun(); msDraw(); cmp(); }); });
+for (const id of ["gK", "gSig", "gMin", "gProg"]) $(id).addEventListener("input", () => later(() => { fhRun(); fhDraw(); cmp(); }));
+bindClick(["kReg", "kBnd", "mFilt", "mReg", "mBnd", "gReg", "gBnd", "gW"]);
+
+/* ---------- samples ---------- */
+const candy = { name: "Candy", draw(c, w, h) {
+  const g = c.createLinearGradient(0, 0, w, h); g.addColorStop(0, "#1d6e86"); g.addColorStop(1, "#2a4b8d"); c.fillStyle = g; c.fillRect(0, 0, w, h); const r = rng(9);
+  const cols = ["#e63946", "#f4a261", "#ffd166", "#06d6a0", "#ef476f", "#f8f9fa", "#9b5de5"]; for (let i = 0; i < 22; i++) { const x = 40 + r() * (w - 80), y = 40 + r() * (h - 80), rad = 22 + r() * 22; c.fillStyle = "rgba(0,0,0,.25)"; c.beginPath(); c.arc(x + 5, y + 6, rad, 0, 7); c.fill(); const rg = c.createRadialGradient(x - rad / 3, y - rad / 3, 2, x, y, rad); const col = cols[i % cols.length]; rg.addColorStop(0, "#fff"); rg.addColorStop(0.25, col); rg.addColorStop(1, col); c.fillStyle = rg; c.beginPath(); c.arc(x, y, rad, 0, 7); c.fill(); }
+  VB.addNoise(c, w, h, 5, 31);
+}, note: "<b>Candy:</b> bright discs on a blue cloth. Shading makes each disc span several shades, so small k splits discs by lightness and large k finds them." };
+const samples = [
+  Object.assign({}, SAMPLES.scene, { note: "<b>Scene:</b> sky, mountains, grass and a house. Try k = 5 for k-means. The sky is a gradient, so k-means cuts it into bands while graph-based segmentation may keep it whole." }),
+  candy,
+  Object.assign({}, SAMPLES.shapes, { note: "<b>Shapes:</b> dark shapes on a light background, almost no color. Position weight does little here because color alone separates them." }),
+  Object.assign({}, SAMPLES.bricks, { note: "<b>Bricks:</b> heavy texture. K-means mixes brick and mortar by color, and graph-based segmentation needs a large k to merge bricks." }),
+];
+const p = picker({ el: "pick", samples, noteEl: "pickNote", onImage: (src, w0, h0) => loadImage(src, w0, h0) });
+onTheme(() => { if (S.km) drawAll(); });
+p.pick(samples[0]);
+})();
+</script>
+</body>
+</html>

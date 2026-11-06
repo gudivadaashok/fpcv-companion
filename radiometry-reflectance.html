@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Radiometry &amp; Reflectance, Interactively</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,500;8..60,600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="site.css">
+<style>
+#irr { height: 300px; cursor: grab; touch-action: none; }
+#dial { width: 190px; height: 190px; touch-action: none; cursor: grab; border-radius: 50%; display: block; }
+#sph { cursor: crosshair; touch-action: none; max-width: 420px; margin: 0 auto; }
+#polar { height: 400px; }
+.five { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; }
+.five figure { cursor: pointer; border: 2px solid var(--line); border-radius: 8px; padding: 6px; }
+.five figure.on { border-color: var(--accent); }
+.five canvas { width: 100%; display: block; border-radius: 6px; background: var(--stage); }
+.five figcaption { text-align: center; }
+.side { display: grid; gap: 14px; align-content: start; }
+.side .ctl { justify-content: space-between; }
+.side input[type=range] { flex: 1; width: auto; }
+.dialrow { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; }
+.calc-lines { display: grid; gap: 5px; font-family: var(--mono); font-size: 0.82rem; }
+.calc-lines p { margin: 0; overflow-wrap: anywhere; }
+.calc-lines .hl { color: var(--accent); }
+@media (max-width: 760px) { .five { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+</style>
+</head>
+<body>
+<header class="site"></header>
+<main class="wrap">
+  <div class="intro">
+    <h1>Radiometry &amp; Reflectance, Interactively</h1>
+    <p class="lead">A pixel is bright because light arrived at a surface, the surface scattered some of it, and the camera collected what left in its direction. Here you can change each step and watch the numbers.</p>
+    <p>Follows the Radiometry and Reflectance lectures of First Principles of Computer Vision. The models are the standard textbook forms, evaluated for one white point light and a camera looking straight down the z axis.</p>
+  </div>
+
+  <section class="stage" aria-labelledby="h0">
+    <div class="stage-head"><span class="num">00</span><div><h2 id="h0">How much light lands on a patch?</h2><p>Drag the yellow light around the patch, or use the sliders. Two things change the irradiance <i>E</i>: the angle from the surface normal, and the distance.</p></div></div>
+    <canvas class="plot" id="irr" aria-label="A light above a small patch. Drag the light to change its angle and distance."></canvas>
+    <div class="controls">
+      <div class="ctl"><label for="th">Angle θ from the normal</label><input type="range" id="th" min="-85" max="85" value="40"><output id="thO"></output></div>
+      <div class="ctl"><label for="rr">Distance r</label><input type="range" id="rr" min="0.5" max="4" step="0.05" value="1.5"><output id="rrO"></output></div>
+    </div>
+    <div class="two"><canvas class="plot" id="pTh" style="height:230px"></canvas><canvas class="plot" id="pR" style="height:230px"></canvas></div>
+    <div class="stats" id="irrStats"></div>
+    <div class="math"><h3>The equation</h3>
+      <p class="eq">E = I cos θ / r²</p>
+      <p>The source has intensity <i>I</i> = 100 W/sr here. Tilting the patch spreads the same beam over a longer footprint, 1/cos θ times larger, so the light per unit area falls as cos θ. Moving the source away spreads the light over a sphere of area 4πr², so the irradiance falls as 1/r². Try r = 1.5 and r = 3: doubling the distance cuts <i>E</i> to a quarter.</p></div>
+  </section>
+
+  <section class="stage" aria-labelledby="h1">
+    <div class="stage-head"><span class="num">01</span><div><h2 id="h1">Light a sphere with a BRDF</h2><p>The BRDF <i>f</i>(θi, φi; θr, φr) says how much of the light from one direction leaves in another. Pick a model, drag the light in the dial, and move the sliders. Click the big sphere to inspect a pixel in the next section.</p></div></div>
+    <div class="main-side">
+      <figure><canvas class="view click" id="sph" aria-label="Rendered sphere. Click a pixel to inspect it."></canvas><figcaption>The ringed pixel is the one inspected below. The camera looks along −z.</figcaption></figure>
+      <div class="side">
+        <div class="ctl"><label>Model</label><div class="seg" id="model" style="flex-wrap:wrap"><button type="button" data-v="lambert" aria-pressed="false">Lambertian</button><button type="button" data-v="phong" aria-pressed="false">Phong</button><button type="button" data-v="blinn" aria-pressed="true">Blinn–Phong</button><button type="button" data-v="oren" aria-pressed="false">Oren–Nayar</button><button type="button" data-v="torrance" aria-pressed="false">Torrance–Sparrow</button></div></div>
+        <div class="dialrow"><canvas id="dial" aria-label="Light direction. Drag the dot."></canvas><p class="note">Drag the dot. The center is a light behind the camera. The rim is a light at grazing angle.</p></div>
+        <div class="ctl"><label for="rough">Roughness</label><input type="range" id="rough" min="0.05" max="1" step="0.01" value="0.35"><output id="roughO"></output></div>
+        <div class="ctl"><label for="alb">Albedo ρ</label><input type="range" id="alb" min="0.05" max="1" step="0.01" value="0.7"><output id="albO"></output></div>
+        <div class="ctl"><label for="spec">Specular strength</label><input type="range" id="spec" min="0" max="1" step="0.01" value="0.5"><output id="specO"></output></div>
+        <p class="note" id="modelNote"></p>
+      </div>
+    </div>
+    <div class="five" id="gallery"></div>
+    <p class="note">The five spheres use your light and sliders. Click one to choose that model.</p>
+  </section>
+
+  <section class="stage" aria-labelledby="h2">
+    <div class="stage-head"><span class="num">02</span><div><h2 id="h2">Inspect one pixel</h2><p>Click the sphere above, or here. The left plot shows the BRDF in the plane that holds the light and the normal. The right panel plugs the pixel's angles into the formula.</p></div></div>
+    <div class="main-side">
+      <figure><canvas class="plot" id="polar" aria-label="Polar plot of the BRDF in the plane of incidence"></canvas>
+        <figcaption><span class="legend"><span><i style="background:var(--accent)"></i>BRDF of the chosen model</span><span><i style="background:var(--muted)"></i>Lambertian ρ/π</span><span><i style="background:#ca8a04"></i>Light direction</span><span><i style="background:var(--ink)"></i>This pixel's viewing direction</span></span></figcaption></figure>
+      <div class="math detail"><h3 id="pxTitle"></h3><div class="calc-lines" id="calc"></div></div>
+    </div>
+    <div class="math"><h3>Reading the plot</h3>
+      <p>Each point on the curve is a viewing direction in the plane of incidence. Its distance from the center is <i>f</i>. Lambertian is a perfect half-circle ring: the same in every direction. A glossy surface adds a lobe around the mirror direction, the reflection of the light about the normal. Raise roughness and the lobe widens and drops. Oren–Nayar brightens the return toward the light (backscatter), which flat-looking rough surfaces such as the Moon show.</p>
+      <p>If the viewer is out of the plane of incidence (φ is not 0° or 180°), the exact value can differ from the curve. The ring on the curve shows only the in-plane angle θr.</p></div>
+  </section>
+</main>
+<footer class="wrap site"></footer>
+
+<script src="common.js"></script>
+<script>
+(() => {
+"use strict";
+const { $, nav, footer, hiDPI, onTheme, cssVar, seg, segVal, imgXY, fmt, arrow } = VB;
+nav("radiometry-reflectance.html"); footer();
+const PI = Math.PI, D2R = PI / 180, f2 = (v, d = 3) => fmt(v, d);
+const mono = () => cssVar("--mono") || "monospace";
+
+/* ---------- 00 irradiance ---------- */
+const I0 = 100, ir = { th: 40, r: 1.5 };
+const irrE = (th, r) => I0 * Math.max(0, Math.cos(th * D2R)) / (r * r);
+function drawIrr() {
+  const cv = $("irr"); const { ctx, W, H } = hiDPI(cv, 300); ctx.clearRect(0, 0, W, H);
+  const cx = W / 2, cy = H - 44, sc = Math.min((cy - 20) / 4.1, (W / 2 - 30) / 4.1), th = ir.th * D2R;
+  const lx = cx + ir.r * sc * Math.sin(th), ly = cy - ir.r * sc * Math.cos(th);
+  ctx.strokeStyle = cssVar("--line"); ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(10, cy); ctx.lineTo(W - 10, cy); ctx.stroke();
+  ctx.fillStyle = cssVar("--muted"); ctx.font = "11px " + mono();
+  for (let r = 1; r <= 4; r++) { ctx.beginPath(); ctx.arc(cx, cy, r * sc, Math.PI * 1.02, Math.PI * 1.98); ctx.setLineDash([3, 4]); ctx.stroke(); ctx.setLineDash([]); ctx.fillText(r + " m", cx + 4, cy - r * sc + 12); }
+  arrow(ctx, cx, cy, cx, cy - 60, cssVar("--muted"), 1.5, 7); ctx.fillText("normal n", cx + 6, cy - 50);
+  // beam
+  const hw = 12, d = [-Math.sin(th), Math.cos(th)], pp = [Math.cos(th), Math.sin(th)];
+  const edge = s => { const sx = lx + s * hw * pp[0], sy = ly + s * hw * pp[1]; const t = (cy - sy) / d[1]; return [sx, sy, sx + t * d[0], cy]; };
+  const a = edge(-1), b = edge(1);
+  ctx.fillStyle = "rgba(202,138,4,0.22)"; ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(a[2], a[3]); ctx.lineTo(b[2], b[3]); ctx.lineTo(b[0], b[1]); ctx.closePath(); ctx.fill();
+  ctx.strokeStyle = "#ca8a04"; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(a[2], a[3]); ctx.moveTo(b[0], b[1]); ctx.lineTo(b[2], b[3]); ctx.stroke();
+  ctx.strokeStyle = cssVar("--ink"); ctx.lineWidth = 4; ctx.beginPath(); ctx.moveTo(Math.min(a[2], b[2]), cy); ctx.lineTo(Math.max(a[2], b[2]), cy); ctx.stroke();
+  const foot = Math.abs(b[2] - a[2]);
+  ctx.fillStyle = cssVar("--ink"); ctx.font = "12px " + mono(); ctx.textAlign = "center"; ctx.fillText(`footprint = beam width / cos θ = ${f2(foot / (2 * hw), 2)} ×`, cx, cy + 28); ctx.textAlign = "start";
+  // angle arc
+  ctx.strokeStyle = "#ca8a04"; ctx.lineWidth = 1.5; ctx.beginPath(); const sa = -PI / 2, ea = -PI / 2 + th; ctx.arc(cx, cy, 36, Math.min(sa, ea), Math.max(sa, ea)); ctx.stroke();
+  ctx.fillStyle = "#ca8a04"; ctx.fillText("θ", cx + (th >= 0 ? 12 : -22), cy - 44);
+  ctx.beginPath(); ctx.arc(lx, ly, 11, 0, 7); ctx.fillStyle = "#facc15"; ctx.fill(); ctx.strokeStyle = "#a16207"; ctx.lineWidth = 2; ctx.stroke();
+  ctx.fillStyle = cssVar("--muted"); ctx.fillText("drag me", lx + 16, ly + 4);
+  ir.geo = { cx, cy, sc };
+}
+function drawIrrPlots() {
+  const cv1 = $("pTh"), cv2 = $("pR");
+  const axes = (cv, fn, x0, x1, ymax, xl, yl, mark, xt) => {
+    const { ctx, W, H } = hiDPI(cv, 230); ctx.clearRect(0, 0, W, H);
+    const L = 48, R = 14, T = 14, B = 34, pw = W - L - R, ph = H - T - B; const X = x => L + (x - x0) / (x1 - x0) * pw, Y = y => T + ph - y / ymax * ph;
+    ctx.strokeStyle = cssVar("--line"); ctx.fillStyle = cssVar("--muted"); ctx.font = "11px " + mono(); ctx.lineWidth = 1;
+    for (let k = 0; k <= 4; k++) { const y = T + ph * k / 4; ctx.beginPath(); ctx.moveTo(L, y); ctx.lineTo(L + pw, y); ctx.stroke(); ctx.textAlign = "right"; ctx.fillText(fmt(ymax * (1 - k / 4), ymax >= 10 ? 0 : 1), L - 6, y + 4); }
+    ctx.textAlign = "center"; for (const t of xt) ctx.fillText(t, X(t), T + ph + 15); ctx.fillText(xl, L + pw / 2, H - 4);
+    ctx.save(); ctx.translate(12, T + ph / 2); ctx.rotate(-PI / 2); ctx.fillText(yl, 0, 0); ctx.restore(); ctx.textAlign = "start";
+    ctx.strokeStyle = cssVar("--accent"); ctx.lineWidth = 2; ctx.beginPath(); for (let i = 0; i <= 120; i++) { const x = x0 + (x1 - x0) * i / 120, y = Math.min(ymax, fn(x)); i ? ctx.lineTo(X(x), Y(y)) : ctx.moveTo(X(x), Y(y)); } ctx.stroke();
+    const mx = X(mark), my = Y(Math.min(ymax, fn(mark))); ctx.strokeStyle = cssVar("--muted"); ctx.setLineDash([3, 3]); ctx.beginPath(); ctx.moveTo(mx, T + ph); ctx.lineTo(mx, my); ctx.lineTo(L, my); ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle = cssVar("--ink"); ctx.beginPath(); ctx.arc(mx, my, 5, 0, 7); ctx.fill();
+  };
+  axes(cv1, th => irrE(th, ir.r), -90, 90, I0 / (ir.r * ir.r) * 1.05, "θ (degrees), cos θ law", "E (W/m²)", ir.th, [-90, -45, 0, 45, 90]);
+  axes(cv2, r => irrE(ir.th, r), 0.5, 4, Math.max(5, irrE(ir.th, 0.5) * 1.05), "r (m), inverse-square law", "E (W/m²)", ir.r, [1, 2, 3, 4]);
+}
+function updIrr() {
+  $("thO").value = ir.th + "°"; $("rrO").value = fmt(ir.r, 2) + " m"; $("th").value = ir.th; $("rr").value = ir.r;
+  const E = irrE(ir.th, ir.r);
+  $("irrStats").innerHTML = `<span class="chip">cos θ = <b>${f2(Math.cos(ir.th * D2R))}</b></span><span class="chip">1/r² = <b>${f2(1 / (ir.r * ir.r))}</b></span><span class="chip">E = ${I0} × ${f2(Math.cos(ir.th * D2R))} × ${f2(1 / (ir.r * ir.r))} = <b>${fmt(E, 2)} W/m²</b></span>`;
+  drawIrr(); drawIrrPlots();
+}
+$("th").addEventListener("input", e => { ir.th = +e.target.value; updIrr(); });
+$("rr").addEventListener("input", e => { ir.r = +e.target.value; updIrr(); });
+(() => {
+  const cv = $("irr"); let down = false;
+  const mv = e => { const r = cv.getBoundingClientRect(), g = ir.geo; const dx = e.clientX - r.left - g.cx, dy = g.cy - (e.clientY - r.top); ir.th = Math.round(Math.max(-85, Math.min(85, Math.atan2(dx, Math.max(dy, 1)) / D2R))); ir.r = Math.round(Math.max(0.5, Math.min(4, Math.hypot(dx, dy) / g.sc)) * 20) / 20; updIrr(); };
+  cv.addEventListener("pointerdown", e => { down = true; cv.setPointerCapture(e.pointerId); mv(e); });
+  cv.addEventListener("pointermove", e => { if (down) mv(e); });
+  cv.addEventListener("pointerup", () => down = false);
+})();
+
+/* ---------- BRDF models ---------- */
+const MODELS = { lambert: "Lambertian", phong: "Phong", blinn: "Blinn–Phong", oren: "Oren–Nayar", torrance: "Torrance–Sparrow" };
+const NOTES = {
+  lambert: "Perfectly matte. Brightness depends only on cos θi. Roughness and specular sliders do nothing.",
+  phong: "Matte base plus a lobe about the mirror direction R. Roughness sets the exponent. A common graphics model, not physically derived.",
+  blinn: "Like Phong, but the lobe is around the half vector H between light and viewer. The exponent here is 4× the Phong one, which gives a similar lobe.",
+  oren: "Rough diffuse surface made of tiny V-shaped facets. Roughness σ is the slope spread in radians. The specular slider does nothing.",
+  torrance: "Microfacet model: D (facet slope distribution), G (shadowing) and F (Fresnel) over 4 cos θi cos θr. Specular strength sets F at normal incidence. Roughness is the slope m."
+};
+const P = { model: "blinn", rough: 0.35, alb: 0.7, spec: 0.5, L: [-0.5, -0.45], sel: [0, 0] };
+const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+const nrm = a => { const l = Math.hypot(a[0], a[1], a[2]) || 1; return [a[0] / l, a[1] / l, a[2] / l]; };
+const shin = r => Math.max(1, 2 / (r * r) - 2);
+function brdf(m, n, L, V, p) {
+  const ci = dot(n, L), cr = dot(n, V), rho = p.alb, ks = p.spec, r = p.rough;
+  const o = { ci, cr, fd: rho / PI, fs: 0 };
+  if (ci <= 0 || cr <= 0) { o.f = 0; o.dark = true; return o; }
+  if (m === "phong") {
+    const R = [2 * ci * n[0] - L[0], 2 * ci * n[1] - L[1], 2 * ci * n[2] - L[2]]; const rv = Math.max(0, dot(R, V)), e = shin(r);
+    o.e = e; o.rv = rv; o.fs = ks * (e + 2) / (2 * PI) * Math.pow(rv, e);
+  } else if (m === "blinn") {
+    const H = nrm([L[0] + V[0], L[1] + V[1], L[2] + V[2]]); const nh = Math.max(0, dot(n, H)), e = 4 * shin(r);
+    o.e = e; o.nh = nh; o.H = H; o.fs = ks * (e + 8) / (8 * PI) * Math.pow(nh, e);
+  } else if (m === "oren") {
+    const s2 = r * r, A = 1 - 0.5 * s2 / (s2 + 0.33), B = 0.45 * s2 / (s2 + 0.09);
+    const ti = Math.acos(Math.min(1, ci)), tr = Math.acos(Math.min(1, cr)), al = Math.max(ti, tr), be = Math.min(ti, tr);
+    const lp = [L[0] - n[0] * ci, L[1] - n[1] * ci, L[2] - n[2] * ci], vp = [V[0] - n[0] * cr, V[1] - n[1] * cr, V[2] - n[2] * cr];
+    const ll = Math.hypot(...lp), vl = Math.hypot(...vp); const cphi = ll > 1e-6 && vl > 1e-6 ? dot(lp, vp) / (ll * vl) : 0;
+    o.A = A; o.B = B; o.al = al; o.be = be; o.cphi = cphi; o.s = r; o.fd = rho / PI * (A + B * Math.max(0, cphi) * Math.sin(al) * Math.tan(be));
+  } else if (m === "torrance") {
+    const H = nrm([L[0] + V[0], L[1] + V[1], L[2] + V[2]]); const nh = Math.max(1e-4, dot(n, H)), vh = Math.max(1e-4, dot(V, H)), mm = r;
+    const D = Math.exp(-(1 - nh * nh) / (nh * nh * mm * mm)) / (PI * mm * mm * Math.pow(nh, 4));
+    const G = Math.min(1, 2 * nh * cr / vh, 2 * nh * ci / vh), F = ks + (1 - ks) * Math.pow(1 - vh, 5);
+    o.D = D; o.G = G; o.F = F; o.nh = nh; o.vh = vh; o.H = H; o.fs = D * G * F / (4 * ci * cr);
+  }
+  o.f = o.fd + o.fs; return o;
+}
+const tone = v => Math.pow(Math.max(0, Math.min(1, v)), 1 / 2.2) * 255;
+
+/* ---------- sphere rendering ---------- */
+const SZ = 180, geoCache = {};
+function geom(s) {
+  if (geoCache[s]) return geoCache[s]; const n = new Float32Array(s * s * 3), m = new Uint8Array(s * s), R = s / 2 - 1;
+  for (let y = 0; y < s; y++) for (let x = 0; x < s; x++) { const dx = (x + 0.5 - s / 2) / R, dy = (y + 0.5 - s / 2) / R, r2 = dx * dx + dy * dy, i = y * s + x; if (r2 < 1) { m[i] = 1; n[3 * i] = dx; n[3 * i + 1] = -dy; n[3 * i + 2] = Math.sqrt(1 - r2); } }
+  return geoCache[s] = { n, m };
+}
+const lightVec = () => { const [x, y] = P.L; return [x, -y, Math.sqrt(Math.max(0, 1 - x * x - y * y))]; };
+const VIEW = [0, 0, 1];
+function renderSphere(cv, s, model) {
+  const { n, m } = geom(s); if (cv.width !== s) { cv.width = s; cv.height = s; } const ctx = cv.getContext("2d"); const im = ctx.createImageData(s, s), d = im.data, L = lightVec();
+  for (let i = 0; i < s * s; i++) { if (!m[i]) continue; const nn = [n[3 * i], n[3 * i + 1], n[3 * i + 2]]; const o = brdf(model, nn, L, VIEW, P); const v = tone(o.f * PI * o.ci); d[4 * i] = v; d[4 * i + 1] = v; d[4 * i + 2] = v; d[4 * i + 3] = 255; }
+  ctx.putImageData(im, 0, 0); return ctx;
+}
+function drawMain() {
+  const ctx = renderSphere($("sph"), SZ, P.model); const [x, y] = P.sel;
+  ctx.strokeStyle = "#ff3b30"; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(x + 0.5, y + 0.5, 6, 0, 7); ctx.stroke();
+  ctx.strokeStyle = "#fff"; ctx.lineWidth = 0.8; ctx.beginPath(); ctx.arc(x + 0.5, y + 0.5, 8, 0, 7); ctx.stroke();
+}
+function drawGallery() { for (const k in MODELS) { renderSphere($("g_" + k), 110, k); $("g_" + k).parentElement.classList.toggle("on", k === P.model); } }
+for (const k in MODELS) { const f = document.createElement("figure"); f.innerHTML = `<canvas id="g_${k}"></canvas><figcaption>${MODELS[k]}</figcaption>`; f.addEventListener("click", () => { VB.setSeg("model", k); P.model = k; refresh(); }); $("gallery").append(f); }
+
+/* ---------- light dial ---------- */
+function drawDial() {
+  const cv = $("dial"); const { ctx, W } = hiDPI(cv, 190); const c = W / 2, R = W / 2 - 12; ctx.clearRect(0, 0, W, W);
+  ctx.fillStyle = cssVar("--bg"); ctx.beginPath(); ctx.arc(c, c, R, 0, 7); ctx.fill(); ctx.strokeStyle = cssVar("--line"); ctx.lineWidth = 1;
+  for (const f of [1, Math.cos(PI / 6), Math.cos(PI / 3)]) { ctx.beginPath(); ctx.arc(c, c, R * f, 0, 7); ctx.stroke(); }
+  ctx.beginPath(); ctx.moveTo(c - R, c); ctx.lineTo(c + R, c); ctx.moveTo(c, c - R); ctx.lineTo(c, c + R); ctx.stroke();
+  ctx.fillStyle = cssVar("--muted"); ctx.font = "10px " + mono(); ctx.textAlign = "center"; ctx.fillText("camera", c, c + 14); ctx.textAlign = "start";
+  const [x, y] = P.L; ctx.beginPath(); ctx.arc(c + x * R, c + y * R, 10, 0, 7); ctx.fillStyle = "#facc15"; ctx.fill(); ctx.strokeStyle = "#a16207"; ctx.lineWidth = 2; ctx.stroke();
+}
+(() => {
+  const cv = $("dial"); let down = false;
+  const mv = e => { const r = cv.getBoundingClientRect(), R = r.width / 2 - 12; let x = (e.clientX - r.left - r.width / 2) / R, y = (e.clientY - r.top - r.height / 2) / R; const l = Math.hypot(x, y); if (l > 0.97) { x *= 0.97 / l; y *= 0.97 / l; } P.L = [x, y]; sched(); };
+  cv.addEventListener("pointerdown", e => { down = true; cv.setPointerCapture(e.pointerId); cv.style.cursor = "grabbing"; mv(e); });
+  cv.addEventListener("pointermove", e => { if (down) mv(e); });
+  cv.addEventListener("pointerup", () => { down = false; cv.style.cursor = "grab"; });
+})();
+
+/* ---------- sliders ---------- */
+let raf = 0; const sched = () => { if (!raf) raf = requestAnimationFrame(() => { raf = 0; refresh(); }); };
+for (const k of ["rough", "alb", "spec"]) $(k).addEventListener("input", e => { P[k] = +e.target.value; sched(); });
+seg("model", v => { P.model = v; refresh(); });
+$("sph").addEventListener("pointerdown", e => { const cv = e.currentTarget; cv.setPointerCapture(e.pointerId); cv._d = true; pickPx(e); });
+$("sph").addEventListener("pointermove", e => { if (e.currentTarget._d) pickPx(e); });
+$("sph").addEventListener("pointerup", e => { e.currentTarget._d = false; });
+function pickPx(e) { const [x, y] = imgXY(e, $("sph"), SZ, SZ); if (x >= 0 && y >= 0 && x < SZ && y < SZ && geom(SZ).m[y * SZ + x]) { P.sel = [x, y]; sched(); } }
+
+/* ---------- polar plot ---------- */
+function frame(n, L, V) {
+  const ci = dot(n, L); let t = [L[0] - n[0] * ci, L[1] - n[1] * ci, L[2] - n[2] * ci]; const tl = Math.hypot(...t);
+  if (tl < 1e-6) { t = Math.abs(n[0]) < 0.9 ? [1, 0, 0] : [0, 1, 0]; const c = dot(t, n); t = nrm([t[0] - n[0] * c, t[1] - n[1] * c, t[2] - n[2] * c]); } else t = [t[0] / tl, t[1] / tl, t[2] / tl];
+  const b = [n[1] * t[2] - n[2] * t[1], n[2] * t[0] - n[0] * t[2], n[0] * t[1] - n[1] * t[0]];
+  return { t, b, vt: dot(V, t), vb: dot(V, b), vn: dot(V, n) };
+}
+function selInfo() {
+  const [x, y] = P.sel, { n } = geom(SZ), i = y * SZ + x, nn = [n[3 * i], n[3 * i + 1], n[3 * i + 2]], L = lightVec(), o = brdf(P.model, nn, L, VIEW, P);
+  const fr = frame(nn, L, VIEW); const ti = Math.acos(Math.max(-1, Math.min(1, o.ci))), tr = Math.acos(Math.max(-1, Math.min(1, o.cr)));
+  let phi = Math.atan2(fr.vb, fr.vt) / D2R; return { nn, L, o, ti, tr, phi: Math.abs(phi), fr, x, y };
+}
+function drawPolar(info) {
+  const cv = $("polar"); const { ctx, W, H } = hiDPI(cv, 400); ctx.clearRect(0, 0, W, H);
+  const cx = W / 2, cy = H - 40, Rm = Math.min(W / 2 - 24, cy - 24), ti = info.ti;
+  const Lh = [-Math.sin(ti), 0, Math.cos(ti)], N = [0, 0, 1];
+  const curve = []; let fmax = P.alb / PI * 1.3;
+  for (let a = -89; a <= 89; a += 1) { const V = [Math.sin(a * D2R), 0, Math.cos(a * D2R)]; const f = brdf(P.model, N, Lh, V, P).f; curve.push([a, f]); fmax = Math.max(fmax, f); }
+  fmax = Math.min(fmax, 12); const rad = f => Math.min(f, fmax) / fmax * Rm;
+  ctx.strokeStyle = cssVar("--line"); ctx.fillStyle = cssVar("--muted"); ctx.font = "11px " + mono(); ctx.lineWidth = 1;
+  for (let k = 1; k <= 4; k++) { ctx.beginPath(); ctx.arc(cx, cy, Rm * k / 4, PI, 2 * PI); ctx.stroke(); ctx.fillText(f2(fmax * k / 4, 2), cx + 4, cy - Rm * k / 4 + 12); }
+  for (let a = -90; a <= 90; a += 30) { ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(cx + Rm * Math.sin(a * D2R), cy - Rm * Math.cos(a * D2R)); ctx.stroke(); ctx.textAlign = "center"; ctx.fillText(a + "°", cx + (Rm + 14) * Math.sin(a * D2R), cy - (Rm + 14) * Math.cos(a * D2R) + 4); }
+  ctx.textAlign = "start"; ctx.beginPath(); ctx.moveTo(10, cy); ctx.lineTo(W - 10, cy); ctx.stroke();
+  // surface line
+  ctx.strokeStyle = cssVar("--ink"); ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(cx - Rm, cy); ctx.lineTo(cx + Rm, cy); ctx.stroke();
+  // lambertian ref
+  ctx.strokeStyle = cssVar("--muted"); ctx.lineWidth = 1.5; ctx.setLineDash([4, 4]); ctx.beginPath(); ctx.arc(cx, cy, rad(P.alb / PI), PI, 2 * PI); ctx.stroke(); ctx.setLineDash([]);
+  // curve
+  ctx.beginPath(); ctx.moveTo(cx, cy); curve.forEach(([a, f]) => ctx.lineTo(cx + rad(f) * Math.sin(a * D2R), cy - rad(f) * Math.cos(a * D2R))); ctx.closePath();
+  ctx.fillStyle = "color-mix(in srgb, " + cssVar("--accent") + " 18%, transparent)"; ctx.fill(); ctx.strokeStyle = cssVar("--accent"); ctx.lineWidth = 2.2; ctx.stroke();
+  // light arrow
+  const lx = cx - Rm * 0.95 * Math.sin(ti), ly = cy - Rm * 0.95 * Math.cos(ti); arrow(ctx, lx, ly, cx - 10 * Math.sin(ti), cy - 10 * Math.cos(ti), "#ca8a04", 2.5, 9);
+  ctx.fillStyle = "#ca8a04"; ctx.fillText(`light, θi = ${fmt(ti / D2R, 1)}°`, Math.max(6, lx - 20), ly - 8);
+  // mirror direction tick
+  ctx.strokeStyle = "#ca8a04"; ctx.setLineDash([2, 4]); ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(cx + Rm * Math.sin(ti), cy - Rm * Math.cos(ti)); ctx.stroke(); ctx.setLineDash([]); ctx.fillStyle = cssVar("--muted"); ctx.fillText("mirror", cx + Rm * 0.62 * Math.sin(ti) + 4, cy - Rm * 0.62 * Math.cos(ti));
+  // viewer
+  if (!info.o.dark) { const side = Math.cos(info.phi * D2R) < 0 ? 1 : -1, a = side * info.tr, f = brdf(P.model, N, Lh, [Math.sin(a), 0, Math.cos(a)], P).f; const vx = cx + rad(f) * Math.sin(a), vy = cy - rad(f) * Math.cos(a);
+    ctx.fillStyle = cssVar("--ink"); ctx.beginPath(); ctx.arc(vx, vy, 6, 0, 7); ctx.fill(); ctx.strokeStyle = cssVar("--surface"); ctx.lineWidth = 2; ctx.stroke(); ctx.fillStyle = cssVar("--ink"); ctx.fillText(`viewer, θr = ${fmt(info.tr / D2R, 1)}°`, vx + 10, vy - 8); }
+  ctx.fillStyle = cssVar("--muted"); ctx.fillText("f (sr⁻¹), plane of incidence", 10, 16);
+}
+
+/* ---------- calculation panel ---------- */
+function calc(info) {
+  const { o, nn, L, ti, tr, phi, x, y } = info, p = P, deg = a => fmt(a / D2R, 1) + "°", V3 = a => `(${a.map(v => f2(v, 2)).join(", ")})`;
+  $("pxTitle").textContent = `Pixel (${x}, ${y}) of the ${MODELS[p.model]} sphere`;
+  const h = [];
+  h.push(`<p>n = ${V3(nn)}   s = ${V3(L)}   v = (0, 0, 1)</p>`);
+  h.push(`<p>θi = acos(n·s) = acos(${f2(o.ci)}) = <b>${deg(ti)}</b></p>`);
+  h.push(`<p>θr = acos(n·v) = acos(${f2(o.cr)}) = <b>${deg(tr)}</b></p>`);
+  h.push(`<p>φ = angle between s and v around n = <b>${fmt(phi, 1)}°</b></p>`);
+  if (o.dark) { h.push(`<p class="hl">cos θi ≤ 0 (or the surface faces away from the camera). No light arrives, so the radiance is 0.</p>`); $("calc").innerHTML = h.join(""); return; }
+  const m = p.model;
+  if (m === "lambert") h.push(`<p>f = ρ/π = ${f2(p.alb, 2)}/π = <b>${f2(o.f, 4)}</b></p>`);
+  else if (m === "phong") { h.push(`<p>R = 2(n·s)n − s,  R·v = ${f2(o.rv)},  exponent k = ${fmt(o.e, 0)}</p><p>f_d = ρ/π = ${f2(o.fd, 4)}</p><p>f_s = ks (k+2)/2π (R·v)^k = ${f2(p.spec, 2)} × ${f2((o.e + 2) / 2 / PI, 2)} × ${f2(o.rv)}^${fmt(o.e, 0)} = ${f2(o.fs, 4)}</p>`); }
+  else if (m === "blinn") h.push(`<p>H = (s+v)/‖s+v‖,  n·H = ${f2(o.nh)},  exponent k = ${fmt(o.e, 0)}</p><p>f_d = ρ/π = ${f2(o.fd, 4)}</p><p>f_s = ks (k+8)/8π (n·H)^k = ${f2(p.spec, 2)} × ${f2((o.e + 8) / 8 / PI, 2)} × ${f2(o.nh)}^${fmt(o.e, 0)} = ${f2(o.fs, 4)}</p>`);
+  else if (m === "oren") h.push(`<p>σ = ${f2(o.s, 2)}:  A = 1 − 0.5σ²/(σ²+0.33) = ${f2(o.A)},  B = 0.45σ²/(σ²+0.09) = ${f2(o.B)}</p><p>α = max(θi,θr) = ${deg(o.al)},  β = min(θi,θr) = ${deg(o.be)},  cos φ = ${f2(o.cphi)}</p><p>f = ρ/π [A + B max(0,cos φ) sin α tan β] = ${f2(p.alb / PI, 4)} × [${f2(o.A)} + ${f2(o.B)} × ${f2(Math.max(0, o.cphi))} × ${f2(Math.sin(o.al))} × ${f2(Math.tan(o.be))}] = ${f2(o.f, 4)}</p>`);
+  else h.push(`<p>H = (s+v)/‖s+v‖,  n·H = ${f2(o.nh)},  v·H = ${f2(o.vh)},  m = ${f2(p.rough, 2)}</p><p>D = exp(−tan²α/m²) / (π m² cos⁴α) = ${f2(o.D)}</p><p>G = min(1, 2(n·H)(n·v)/(v·H), 2(n·H)(n·s)/(v·H)) = ${f2(o.G)}</p><p>F = F₀ + (1−F₀)(1−v·H)⁵ = ${f2(o.F)}  (F₀ = ${f2(p.spec, 2)})</p><p>f_s = D G F / (4 cos θi cos θr) = ${f2(o.fs, 4)}</p><p>f_d = ρ/π = ${f2(o.fd, 4)}</p>`);
+  if (m !== "lambert" && m !== "oren") h.push(`<p>f = f_d + f_s = ${f2(o.fd, 4)} + ${f2(o.fs, 4)} = <b>${f2(o.f, 4)}</b></p>`);
+  h.push(`<p class="hl">L = f · E,  E = π cos θi = ${f2(PI * o.ci)}</p><p class="hl">L = ${f2(o.f, 4)} × ${f2(PI * o.ci)} = <b>${f2(o.f * PI * o.ci, 3)}</b>  → pixel value ${Math.round(tone(o.f * PI * o.ci))} / 255</p>`);
+  h.push(`<p class="note" style="font-family:var(--body)">Source irradiance is set to π on a surface facing the light, so a white Lambertian surface (ρ = 1) facing the light gives L = 1. Pixels use gamma 2.2 for display.</p>`);
+  $("calc").innerHTML = h.join("");
+}
+
+function refresh() {
+  for (const k of ["rough", "alb", "spec"]) $(k + "O").value = f2(P[k], 2);
+  $("modelNote").textContent = NOTES[P.model];
+  $("rough").disabled = P.model === "lambert"; $("spec").disabled = P.model === "lambert" || P.model === "oren";
+  drawMain(); drawGallery(); drawDial(); const info = selInfo(); drawPolar(info); calc(info);
+}
+function boot() {
+  const { n, m } = geom(SZ); let best = null; for (let i = 0; i < SZ * SZ; i++) if (m[i]) { const dx = i % SZ - SZ * 0.58, dy = Math.floor(i / SZ) - SZ * 0.4; const d = dx * dx + dy * dy; if (!best || d < best[0]) best = [d, i]; }
+  P.sel = [best[1] % SZ, Math.floor(best[1] / SZ)]; updIrr(); refresh();
+}
+onTheme(() => { drawIrr(); drawIrrPlots(); drawDial(); const info = selInfo(); drawPolar(info); });
+boot();
+})();
+</script>
+</body>
+</html>

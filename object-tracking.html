@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Object Tracking, Interactively</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,500;8..60,600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="site.css">
+<style>
+#vid { background: var(--stage); cursor: crosshair; touch-action: none; }
+#costC { cursor: crosshair; }
+.scrub { width: 240px; }
+.legend i.sq { height: 10px; width: 10px; border-radius: 2px; }
+table.calc td { min-width: 3.4em; }
+.hint { display: inline-block; font-size: 0.82rem; color: var(--accent); border: 1px dashed var(--accent); border-radius: 6px; padding: 2px 8px; }
+</style>
+</head>
+<body>
+<header class="site"></header>
+<main class="wrap">
+  <div class="intro">
+    <h1>Object Tracking, Interactively</h1>
+    <p class="lead">Follow an object from frame to frame. Compare three classic trackers on the same video: template matching, mean shift on color histograms, and a Kalman filter.</p>
+    <p>The video is synthetic, so the true path is known and every tracker is scored against it. Follows the Object Tracking lectures of First Principles of Computer Vision.</p>
+  </div>
+
+  <section class="stage" aria-labelledby="h0">
+    <div class="stage-head"><span class="num">00</span><div><h2 id="h0">The video and the three trackers</h2><p>A striped red disc moves over a textured background. Drag a box on the video to choose what to track. Tracking starts at the frame you are on. The white cross marks the true center.</p></div></div>
+    <div class="controls">
+      <div class="ctl"><label>Occluder</label><div class="seg" id="occl"><button type="button" data-v="off" aria-pressed="true">Off</button><button type="button" data-v="on" aria-pressed="false">On</button></div></div>
+      <div class="ctl"><label>Distractor</label><div class="seg" id="distr"><button type="button" data-v="off" aria-pressed="true">Off</button><button type="button" data-v="on" aria-pressed="false">On</button></div></div>
+      <div class="ctl"><label for="noise">Image noise</label><input type="range" id="noise" min="0" max="40" value="6"><output id="noiseO"></output></div>
+    </div>
+    <div class="main-side">
+      <figure>
+        <canvas class="plot" id="vid" aria-label="Synthetic video. Drag to draw a tracking box."></canvas>
+        <figcaption>
+          <span class="controls"><button type="button" class="btn primary" id="play">Pause</button><button type="button" class="btn" id="stepB">Step</button><input type="range" id="frame" class="scrub" min="0" max="119" value="0" aria-label="Frame"><span class="metric" id="frameLbl"></span></span>
+        </figcaption>
+      </figure>
+      <div>
+        <p><span class="hint">Drag on the video to start tracking a new box</span></p>
+        <div class="legend" style="margin:8px 0"><span><i style="background:#22c55e"></i>Template matching</span><span><i style="background:#e879f9"></i>Mean shift</span><span><i style="background:#22d3ee"></i>Kalman filter</span><span><i style="background:#fff"></i>Truth</span></div>
+        <div class="stats" id="stat0" style="flex-direction:column;align-items:flex-start"></div>
+        <p class="note" id="msg0" style="margin-top:10px"></p>
+        <button type="button" class="btn" id="rebox" style="margin-top:8px">Re-aim at the object in this frame</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="stage" aria-labelledby="h1">
+    <div class="stage-head"><span class="num">01</span><div><h2 id="h1">Template matching</h2><p>Cut a template from the first frame. In every new frame, slide it over a search window around the last position and score each offset. The best score gives the new position. Click the cost surface to read any offset.</p></div></div>
+    <div class="controls">
+      <div class="ctl"><label>Score</label><div class="seg" id="tmMode"><button type="button" data-v="ncc" aria-pressed="true">NCC</button><button type="button" data-v="ssd" aria-pressed="false">SSD</button></div></div>
+      <div class="ctl"><label for="tmR">Search radius</label><input type="range" id="tmR" min="3" max="24" value="12"><output id="tmRO"></output></div>
+    </div>
+    <div class="three">
+      <figure><canvas class="plot" id="tmT"></canvas><figcaption>Template (cut at the frame where tracking began)</figcaption></figure>
+      <figure><canvas class="plot" id="tmS"></canvas><figcaption>Search window in the current frame. Dashed: previous box. Solid: best match.</figcaption></figure>
+      <figure><canvas class="plot click" id="costC"></canvas><figcaption>Cost surface over offsets (dx, dy). Bright is a good match. Red: best. White: clicked.</figcaption></figure>
+    </div>
+    <div class="main-side"><div class="math detail" id="tmRead"></div>
+    <div class="math"><h3>The scores</h3>
+      <p class="eq">SSD(d) = Σₓ [ I(x + d) − T(x) ]²</p>
+      <p class="eq">NCC(d) = Σₓ (I − Ī)(T − T̄) / (‖I − Ī‖ ‖T − T̄‖)</p>
+      <p>SSD is smallest at a perfect match but changes with brightness. NCC subtracts the mean and divides by the contrast, so it ignores gain and offset. This page shows the cost 1 − NCC so that low is good for both. The template never updates here, so it fails when the object's appearance changes, and it can jump to the distractor.</p></div></div>
+  </section>
+
+  <section class="stage" aria-labelledby="h2">
+    <div class="stage-head"><span class="num">02</span><div><h2 id="h2">Mean shift on color histograms</h2><p>The target is a color histogram q, weighted so that pixels near the box center count more. In each frame, mean shift repeatedly moves the box toward the pixels whose colors the target has the most of, until the box stops moving.</p></div></div>
+    <div class="main-side">
+      <figure><canvas class="plot" id="msV" style="height:340px"></canvas><figcaption>Zoom on the current frame. The dots are mean-shift iterations, from white (start) to cyan (converged).</figcaption></figure>
+      <div class="math detail" id="msRead"></div>
+    </div>
+    <div class="main-side">
+      <figure><canvas class="plot" id="msH" style="height:210px"></canvas><figcaption><span class="legend"><span><i style="background:var(--muted)"></i>Target q</span><span><i style="background:var(--accent)"></i>Candidate p at the converged box</span></span> The 12 most common colors in the target. Each color is a bin of an 8 × 8 × 8 RGB histogram.</figcaption></figure>
+      <div class="math"><h3>The update</h3>
+        <p class="eq">ρ(y) = Σᵤ √( pᵤ(y) qᵤ )      (Bhattacharyya score)</p>
+        <p class="eq">wᵢ = √( q_b(i) / p_b(i)(y) ),    y ← Σ wᵢ xᵢ / Σ wᵢ</p>
+        <p>A pixel gets a large weight when its color is common in the target and rare in the current box. The new center is the weighted mean of pixel positions. With an Epanechnikov kernel the kernel's own weighting drops out of this step. ρ is 1 for identical histograms. Because the histogram ignores layout, the red-orange distractor looks similar to the target.</p></div>
+    </div>
+  </section>
+
+  <section class="stage" aria-labelledby="h3">
+    <div class="stage-head"><span class="num">03</span><div><h2 id="h3">Kalman filter, constant velocity</h2><p>A detector reports the object's position with noise, and drops out when the object is hidden. The filter predicts where the object should be, then blends the prediction with the detection. The view zooms in on the current frame.</p></div></div>
+    <div class="controls">
+      <div class="ctl"><label for="kq">Process noise Q (accel σ)</label><input type="range" id="kq" min="0.02" max="3" step="0.02" value="0.4"><output id="kqO"></output></div>
+      <div class="ctl"><label for="kr">Measurement noise R (σ)</label><input type="range" id="kr" min="0.5" max="15" step="0.5" value="4"><output id="krO"></output></div>
+      <div class="ctl"><label for="ks">Actual detector noise</label><input type="range" id="ks" min="0" max="12" step="0.5" value="4"><output id="ksO"></output></div>
+    </div>
+    <div class="main-side">
+      <figure><canvas class="plot" id="kfV" style="height:380px"></canvas><figcaption><span class="legend"><span><i style="background:#f59e0b"></i>Predicted, 2σ ellipse (dashed)</span><span><i style="background:#fde047"></i>Detection</span><span><i style="background:#22d3ee"></i>Updated, 2σ ellipse</span><span><i style="background:var(--ink)"></i>Truth</span></span></figcaption></figure>
+      <div class="math detail" id="kfRead"></div>
+    </div>
+    <div class="math"><h3>Predict and update</h3>
+      <p class="eq">State x = [x, y, vₓ, v_y]ᵀ.   Predict: x⁻ = F x,   P⁻ = F P Fᵀ + Q</p>
+      <p class="eq">Update: K = P⁻Hᵀ (H P⁻ Hᵀ + R)⁻¹,   x⁺ = x⁻ + K (z − H x⁻),   P⁺ = (I − K H) P⁻</p>
+      <p>Prediction grows the uncertainty ellipse. Each detection shrinks it. Make R small and the filter trusts the detector. Make R large or Q small and it trusts its motion model. When the detector drops out, the ellipse keeps growing until the next detection. Set the assumed R far from the actual detector noise to watch the filter behave badly. The detections here come from a simulated detector (true position plus Gaussian noise), not from the image.</p></div>
+  </section>
+
+  <section class="stage" aria-labelledby="h4">
+    <div class="stage-head"><span class="num">04</span><div><h2 id="h4">Error against the true path</h2><p>Distance in pixels between each tracker's center and the true center, from the frame where tracking began. A tracker that locks onto the wrong thing shows a steep, lasting rise.</p></div></div>
+    <canvas class="plot" id="errC" style="height:240px" aria-label="Tracking error per frame"></canvas>
+    <div class="legend"><span><i style="background:#22c55e"></i>Template matching</span><span><i style="background:#e879f9"></i>Mean shift</span><span><i style="background:#22d3ee"></i>Kalman filter</span><span><i style="background:var(--muted)"></i>Shaded: occluder on the object's path</span></div>
+    <div class="tablebox"><table><thead><tr><th>Tracker</th><th>Mean error (px)</th><th>Max error (px)</th><th>Frames lost (&gt; 14 px)</th><th>Now (px)</th></tr></thead><tbody id="errT"></tbody></table></div>
+    <div class="math"><h3>Try this</h3><p>Turn on the occluder and watch the Kalman filter coast through the gap while the other two trackers wobble. Turn on the distractor and see template matching or mean shift jump when the two objects overlap. Raise image noise to 30. Drag a box on the background and see what each tracker does with a poor start.</p>
+    <p class="note">Simplifications: the template and histogram never update, the box size is fixed, and all three trackers run on the same frames from the same start. The Kalman filter uses simulated detections, not image data.</p></div>
+  </section>
+</main>
+<footer class="wrap site"></footer>
+
+<script src="common.js"></script>
+<script>
+(() => {
+"use strict";
+const { $, nav, footer, hiDPI, onTheme, cssVar, seg, segVal, rng, fmt, show } = VB;
+nav("object-tracking.html"); footer();
+
+const W = 240, H = 180, N = 120, POLE = [100, 140];
+const COL = { tm: "#22c55e", ms: "#e879f9", kf: "#22d3ee" };
+const S = { t0: 0, box: null, cur: 30, playing: false, tmr: 0, occl: false, distr: false, tm: [], ms: [], kf: [], cache: [], gcache: [], model: null, drag: null, tmSel: null };
+
+/* ---------- synthetic video ---------- */
+const truth = t => { const a = 2 * Math.PI * t / N; return [120 + 80 * Math.sin(a + 0.8), 90 + 38 * Math.sin(2 * a + 0.5)]; };
+const distrPos = t => { const p = truth(t - 14); return [p[0], p[1] + 6]; };
+const hidden = t => S.occl && Math.abs(truth(t)[0] - 120) < 12;
+const bg = (() => {
+  const r = rng(42), gw = 18, gh = 14; const grid = [0, 1, 2].map(() => Float32Array.from({ length: gw * gh }, () => r() - 0.5)); const d = new Uint8ClampedArray(W * H * 4); const base = [78, 112, 96];
+  const bl = (g, x, y) => { const fx = x / W * (gw - 1), fy = y / H * (gh - 1), x0 = Math.floor(fx), y0 = Math.floor(fy), x1 = Math.min(gw - 1, x0 + 1), y1 = Math.min(gh - 1, y0 + 1), ax = fx - x0, ay = fy - y0; return (g[y0 * gw + x0] * (1 - ax) + g[y0 * gw + x1] * ax) * (1 - ay) + (g[y1 * gw + x0] * (1 - ax) + g[y1 * gw + x1] * ax) * ay; };
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) { const i = 4 * (y * W + x); for (let c = 0; c < 3; c++) d[i + c] = base[c] + 90 * bl(grid[c], x, y) + (r() - 0.5) * 30; d[i + 3] = 255; }
+  return d;
+})();
+function objCol(u, v, kind) {
+  const rr = Math.hypot(u, v); if (rr > 14) return null; const cu = Math.floor((u + 14) / 7), cv = Math.floor((v + 14) / 7);
+  let c; if (rr < 4) c = kind ? [240, 240, 90] : [30, 60, 200]; else if (((cu + cv) & 1) === 0) c = kind ? [236, 150, 50] : [216, 52, 40]; else c = kind ? [250, 236, 200] : [250, 240, 230];
+  return rr > 12 ? c.map(x => x * 0.6) : c;
+}
+function paint(d, cx, cy, kind) { for (let y = Math.max(0, Math.floor(cy) - 15); y <= Math.min(H - 1, Math.ceil(cy) + 15); y++) for (let x = Math.max(0, Math.floor(cx) - 15); x <= Math.min(W - 1, Math.ceil(cx) + 15); x++) { const c = objCol(x - cx, y - cy, kind); if (!c) continue; const i = 4 * (y * W + x); d[i] = c[0]; d[i + 1] = c[1]; d[i + 2] = c[2]; } }
+function frame(t) {
+  if (S.cache[t]) return S.cache[t]; const d = new Uint8ClampedArray(bg);
+  if (S.distr) { const p = distrPos(t); paint(d, p[0], p[1], 1); }
+  const p = truth(t); paint(d, p[0], p[1], 0);
+  if (S.occl) for (let y = 0; y < H; y++) for (let x = POLE[0]; x < POLE[1]; x++) { const i = 4 * (y * W + x), s = 52 + ((x >> 2) & 1) * 10 + (y % 18 < 2 ? 14 : 0); d[i] = s; d[i + 1] = s + 4; d[i + 2] = s + 16; }
+  const ns = +$("noise").value; if (ns) { const r = rng(1000 + t); for (let i = 0; i < d.length; i += 4) for (let c = 0; c < 3; c++) d[i + c] += (r() + r() + r() - 1.5) * 2 * ns; }
+  return (S.cache[t] = d);
+}
+function gray(t) { if (S.gcache[t]) return S.gcache[t]; const d = frame(t), g = new Float32Array(W * H); for (let i = 0; i < W * H; i++) g[i] = 0.299 * d[4 * i] + 0.587 * d[4 * i + 1] + 0.114 * d[4 * i + 2]; return (S.gcache[t] = g); }
+function toCanvas(d, w, h) { const c = document.createElement("canvas"); c.width = w; c.height = h; c.getContext("2d").putImageData(new ImageData(d, w, h), 0, 0); return c; }
+function cropRGBA(t, x0, y0, w, h) { const d = frame(t), o = new Uint8ClampedArray(w * h * 4); for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { const sx = Math.min(W - 1, Math.max(0, x0 + x)), sy = Math.min(H - 1, Math.max(0, y0 + y)), i = 4 * (sy * W + sx), j = 4 * (y * w + x); o[j] = d[i]; o[j + 1] = d[i + 1]; o[j + 2] = d[i + 2]; o[j + 3] = 255; } return o; }
+
+/* ---------- trackers ---------- */
+const gaussR = r => () => Math.sqrt(-2 * Math.log(r() || 1e-9)) * Math.cos(2 * Math.PI * r());
+const detNoise = (() => { const g = gaussR(rng(321)); return Array.from({ length: N }, () => [g(), g()]); })();
+const detect = t => hidden(t) ? null : [truth(t)[0] + (+$("ks").value) * detNoise[t][0], truth(t)[1] + (+$("ks").value) * detNoise[t][1]];
+const tmw = () => 2 * Math.floor(S.box.w / 2) + 1, tmh = () => 2 * Math.floor(S.box.h / 2) + 1;
+const bin = (d, i) => (d[i] >> 5) * 64 + (d[i + 1] >> 5) * 8 + (d[i + 2] >> 5);
+function hist(d, cx, cy, w, h) { // Epanechnikov-weighted 512-bin histogram
+  const p = new Float64Array(512); let sum = 0; const hx = w / 2, hy = h / 2;
+  for (let y = Math.max(0, Math.ceil(cy - hy)); y <= Math.min(H - 1, Math.floor(cy + hy)); y++) for (let x = Math.max(0, Math.ceil(cx - hx)); x <= Math.min(W - 1, Math.floor(cx + hx)); x++) { const r2 = ((x - cx) / hx) ** 2 + ((y - cy) / hy) ** 2; if (r2 >= 1) continue; const k = 1 - r2; p[bin(d, 4 * (y * W + x))] += k; sum += k; }
+  if (sum > 0) for (let i = 0; i < 512; i++) p[i] /= sum; return p;
+}
+const bhat = (p, q) => { let s = 0; for (let i = 0; i < 512; i++) s += Math.sqrt(p[i] * q[i]); return s; };
+function buildModel() {
+  const t0 = S.t0, b = S.box, w = tmw(), h = tmh(), cx = Math.round(b.cx), cy = Math.round(b.cy), g = gray(t0), n = w * h, T = new Float32Array(n); let m = 0;
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { const v = g[Math.min(H - 1, Math.max(0, cy - (h >> 1) + y)) * W + Math.min(W - 1, Math.max(0, cx - (w >> 1) + x))]; T[y * w + x] = v; m += v; } m /= n;
+  const Tz = T.map(v => v - m); let tn = 0; for (const v of Tz) tn += v * v;
+  S.model = { w, h, T, Tz, tn: Math.sqrt(tn), q: hist(frame(t0), b.cx, b.cy, S.box.w, S.box.h) };
+}
+function stepTM(k) {
+  const prev = S.tm[k - 1].c, M = S.model, R = +$("tmR").value, mode = segVal("tmMode"), g = gray(k), w = M.w, h = M.h, hw = w >> 1, hh = h >> 1, n = w * h, D = 2 * R + 1, cost = new Float32Array(D * D).fill(NaN);
+  let best = Infinity, bi = -1;
+  for (let dy = -R; dy <= R; dy++) for (let dx = -R; dx <= R; dx++) {
+    const x0 = prev[0] + dx - hw, y0 = prev[1] + dy - hh; if (x0 < 0 || y0 < 0 || x0 + w > W || y0 + h > H) continue;
+    let sI = 0, sII = 0, sIT = 0, ssd = 0;
+    for (let y = 0; y < h; y++) { let o = (y0 + y) * W + x0, j = y * w; for (let x = 0; x < w; x++, o++, j++) { const v = g[o]; sI += v; sII += v * v; sIT += v * M.Tz[j]; const e = v - M.T[j]; ssd += e * e; } }
+    let c; if (mode === "ssd") c = ssd; else { const vr = sII - sI * sI / n; c = vr < 1e-6 ? 1 : 1 - sIT / (M.tn * Math.sqrt(vr)); }
+    const idx = (dy + R) * D + dx + R; cost[idx] = c; if (c < best) { best = c; bi = idx; }
+  }
+  const bx = bi < 0 ? 0 : bi % D - R, by = bi < 0 ? 0 : ((bi / D) | 0) - R;
+  S.tm[k] = { c: [prev[0] + bx, prev[1] + by], prev, cost, R, best: [bx, by], min: best, mode };
+}
+function stepMS(k) {
+  const prev = S.ms[k - 1].c, d = frame(k), q = S.model.q, w = S.box.w, h = S.box.h, hx = w / 2, hy = h / 2; let y = prev.slice(); const path = [];
+  for (let it = 0; it < 20; it++) {
+    const p = hist(d, y[0], y[1], w, h); const rho = bhat(p, q); path.push([y[0], y[1], rho]);
+    let sx = 0, sy = 0, sw = 0;
+    for (let yy = Math.max(0, Math.ceil(y[1] - hy)); yy <= Math.min(H - 1, Math.floor(y[1] + hy)); yy++) for (let xx = Math.max(0, Math.ceil(y[0] - hx)); xx <= Math.min(W - 1, Math.floor(y[0] + hx)); xx++) { if (((xx - y[0]) / hx) ** 2 + ((yy - y[1]) / hy) ** 2 >= 1) continue; const b = bin(d, 4 * (yy * W + xx)); if (p[b] <= 0) continue; const wt = Math.sqrt(q[b] / p[b]); sx += wt * xx; sy += wt * yy; sw += wt; }
+    if (sw <= 0) break; const nx = sx / sw, ny = sy / sw, sh = Math.hypot(nx - y[0], ny - y[1]); y = [nx, ny]; if (sh < 0.3) { path.push([nx, ny, bhat(hist(d, nx, ny, w, h), q)]); break; }
+    if (it === 19) path.push([nx, ny, bhat(hist(d, nx, ny, w, h), q)]);
+  }
+  S.ms[k] = { c: y, prev, path, rho: path[path.length - 1][2] };
+}
+/* small matrix helpers for the Kalman filter */
+const mm = (A, B) => A.map(r => B[0].map((_, j) => r.reduce((s, v, k) => s + v * B[k][j], 0)));
+const mt = A => A[0].map((_, j) => A.map(r => r[j]));
+const madd = (A, B) => A.map((r, i) => r.map((v, j) => v + B[i][j]));
+function stepKF(k) {
+  const q = +$("kq").value, r = +$("kr").value, p = S.kf[k - 1]; const F = [[1, 0, 1, 0], [0, 1, 0, 1], [0, 0, 1, 0], [0, 0, 0, 1]];
+  const Q = [[.25, 0, .5, 0], [0, .25, 0, .5], [.5, 0, 1, 0], [0, .5, 0, 1]].map(a => a.map(v => v * q * q));
+  const xm = mm(F, p.xp.map(v => [v])).map(a => a[0]), Pm = madd(mm(mm(F, p.Pp), mt(F)), Q); const z = detect(k); let xp = xm, Pp = Pm, K = null, Sm = null;
+  if (z) {
+    const s00 = Pm[0][0] + r * r, s01 = Pm[0][1], s10 = Pm[1][0], s11 = Pm[1][1] + r * r, det = s00 * s11 - s01 * s10; Sm = [[s00, s01], [s10, s11]];
+    const Si = [[s11 / det, -s01 / det], [-s10 / det, s00 / det]]; const PHt = Pm.map(row => [row[0], row[1]]); K = mm(PHt, Si);
+    const inn = [z[0] - xm[0], z[1] - xm[1]]; xp = xm.map((v, i) => v + K[i][0] * inn[0] + K[i][1] * inn[1]);
+    const KH = K.map(row => [row[0], row[1], 0, 0]); Pp = mm(Pm.map((_, i) => [0, 1, 2, 3].map(j => (i === j ? 1 : 0) - KH[i][j])), Pm);
+  }
+  S.kf[k] = { xm, Pm, z, K, S: Sm, xp, Pp, c: [xp[0], xp[1]] };
+}
+function initKF() { const t = S.t0, z = detect(t) || [S.box.cx, S.box.cy], r = +$("kr").value; S.kf = []; S.kf[t] = { xm: [z[0], z[1], 0, 0], Pm: null, z, K: null, S: null, xp: [z[0], z[1], 0, 0], Pp: [[r * r, 0, 0, 0], [0, r * r, 0, 0], [0, 0, 36, 0], [0, 0, 0, 36]], c: [z[0], z[1]] }; S.kf[t].Pm = S.kf[t].Pp; }
+function initTM() { S.tm = []; S.tm[S.t0] = { c: [Math.round(S.box.cx), Math.round(S.box.cy)], prev: null, cost: null }; }
+function initMS() { S.ms = []; const d = frame(S.t0), rho = bhat(hist(d, S.box.cx, S.box.cy, S.box.w, S.box.h), S.model.q); S.ms[S.t0] = { c: [S.box.cx, S.box.cy], prev: null, path: [[S.box.cx, S.box.cy, rho]], rho }; }
+function resetImg() { buildModel(); initTM(); initMS(); }
+function ensure(t) { for (let k = S.t0 + 1; k <= t; k++) { if (!S.tm[k]) stepTM(k); if (!S.ms[k]) stepMS(k); if (!S.kf[k]) stepKF(k); } }
+const err = (arr, k) => arr[k] ? Math.hypot(arr[k].c[0] - truth(k)[0], arr[k].c[1] - truth(k)[1]) : NaN;
+
+/* ---------- drawing ---------- */
+const ff = () => cssVar("--mono") || "monospace";
+const showFrame = (ctx, d, k, W2, H2) => { ctx.imageSmoothingEnabled = false; ctx.drawImage(toCanvas(d, W, H), 0, 0, W2, H2); };
+function box(ctx, cx, cy, w, h, k, col, lw, dash) { ctx.strokeStyle = col; ctx.lineWidth = lw; ctx.setLineDash(dash || []); ctx.strokeRect((cx - w / 2) * k, (cy - h / 2) * k, w * k, h * k); ctx.setLineDash([]); }
+function drawVideo() {
+  const cv = $("vid"); const { ctx, W: W2, H: H2 } = hiDPI(cv, Math.round(cv.clientWidth * H / W)); const k = W2 / W, t = S.cur;
+  showFrame(ctx, frame(t), t, W2, H2); const bw = S.box.w, bh = S.box.h;
+  if (t >= S.t0) {
+    for (const [key, arr] of [["tm", S.tm], ["ms", S.ms], ["kf", S.kf]]) { ctx.strokeStyle = COL[key]; ctx.globalAlpha = 0.7; ctx.lineWidth = 1.2; ctx.beginPath(); for (let i = S.t0; i <= t; i++) { const c = arr[i].c; i === S.t0 ? ctx.moveTo(c[0] * k, c[1] * k) : ctx.lineTo(c[0] * k, c[1] * k); } ctx.stroke(); ctx.globalAlpha = 1; }
+    const R = +$("tmR").value, tc = S.tm[t].prev || S.tm[t].c; box(ctx, tc[0], tc[1], bw + 2 * R, bh + 2 * R, k, COL.tm, 1, [4, 4]);
+    box(ctx, S.tm[t].c[0], S.tm[t].c[1], tmw(), tmh(), k, COL.tm, 2); box(ctx, S.ms[t].c[0], S.ms[t].c[1], bw, bh, k, COL.ms, 2); box(ctx, S.kf[t].c[0], S.kf[t].c[1], bw + 6, bh + 6, k, COL.kf, 2);
+  }
+  const tr = truth(t); ctx.strokeStyle = "#fff"; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo((tr[0] - 6) * k, tr[1] * k); ctx.lineTo((tr[0] + 6) * k, tr[1] * k); ctx.moveTo(tr[0] * k, (tr[1] - 6) * k); ctx.lineTo(tr[0] * k, (tr[1] + 6) * k); ctx.stroke();
+  if (S.drag) { const d = S.drag; ctx.strokeStyle = "#fff"; ctx.lineWidth = 2; ctx.setLineDash([5, 3]); ctx.strokeRect(Math.min(d[0], d[2]) * k, Math.min(d[1], d[3]) * k, Math.abs(d[2] - d[0]) * k, Math.abs(d[3] - d[1]) * k); ctx.setLineDash([]); }
+  ctx.fillStyle = "rgba(255,255,255,.8)"; ctx.font = "11px " + ff(); ctx.fillText("frame " + (t + 1) + " / " + N, 8, 16);
+  $("frameLbl").textContent = "frame " + (t + 1) + " of " + N; $("frame").value = t;
+  if (t < S.t0) { ctx.fillStyle = "rgba(0,0,0,.55)"; ctx.fillRect(0, H2 - 28, W2, 28); ctx.fillStyle = "#fff"; ctx.fillText("Tracking starts at frame " + (S.t0 + 1), 10, H2 - 10); }
+  const row = (n, key, arr) => { const e = t >= S.t0 ? err(arr, t) : NaN; return `<span class="chip"><i class="sw" style="background:${COL[key]}"></i>${n} error <b>${isNaN(e) ? "–" : fmt(e, 1) + " px"}</b></span>`; };
+  $("stat0").innerHTML = row("Template", "tm", S.tm) + row("Mean shift", "ms", S.ms) + row("Kalman", "kf", S.kf);
+  const msgs = []; if (S.occl && hidden(t)) msgs.push("The object is behind the occluder. The Kalman detector reports nothing."); if (S.t0 > 0) msgs.push("Tracking began at frame " + (S.t0 + 1) + ".");
+  $("msg0").textContent = msgs.join(" ") || "Press Play, or drag the slider, and watch the three boxes follow the disc.";
+}
+function patch(cvId, d, w, h, ratioH) {
+  const cv = $(cvId); const { ctx, W: W2, H: H2 } = hiDPI(cv, Math.round(cv.clientWidth * h / w * (ratioH || 1))); ctx.imageSmoothingEnabled = false; ctx.clearRect(0, 0, W2, H2); ctx.drawImage(toCanvas(d, w, h), 0, 0, W2, H2); return { ctx, k: W2 / w };
+}
+const heat = v => { v = Math.max(0, Math.min(1, v)); return [Math.round(20 + 235 * Math.pow(v, 0.8)), Math.round(20 + 220 * Math.pow(v, 1.6)), Math.round(60 + 40 * (1 - v) + 100 * Math.pow(v, 4))]; };
+function drawTM() {
+  const t = S.cur, M = S.model; $("tmRO").value = $("tmR").value;
+  // template
+  { const w = M.w, h = M.h, d = new Uint8ClampedArray(w * h * 4); let lo = 255, hi = 0; for (const v of M.T) { lo = Math.min(lo, v); hi = Math.max(hi, v); } for (let i = 0; i < w * h; i++) { const v = (M.T[i] - lo) / Math.max(1, hi - lo) * 255; d[4 * i] = d[4 * i + 1] = d[4 * i + 2] = v; d[4 * i + 3] = 255; } patch("tmT", d, w, h); }
+  if (t <= S.t0) { for (const id of ["tmS", "costC"]) { const cv = $(id); const { ctx, W: W2, H: H2 } = hiDPI(cv, 200); ctx.clearRect(0, 0, W2, H2); ctx.fillStyle = cssVar("--muted"); ctx.font = "13px sans-serif"; ctx.fillText("Step forward to see matching.", 12, 24); } $("tmRead").innerHTML = "<h3>Template matching</h3><p>Move past the first tracked frame to see the search.</p>"; return; }
+  const r = S.tm[t], R = r.R, D = 2 * R + 1, w = M.w, h = M.h, pc = r.prev, x0 = pc[0] - (w >> 1) - R, y0 = pc[1] - (h >> 1) - R, sw = w + 2 * R, sh = h + 2 * R;
+  { const g = patch("tmS", cropRGBA(t, x0, y0, sw, sh), sw, sh); const c = g.ctx, k = g.k; c.strokeStyle = COL.tm; c.lineWidth = 1.5; c.setLineDash([4, 3]); c.strokeRect(R * k, R * k, w * k, h * k); c.setLineDash([]); c.strokeStyle = "#fff"; c.lineWidth = 2; c.strokeRect((R + r.best[0]) * k, (R + r.best[1]) * k, w * k, h * k); }
+  let lo = Infinity, hi = -Infinity; for (const v of r.cost) if (!isNaN(v)) { lo = Math.min(lo, v); hi = Math.max(hi, v); }
+  const cv = $("costC"); const ctx = VB.sized(cv, D, D); const im = ctx.createImageData(D, D); const sel = S.tmSel && Math.abs(S.tmSel[0]) <= R && Math.abs(S.tmSel[1]) <= R ? S.tmSel : null;
+  for (let i = 0; i < D * D; i++) { const v = r.cost[i]; let c = isNaN(v) ? [40, 40, 40] : heat(1 - (v - lo) / Math.max(1e-9, hi - lo)); const dx = i % D - R, dy = ((i / D) | 0) - R; if (dx === r.best[0] && dy === r.best[1]) c = [255, 40, 60]; else if (sel && dx === sel[0] && dy === sel[1]) c = [255, 255, 255]; im.data[4 * i] = c[0]; im.data[4 * i + 1] = c[1]; im.data[4 * i + 2] = c[2]; im.data[4 * i + 3] = 255; }
+  ctx.putImageData(im, 0, 0); cv.style.aspectRatio = "1"; cv.style.imageRendering = "pixelated";
+  const cs = (dx, dy) => r.cost[(dy + R) * D + dx + R]; const s = sel || r.best, cvv = cs(s[0], s[1]); const ssd = r.mode === "ssd"; const vals = [...r.cost].filter(v => !isNaN(v)).sort((a, b) => a - b); const med = vals[vals.length >> 1];
+  const fv = v => ssd ? fmt(v, 0) : fmt(v, 3); const tru = truth(t), est = r.c;
+  $("tmRead").innerHTML = `<h3>Frame ${t + 1}: best offset (${r.best[0]}, ${r.best[1]})</h3>
+  <dl><dt>${ssd ? "SSD" : "Cost 1 − NCC"} at best</dt><dd>${fv(r.min)}</dd><dt>Median over window</dt><dd>${fv(med)}</dd><dt>Offset you picked</dt><dd>(${s[0]}, ${s[1]}) ${sel ? "" : "(best)"}</dd><dt>${ssd ? "SSD" : "Cost"} there</dt><dd>${isNaN(cvv) ? "outside image" : fv(cvv)}${ssd ? "" : ` (NCC = ${fmt(1 - cvv, 3)})`}</dd>
+  <dt>New center</dt><dd>(${est[0]}, ${est[1]}) = (${pc[0]}, ${pc[1]}) + (${r.best[0]}, ${r.best[1]})</dd><dt>True center</dt><dd>(${fmt(tru[0], 1)}, ${fmt(tru[1], 1)})</dd></dl>
+  <p class="note">${r.min > (ssd ? med * 0.5 : 0.35) ? '<span class="tag warn">weak match</span> The best score is not much better than the typical one, so this answer is a poor bet.' : '<span class="tag good">sharp minimum</span> The best offset stands out from the rest of the window.'}</p>`;
+}
+$("costC").addEventListener("click", e => { const t = S.cur; if (t <= S.t0 || !S.tm[t].cost) return; const R = S.tm[t].R, D = 2 * R + 1; const [x, y] = VB.imgXY(e, e.currentTarget, D, D); S.tmSel = [x - R, y - R]; drawTM(); });
+function drawMS() {
+  const t = S.cur, q = S.model.q;
+  const cvV = $("msV"), g = hiDPI(cvV, 340), ctx = g.ctx;
+  if (t <= S.t0) { ctx.clearRect(0, 0, g.W, g.H); ctx.fillStyle = cssVar("--muted"); ctx.font = "13px sans-serif"; ctx.fillText("Step forward to see iterations.", 12, 24); $("msRead").innerHTML = "<h3>Mean shift</h3><p>Move past the first tracked frame.</p>"; const c = hiDPI($("msH"), 210); c.ctx.clearRect(0, 0, c.W, c.H); return; }
+  const r = S.ms[t], f = r.path[r.path.length - 1], cx = Math.round(r.prev[0]), cy = Math.round(r.prev[1]), half = 40, cw = 2 * half, ch = Math.round(2 * half * g.H / g.W);
+  const k = g.W / cw; ctx.imageSmoothingEnabled = false; ctx.drawImage(toCanvas(cropRGBA(t, cx - half, cy - (ch >> 1), cw, ch), cw, ch), 0, 0, cw * k, ch * k);
+  const X = x => (x - (cx - half) + 0.5) * k, Y = y => (y - (cy - (ch >> 1)) + 0.5) * k; const bw = S.box.w, bh = S.box.h;
+  ctx.strokeStyle = "rgba(255,255,255,.6)"; ctx.setLineDash([4, 4]); ctx.lineWidth = 1; ctx.strokeRect(X(r.path[0][0]) - bw / 2 * k, Y(r.path[0][1]) - bh / 2 * k, bw * k, bh * k); ctx.setLineDash([]);
+  ctx.strokeStyle = COL.ms; ctx.lineWidth = 2; ctx.strokeRect(X(f[0]) - bw / 2 * k, Y(f[1]) - bh / 2 * k, bw * k, bh * k);
+  ctx.strokeStyle = "rgba(255,255,255,.9)"; ctx.lineWidth = 1.2; ctx.beginPath(); r.path.forEach((p, i) => i ? ctx.lineTo(X(p[0]), Y(p[1])) : ctx.moveTo(X(p[0]), Y(p[1]))); ctx.stroke();
+  r.path.forEach((p, i) => { const a = i / Math.max(1, r.path.length - 1); ctx.beginPath(); ctx.arc(X(p[0]), Y(p[1]), 4, 0, 7); ctx.fillStyle = `rgb(${255 - 221 * a | 0},${255 - 43 * a | 0},${255 - 17 * a | 0})`; ctx.fill(); ctx.strokeStyle = "#000"; ctx.lineWidth = 1; ctx.stroke(); });
+  const tr = truth(t); ctx.strokeStyle = "#fff"; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(X(tr[0]) - 8, Y(tr[1])); ctx.lineTo(X(tr[0]) + 8, Y(tr[1])); ctx.moveTo(X(tr[0]), Y(tr[1]) - 8); ctx.lineTo(X(tr[0]), Y(tr[1]) + 8); ctx.stroke();
+  const rows = r.path.map((p, i) => `<tr><td>${i}</td><td>${fmt(p[0], 2)}</td><td>${fmt(p[1], 2)}</td><td>${i ? fmt(Math.hypot(p[0] - r.path[i - 1][0], p[1] - r.path[i - 1][1]), 2) : "–"}</td><td>${fmt(p[2], 4)}</td></tr>`).join("");
+  $("msRead").innerHTML = `<h3>Frame ${t + 1}: ${r.path.length - 1} iteration${r.path.length === 2 ? "" : "s"}</h3><div class="tablebox" style="max-height:230px"><table class="calc" style="width:100%"><thead><tr><th>iter</th><th>x</th><th>y</th><th>shift</th><th>ρ</th></tr></thead><tbody>${rows}</tbody></table></div>
+  <p class="note">${f[2] > 0.8 ? '<span class="tag good">good match</span>' : f[2] > 0.55 ? '<span class="tag warn">partial match</span>' : '<span class="tag bad">poor match</span>'} Final Bhattacharyya score ρ = ${fmt(f[2], 3)}. Truth is at (${fmt(tr[0], 1)}, ${fmt(tr[1], 1)}).</p>`;
+  // histogram bars
+  const p = hist(frame(t), f[0], f[1], S.box.w, S.box.h); const top = [...Array(512).keys()].sort((a, b) => q[b] - q[a]).slice(0, 12); const c = hiDPI($("msH"), 210), cc = c.ctx; cc.clearRect(0, 0, c.W, c.H);
+  const mx = Math.max(...top.map(i => Math.max(q[i], p[i])), 1e-9), bw2 = (c.W - 16) / top.length, bh2 = 150;
+  top.forEach((i, j) => { const x = 8 + j * bw2; cc.fillStyle = cssVar("--muted"); cc.globalAlpha = 0.8; let h1 = q[i] / mx * bh2; cc.fillRect(x + bw2 * 0.08, 10 + bh2 - h1, bw2 * 0.4, h1); cc.globalAlpha = 1; cc.fillStyle = cssVar("--accent"); h1 = p[i] / mx * bh2; cc.fillRect(x + bw2 * 0.5, 10 + bh2 - h1, bw2 * 0.4, h1); cc.fillStyle = `rgb(${(i >> 6) * 32 + 16},${((i >> 3) & 7) * 32 + 16},${(i & 7) * 32 + 16})`; cc.fillRect(x + bw2 * 0.08, 10 + bh2 + 8, bw2 * 0.82, 14); });
+}
+const ell = (P) => { const a = P[0][0], b = P[0][1], c = P[1][1], m = (a + c) / 2, d = Math.sqrt(((a - c) / 2) ** 2 + b * b); return { r1: Math.sqrt(Math.max(0, m + d)), r2: Math.sqrt(Math.max(0, m - d)), th: 0.5 * Math.atan2(2 * b, a - c) }; };
+function drawKF() {
+  const t = S.cur, cv = $("kfV"), g = hiDPI(cv, 380), ctx = g.ctx; ctx.clearRect(0, 0, g.W, g.H);
+  if (t <= S.t0) { ctx.fillStyle = cssVar("--muted"); ctx.font = "13px sans-serif"; ctx.fillText("Step forward to see predict and update.", 12, 24); $("kfRead").innerHTML = "<h3>Kalman filter</h3><p>Move past the first tracked frame.</p>"; return; }
+  const kf = S.kf[t], tr = truth(t), vw = 70, vh = vw * g.H / g.W, k = g.W / vw, cx = kf.xp[0], cy = kf.xp[1]; const X = x => g.W / 2 + (x - cx) * k, Y = y => g.H / 2 + (y - cy) * k;
+  ctx.strokeStyle = cssVar("--line"); ctx.lineWidth = 1; ctx.fillStyle = cssVar("--muted"); ctx.font = "10px " + ff(); for (let gx = Math.ceil((cx - vw / 2) / 10) * 10; gx < cx + vw / 2; gx += 10) { ctx.beginPath(); ctx.moveTo(X(gx), 0); ctx.lineTo(X(gx), g.H); ctx.stroke(); ctx.fillText(gx, X(gx) + 2, g.H - 4); } for (let gy = Math.ceil((cy - vh / 2) / 10) * 10; gy < cy + vh / 2; gy += 10) { ctx.beginPath(); ctx.moveTo(0, Y(gy)); ctx.lineTo(g.W, Y(gy)); ctx.stroke(); ctx.fillText(gy, 2, Y(gy) - 2); }
+  const from = Math.max(S.t0, t - 14);
+  ctx.strokeStyle = cssVar("--muted"); ctx.lineWidth = 1; ctx.beginPath(); for (let i = Math.max(0, from); i <= t; i++) { const p = truth(i); i === Math.max(0, from) ? ctx.moveTo(X(p[0]), Y(p[1])) : ctx.lineTo(X(p[0]), Y(p[1])); } ctx.stroke();
+  ctx.strokeStyle = COL.kf; ctx.lineWidth = 1.5; ctx.beginPath(); for (let i = from; i <= t; i++) { const p = S.kf[i].c; i === from ? ctx.moveTo(X(p[0]), Y(p[1])) : ctx.lineTo(X(p[0]), Y(p[1])); } ctx.stroke();
+  for (let i = from; i <= t; i++) { const z = S.kf[i].z; if (!z) continue; ctx.beginPath(); ctx.arc(X(z[0]), Y(z[1]), i === t ? 5 : 3, 0, 7); ctx.fillStyle = "#fde047"; ctx.globalAlpha = i === t ? 1 : 0.5; ctx.fill(); ctx.globalAlpha = 1; }
+  const draw = (x, y, P, col, dash) => { const e = ell(P); ctx.save(); ctx.translate(X(x), Y(y)); ctx.rotate(e.th); ctx.strokeStyle = col; ctx.lineWidth = 2; ctx.setLineDash(dash); ctx.beginPath(); ctx.ellipse(0, 0, Math.max(1, 2 * e.r1 * k), Math.max(1, 2 * e.r2 * k), 0, 0, 7); ctx.stroke(); ctx.restore(); ctx.setLineDash([]); };
+  if (kf.Pm && t > S.t0) { draw(kf.xm[0], kf.xm[1], kf.Pm, "#f59e0b", [6, 4]); ctx.fillStyle = "#f59e0b"; ctx.fillRect(X(kf.xm[0]) - 3, Y(kf.xm[1]) - 3, 6, 6); }
+  draw(kf.xp[0], kf.xp[1], kf.Pp, COL.kf, []); ctx.beginPath(); ctx.arc(X(kf.xp[0]), Y(kf.xp[1]), 4, 0, 7); ctx.fillStyle = COL.kf; ctx.fill();
+  ctx.strokeStyle = cssVar("--ink"); ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(X(tr[0]) - 7, Y(tr[1])); ctx.lineTo(X(tr[0]) + 7, Y(tr[1])); ctx.moveTo(X(tr[0]), Y(tr[1]) - 7); ctx.lineTo(X(tr[0]), Y(tr[1]) + 7); ctx.stroke();
+  $("kqO").value = (+$("kq").value).toFixed(2); $("krO").value = (+$("kr").value).toFixed(1) + " px"; $("ksO").value = (+$("ks").value).toFixed(1) + " px";
+  const sd = P => [Math.sqrt(P[0][0]), Math.sqrt(P[2][2])]; const a = sd(kf.Pm), b = sd(kf.Pp); const v2 = x => `(${fmt(x[0], 1)}, ${fmt(x[1], 1)})`;
+  $("kfRead").innerHTML = `<h3>Frame ${t + 1}: ${kf.z ? "predict, then update" : "predict only (no detection)"}</h3>
+  <dl><dt>Predicted x⁻ (pos, vel)</dt><dd>${v2(kf.xm)}, ${v2([kf.xm[2], kf.xm[3]])}</dd><dt>Predicted σ (pos, vel)</dt><dd>${fmt(a[0], 2)}, ${fmt(a[1], 2)}</dd>
+  <dt>Detection z</dt><dd>${kf.z ? v2(kf.z) : "missed"}</dd>${kf.K ? `<dt>Innovation z − Hx⁻</dt><dd>(${fmt(kf.z[0] - kf.xm[0], 2)}, ${fmt(kf.z[1] - kf.xm[1], 2)})</dd><dt>Gain K (pos, vel) in x</dt><dd>${fmt(kf.K[0][0], 3)}, ${fmt(kf.K[2][0], 3)}</dd>` : ""}
+  <dt>Updated x⁺ (pos, vel)</dt><dd>${v2(kf.xp)}, ${v2([kf.xp[2], kf.xp[3]])}</dd><dt>Updated σ (pos, vel)</dt><dd>${fmt(b[0], 2)}, ${fmt(b[1], 2)}</dd><dt>True position</dt><dd>${v2(tr)}</dd></dl>
+  <p class="note">${kf.K ? `A gain of ${fmt(kf.K[0][0], 2)} means the estimate moves ${fmt(100 * kf.K[0][0], 0)}% of the way from the prediction to the detection.` : "With no detection the uncertainty ellipse only grows."}</p>`;
+}
+function drawErr() {
+  const cv = $("errC"), g = hiDPI(cv, 240), ctx = g.ctx; ctx.clearRect(0, 0, g.W, g.H); const t = S.cur;
+  const ox = 38, oy = 10, pw = g.W - ox - 10, ph = g.H - oy - 26; let mx = 20; const arrs = [["tm", S.tm], ["ms", S.ms], ["kf", S.kf]];
+  for (const [, a] of arrs) for (let i = S.t0; i <= Math.min(t, N - 1); i++) if (a[i]) mx = Math.max(mx, err(a, i)); mx = Math.ceil(mx / 10) * 10;
+  const X = i => ox + i / (N - 1) * pw, Y = v => oy + ph - Math.min(v, mx) / mx * ph;
+  if (S.occl) { ctx.fillStyle = cssVar("--muted"); ctx.globalAlpha = 0.18; for (let i = 0; i < N; i++) if (Math.abs(truth(i)[0] - 120) < 22) ctx.fillRect(X(i) - pw / N / 2, oy, pw / N + 0.5, ph); ctx.globalAlpha = 1; }
+  ctx.strokeStyle = cssVar("--line"); ctx.fillStyle = cssVar("--muted"); ctx.font = "11px " + ff(); ctx.lineWidth = 1; ctx.strokeRect(ox, oy, pw, ph);
+  for (let v = 0; v <= mx; v += mx / 4) { ctx.beginPath(); ctx.moveTo(ox, Y(v)); ctx.lineTo(ox + pw, Y(v)); ctx.stroke(); ctx.fillText(fmt(v, 0), 6, Y(v) + 4); } ctx.fillText("frame →", ox, g.H - 6); ctx.fillText("px", 6, oy + 2);
+  ctx.setLineDash([3, 3]); ctx.strokeStyle = cssVar("--ink"); ctx.beginPath(); ctx.moveTo(X(t), oy); ctx.lineTo(X(t), oy + ph); ctx.stroke(); ctx.setLineDash([]);
+  let html = ""; for (const [key, a] of arrs) { ctx.strokeStyle = COL[key]; ctx.lineWidth = 2; ctx.beginPath(); let started = false; for (let i = S.t0; i <= t; i++) { if (!a[i]) continue; const e = err(a, i); started ? ctx.lineTo(X(i), Y(e)) : ctx.moveTo(X(i), Y(e)); started = true; } ctx.stroke();
+    const es = []; for (let i = S.t0; i <= t; i++) if (a[i]) es.push(err(a, i)); const mean = es.reduce((x, y) => x + y, 0) / Math.max(1, es.length), lost = es.filter(e => e > 14).length;
+    html += `<tr><td><i class="sw" style="background:${COL[key]}"></i>${{ tm: "Template matching", ms: "Mean shift", kf: "Kalman filter" }[key]}</td><td>${es.length ? fmt(mean, 2) : "–"}</td><td>${es.length ? fmt(Math.max(...es), 1) : "–"}</td><td>${lost} ${es.length ? (lost === 0 ? '<span class="tag good">locked</span>' : lost < es.length / 4 ? '<span class="tag warn">slips</span>' : '<span class="tag bad">lost</span>') : ""}</td><td>${es.length && t >= S.t0 ? fmt(es[es.length - 1], 1) : "–"}</td></tr>`; }
+  $("errT").innerHTML = html;
+}
+function render() { ensure(S.cur); drawVideo(); drawTM(); drawMS(); drawKF(); drawErr(); warm(); }
+/* Precompute the remaining frames in small idle chunks so scrubbing far ahead hits the cache. */
+let warmT = 0;
+function warm() {
+  clearTimeout(warmT);
+  warmT = setTimeout(function step() {
+    let k = S.t0 + 1; while (k < N && S.tm[k] && S.ms[k] && S.kf[k]) k++;
+    if (k >= N) return;
+    const t0 = performance.now(); while (k < N && performance.now() - t0 < 12) { ensure(k); k++; }
+    warmT = setTimeout(step, 0);
+  }, 30);
+}
+
+/* ---------- interaction ---------- */
+function setPlay(on) { S.playing = on; clearInterval(S.tmr); $("play").textContent = on ? "Pause" : "Play"; if (on) S.tmr = setInterval(() => { S.cur = S.cur + 1 >= N ? S.t0 : S.cur + 1; render(); }, 90); }
+$("play").addEventListener("click", () => setPlay(!S.playing));
+$("stepB").addEventListener("click", () => { setPlay(false); S.cur = S.cur + 1 >= N ? S.t0 : S.cur + 1; render(); });
+let frameRaf = 0;
+$("frame").addEventListener("input", e => { setPlay(false); S.cur = +e.target.value; if (!frameRaf) frameRaf = requestAnimationFrame(() => { frameRaf = 0; render(); }); });
+function startAt(box) { S.box = box; S.t0 = S.cur; S.tmSel = null; resetImg(); initKF(); render(); }
+$("rebox").addEventListener("click", () => { const p = truth(S.cur); startAt({ cx: p[0], cy: p[1], w: 32, h: 32 }); });
+(() => {
+  const cv = $("vid"); const pos = e => { const r = cv.getBoundingClientRect(); return [Math.max(0, Math.min(W - 1, (e.clientX - r.left) / r.width * W)), Math.max(0, Math.min(H - 1, (e.clientY - r.top) / r.height * H))]; };
+  cv.addEventListener("pointerdown", e => { setPlay(false); const p = pos(e); S.drag = [p[0], p[1], p[0], p[1]]; cv.setPointerCapture(e.pointerId); drawVideo(); });
+  cv.addEventListener("pointermove", e => { if (!S.drag) return; const p = pos(e); S.drag[2] = p[0]; S.drag[3] = p[1]; drawVideo(); });
+  cv.addEventListener("pointerup", e => { if (!S.drag) return; const d = S.drag; S.drag = null; let w = Math.abs(d[2] - d[0]), h = Math.abs(d[3] - d[1]), cx = (d[0] + d[2]) / 2, cy = (d[1] + d[3]) / 2; if (w < 8 && h < 8) { w = 32; h = 32; cx = d[0]; cy = d[1]; } w = Math.max(12, Math.min(80, w)); h = Math.max(12, Math.min(80, h)); cx = Math.max(w / 2, Math.min(W - w / 2, cx)); cy = Math.max(h / 2, Math.min(H - h / 2, cy)); startAt({ cx, cy, w, h }); });
+})();
+let dt = 0; const later = fn => { clearTimeout(dt); dt = setTimeout(fn, 60); };
+const resetScene = () => { S.cache = []; S.gcache = []; S.occl = segVal("occl") === "on"; S.distr = segVal("distr") === "on"; $("noiseO").value = $("noise").value; resetImg(); initKF(); render(); };
+seg("occl", resetScene); seg("distr", resetScene); $("noise").addEventListener("input", () => later(resetScene));
+seg("tmMode", () => { resetImg(); initKF(); render(); }); $("tmR").addEventListener("input", () => { $("tmRO").value = $("tmR").value; later(() => { resetImg(); initKF(); render(); }); });
+for (const id of ["kq", "kr", "ks"]) $(id).addEventListener("input", () => later(() => { initKF(); render(); }));
+onTheme(() => render());
+
+const p0 = truth(0); S.box = { cx: p0[0], cy: p0[1], w: 32, h: 32 }; $("noiseO").value = $("noise").value; $("tmRO").value = $("tmR").value;
+resetImg(); initKF(); render();
+window.__tt = { S, err, truth };
+setPlay(!window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+})();
+</script>
+</body>
+</html>

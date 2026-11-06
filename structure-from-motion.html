@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Structure from Motion, Interactively</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,500;8..60,600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="site.css">
+<style>
+#vid { background: var(--stage); cursor: crosshair; touch-action: none; }
+#view3d { cursor: grab; touch-action: none; }
+.scrub { width: 220px; }
+.mx { display: inline-grid; grid-template-columns: repeat(3, auto); gap: 2px 10px; font: 0.82rem var(--mono); font-variant-numeric: tabular-nums; }
+.pair { display: flex; flex-wrap: wrap; gap: 18px; align-items: flex-start; }
+</style>
+</head>
+<body>
+<header class="site"></header>
+<main class="wrap">
+  <div class="intro">
+    <h1>Structure from Motion, Interactively</h1>
+    <p class="lead">Track a few points through a video and recover both the 3D shape of the object and how the camera moved. Tomasi–Kanade factorization does it with one matrix decomposition.</p>
+    <p>The scene is synthetic, so the true shape is known and the recovered shape can be scored. Follows the Structure from Motion lectures of First Principles of Computer Vision.</p>
+  </div>
+
+  <section class="stage" aria-labelledby="h0">
+    <div class="stage-head"><span class="num">00</span><div><h2 id="h0">Choose an object and a camera path</h2><p>An orthographic camera orbits the object, swinging left and right with a little nod and roll. Each frame, every point is projected to the image and perturbed by Gaussian noise.</p></div></div>
+    <div class="controls">
+      <div class="ctl"><label>Object</label><div class="seg" id="shape"><button type="button" data-v="house" aria-pressed="true">House</button><button type="button" data-v="cube" aria-pressed="false">Cube</button><button type="button" data-v="random" aria-pressed="false">Random points</button></div></div>
+      <button type="button" class="btn" id="reseed" hidden>New random points</button>
+      <div class="ctl"><label for="nF">Frames</label><input type="range" id="nF" min="3" max="40" value="16"><output id="nFO"></output></div>
+      <div class="ctl"><label for="nz">Point noise</label><input type="range" id="nz" min="0" max="4" step="0.1" value="0"><output id="nzO"></output></div>
+    </div>
+    <p class="note" id="sceneNote"></p>
+  </section>
+
+  <section class="stage" aria-labelledby="h1">
+    <div class="stage-head"><span class="num">01</span><div><h2 id="h1">The video and its tracked points</h2><p>All the algorithm sees is where each point lands in every frame. Faint trails show the track so far. Click a point to follow it. Its full track is drawn in orange.</p></div></div>
+    <div class="main-side">
+      <figure>
+        <canvas class="plot click" id="vid" aria-label="Video of tracked points. Click a point to select it."></canvas>
+        <figcaption>
+          <span class="controls"><button type="button" class="btn primary" id="play">Pause</button><button type="button" class="btn" id="stepB">Step</button><input type="range" id="frame" class="scrub" min="0" max="15" value="0" aria-label="Frame"><span class="metric" id="frameLbl"></span></span>
+        </figcaption>
+      </figure>
+      <div class="math detail" id="ptRead"></div>
+    </div>
+  </section>
+
+  <section class="stage" aria-labelledby="h2">
+    <div class="stage-head"><span class="num">02</span><div><h2 id="h2">The measurement matrix and its rank</h2><p>Stack the horizontal coordinates of all frames above the vertical coordinates, one column per point. Subtract each row's mean so the object's centroid sits at the origin. Without noise, this 2F × P matrix has rank 3, because it is a product of a 2F × 3 motion matrix and a 3 × P shape matrix.</p></div></div>
+    <div class="main-side">
+      <figure><canvas class="plot" id="wmat" style="height:300px" aria-label="Heat map of the centered measurement matrix"></canvas><figcaption>Centered W. Top half: u (horizontal) per frame. Bottom half: v (vertical). Orange is positive and blue is negative.</figcaption></figure>
+      <figure><canvas class="plot" id="svs" style="height:300px" aria-label="Bar chart of singular values"></canvas><figcaption>Singular values of W. Three large bars and the rest near zero means rank 3.</figcaption></figure>
+    </div>
+    <div class="stats" id="svStats"></div>
+    <div class="math"><h3>Why rank 3</h3>
+      <p class="eq">W̃ = M S,    W̃ is 2F × P,    M is 2F × 3,    S is 3 × P</p>
+      <p>Row <i>f</i> of M holds the camera's horizontal axis <b>i</b><sub>f</sub>, and row <i>F</i>+<i>f</i> holds its vertical axis <b>j</b><sub>f</sub>. Column <i>p</i> of S is the point's 3D position <b>s</b><sub>p</sub>. Each measurement is a dot product: <i>u</i><sub>fp</sub> − <i>ū</i><sub>f</sub> = <b>i</b><sub>f</sub> · <b>s</b><sub>p</sub>. Noise lifts the fourth and later singular values off zero. Keeping only three removes much of that noise.</p></div>
+  </section>
+
+  <section class="stage" aria-labelledby="h3">
+    <div class="stage-head"><span class="num">03</span><div><h2 id="h3">Factorize, then make the motion a true rotation</h2><p>The SVD gives a valid factorization, but any invertible 3 × 3 matrix Q can slip in between: M̂S&#x302; = (M̂Q)(Q⁻¹Ŝ). The camera axes must be unit length and perpendicular, which pins Q down.</p></div></div>
+    <div class="main-side">
+      <div class="math" id="qRead"></div>
+      <figure><canvas class="plot" id="rown" style="height:300px" aria-label="Lengths of the camera axes before and after the metric upgrade"></canvas><figcaption><span class="legend"><span><i style="background:var(--muted)"></i>Length before upgrade</span><span><i style="background:var(--accent)"></i>Length after upgrade</span></span> Camera-axis length per frame. A true orthographic camera has length 1.</figcaption></figure>
+    </div>
+    <div class="math"><h3>The two steps</h3>
+      <p class="eq">1.  W̃ = U Σ Vᵀ    →    M̂ = U₃ Σ₃^½,   Ŝ = Σ₃^½ V₃ᵀ</p>
+      <p class="eq">2.  m̂ₖᵀ L m̂ₖ = 1,   n̂ₖᵀ L n̂ₖ = 1,   m̂ₖᵀ L n̂ₖ = 0,   L = Q Qᵀ</p>
+      <p class="eq">    M = M̂ Q,   S = Q⁻¹ Ŝ</p>
+      <p>The three constraints per frame are linear in the six unknowns of the symmetric matrix L. Stack them for all frames and solve by least squares. A Cholesky factorization L = Q Qᵀ then gives Q. With noise, L can lose positive definiteness. This page then clips its negative eigenvalues, which is a simplification. What remains unknown is a global rotation (and mirror) of the whole scene.</p></div>
+  </section>
+
+  <section class="stage" aria-labelledby="h4">
+    <div class="stage-head"><span class="num">04</span><div><h2 id="h4">Recovered shape against the truth</h2><p>The recovered shape lives in its own arbitrary frame. A Procrustes step finds the best rotation to line it up with the true shape. Drag to rotate the view. Click a point to select it.</p></div></div>
+    <div class="controls">
+      <div class="ctl"><label>Depth flip</label><div class="seg" id="mirror"><button type="button" data-v="any" aria-pressed="true">Best of shape or mirror</button><button type="button" data-v="rot" aria-pressed="false">As computed (rotation only)</button></div></div>
+      <div class="ctl"><label>Error lines</label><div class="seg" id="errl"><button type="button" data-v="on" aria-pressed="true">On</button><button type="button" data-v="off" aria-pressed="false">Off</button></div></div>
+    </div>
+    <div class="stats" id="shStats"></div>
+    <canvas class="plot" id="view3d" style="height:440px" aria-label="3D view of true and recovered points. Drag to rotate."></canvas>
+    <div class="legend"><span><i style="background:var(--muted)"></i>True shape (rings)</span><span><i style="background:var(--accent)"></i>Recovered shape (dots)</span><span><i style="background:#e11d48"></i>Error</span><span><i style="background:#f59e0b"></i>Selected point</span></div>
+    <p class="note" id="mirNote"></p>
+    <div class="math"><h3>Try this</h3><p>Set noise to 0 and check that the error is almost exactly zero. Raise the noise to 2 px and watch the fourth singular value rise and the error grow. Then cut the frames to 4 and see how much worse noise hurts when there is less data to average. With few frames the camera barely moves, so depth is poorly determined.</p>
+    <p class="note">Simplifications: the camera is orthographic (no perspective), every point is visible in every frame, and tracks are given, not detected.</p></div>
+  </section>
+</main>
+<footer class="wrap site"></footer>
+
+<script src="common.js"></script>
+<script>
+(() => {
+"use strict";
+const { $, nav, footer, hiDPI, onTheme, cssVar, seg, segVal, rng, fmt } = VB;
+nav("structure-from-motion.html"); footer();
+
+/*CORE-START*/
+const deg = Math.PI / 180;
+function matMul(A, B) { return A.map(r => B[0].map((_, j) => r.reduce((s, v, k) => s + v * B[k][j], 0))); }
+function jacobi(A0, n) {
+  const a = A0.map(r => Float64Array.from(r)); const v = Array.from({ length: n }, (_, i) => { const r = new Float64Array(n); r[i] = 1; return r; });
+  let fro = 0; for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) fro += a[i][j] * a[i][j]; fro = fro || 1;
+  for (let sweep = 0; sweep < 60; sweep++) {
+    let off = 0; for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) off += a[i][j] * a[i][j];
+    if (off < 1e-26 * fro) break;
+    for (let p = 0; p < n - 1; p++) for (let q = p + 1; q < n; q++) {
+      if (Math.abs(a[p][q]) < 1e-300) continue;
+      const th = (a[q][q] - a[p][p]) / (2 * a[p][q]); const t = Math.sign(th || 1) / (Math.abs(th) + Math.sqrt(th * th + 1)); const c = 1 / Math.sqrt(t * t + 1), s = t * c;
+      for (let k = 0; k < n; k++) { const x = a[k][p], y = a[k][q]; a[k][p] = c * x - s * y; a[k][q] = s * x + c * y; }
+      for (let k = 0; k < n; k++) { const x = a[p][k], y = a[q][k]; a[p][k] = c * x - s * y; a[q][k] = s * x + c * y; }
+      for (let k = 0; k < n; k++) { const x = v[k][p], y = v[k][q]; v[k][p] = c * x - s * y; v[k][q] = s * x + c * y; }
+    }
+  }
+  const idx = [...Array(n).keys()].sort((i, j) => a[j][j] - a[i][i]);
+  return { vals: idx.map(i => a[i][i]), vecs: idx.map(i => v.map(r => r[i])) }; // vecs[k] = k-th eigenvector
+}
+function solveLin(A, b) { // Gaussian elimination with partial pivoting
+  const n = b.length; const M = A.map((r, i) => [...r, b[i]]);
+  for (let c = 0; c < n; c++) { let p = c; for (let r = c + 1; r < n; r++) if (Math.abs(M[r][c]) > Math.abs(M[p][c])) p = r; [M[c], M[p]] = [M[p], M[c]]; const d = M[c][c] || 1e-12;
+    for (let r = c + 1; r < n; r++) { const f = M[r][c] / d; for (let k = c; k <= n; k++) M[r][k] -= f * M[c][k]; } }
+  const x = new Array(n).fill(0); for (let r = n - 1; r >= 0; r--) { let s = M[r][n]; for (let k = r + 1; k < n; k++) s -= M[r][k] * x[k]; x[r] = s / (M[r][r] || 1e-12); } return x;
+}
+function chol3(L) { // lower-triangular G with G Gᵀ = L, or null
+  const G = [[0, 0, 0], [0, 0, 0], [0, 0, 0]];
+  for (let i = 0; i < 3; i++) for (let j = 0; j <= i; j++) { let s = L[i][j]; for (let k = 0; k < j; k++) s -= G[i][k] * G[j][k];
+    if (i === j) { if (s <= 1e-12) return null; G[i][i] = Math.sqrt(s); } else G[i][j] = s / G[j][j]; }
+  return G;
+}
+function det3(R) { return R[0][0] * (R[1][1] * R[2][2] - R[1][2] * R[2][1]) - R[0][1] * (R[1][0] * R[2][2] - R[1][2] * R[2][0]) + R[0][2] * (R[1][0] * R[2][1] - R[1][1] * R[2][0]); }
+function cameraRows(F) {
+  const cams = [];
+  for (let f = 0; f < F; f++) {
+    const s = F > 1 ? f / (F - 1) : 0.5; const yaw = (s - 0.5) * 100 * deg, pit = 16 * deg * Math.sin(2 * Math.PI * s + 0.4), rol = 8 * deg * Math.cos(2 * Math.PI * s * 1.5);
+    const Ry = [[Math.cos(yaw), 0, Math.sin(yaw)], [0, 1, 0], [-Math.sin(yaw), 0, Math.cos(yaw)]];
+    const Rx = [[1, 0, 0], [0, Math.cos(pit), -Math.sin(pit)], [0, Math.sin(pit), Math.cos(pit)]];
+    const Rz = [[Math.cos(rol), -Math.sin(rol), 0], [Math.sin(rol), Math.cos(rol), 0], [0, 0, 1]];
+    const R = matMul(Rz, matMul(Rx, Ry));
+    cams.push({ i: R[0], j: R[1], k: R[2], tx: 160 + 14 * Math.sin(2 * Math.PI * s * 1.3), ty: 120 + 8 * Math.cos(2 * Math.PI * s) });
+  }
+  return cams;
+}
+function measure(X, cams, sigma, noise) { // X: P points [x,y,z]; noise[row][p] unit normals, row = axis*40+f
+  const F = cams.length, P = X.length; const W = Array.from({ length: 2 * F }, () => new Float64Array(P));
+  for (let f = 0; f < F; f++) for (let p = 0; p < P; p++) {
+    W[f][p] = cams[f].i[0] * X[p][0] + cams[f].i[1] * X[p][1] + cams[f].i[2] * X[p][2] + cams[f].tx + sigma * noise[f][p];
+    W[F + f][p] = cams[f].j[0] * X[p][0] + cams[f].j[1] * X[p][1] + cams[f].j[2] * X[p][2] + cams[f].ty + sigma * noise[40 + f][p];
+  }
+  return W;
+}
+function factor(W, F, P) {
+  const t = W.map(r => r.reduce((a, b) => a + b, 0) / P); const Wc = W.map((r, i) => Float64Array.from(r, v => v - t[i]));
+  const C = Array.from({ length: P }, () => new Float64Array(P));
+  for (let a = 0; a < P; a++) for (let b = a; b < P; b++) { let s = 0; for (let r = 0; r < 2 * F; r++) s += Wc[r][a] * Wc[r][b]; C[a][b] = C[b][a] = s; }
+  const eg = jacobi(C, P); const sv = eg.vals.map(v => Math.sqrt(Math.max(0, v)));
+  const Mh = Array.from({ length: 2 * F }, () => [0, 0, 0]), Sh = [new Float64Array(P), new Float64Array(P), new Float64Array(P)];
+  for (let k = 0; k < 3; k++) { const vk = eg.vecs[k], sk = Math.max(sv[k], 1e-12); for (let r = 0; r < 2 * F; r++) { let s = 0; for (let p = 0; p < P; p++) s += Wc[r][p] * vk[p]; Mh[r][k] = s / Math.sqrt(sk); } for (let p = 0; p < P; p++) Sh[k][p] = Math.sqrt(sk) * vk[p]; }
+  // metric constraints: l = [L00, L01, L02, L11, L12, L22]
+  const co = (a, b) => [a[0] * b[0], a[0] * b[1] + a[1] * b[0], a[0] * b[2] + a[2] * b[0], a[1] * b[1], a[1] * b[2] + a[2] * b[1], a[2] * b[2]];
+  const rows = [], rhs = []; for (let f = 0; f < F; f++) { rows.push(co(Mh[f], Mh[f]), co(Mh[F + f], Mh[F + f]), co(Mh[f], Mh[F + f])); rhs.push(1, 1, 0); }
+  const AtA = Array.from({ length: 6 }, () => new Array(6).fill(0)), Atb = new Array(6).fill(0);
+  rows.forEach((r, e) => { for (let i = 0; i < 6; i++) { Atb[i] += r[i] * rhs[e]; for (let j = 0; j < 6; j++) AtA[i][j] += r[i] * r[j]; } });
+  for (let i = 0; i < 6; i++) AtA[i][i] += 1e-12 * (AtA[i][i] + 1);
+  const l = solveLin(AtA, Atb); let resid = 0; rows.forEach((r, e) => { const d = r.reduce((s, v, i) => s + v * l[i], 0) - rhs[e]; resid += d * d; }); resid = Math.sqrt(resid / rows.length);
+  let L = [[l[0], l[1], l[2]], [l[1], l[3], l[4]], [l[2], l[4], l[5]]]; let G = chol3(L), clipped = false;
+  if (!G) { clipped = true; const e3 = jacobi(L, 3); const mx = Math.max(e3.vals[0], 1e-9); const vals = e3.vals.map(v => Math.max(v, 1e-6 * mx));
+    L = [0, 1, 2].map(i => [0, 1, 2].map(j => vals.reduce((s, v, k) => s + v * e3.vecs[k][i] * e3.vecs[k][j], 0))); G = chol3(L) || [[1, 0, 0], [0, 1, 0], [0, 0, 1]]; }
+  const M = Mh.map(m => [0, 1, 2].map(j => m[0] * G[0][j] + m[1] * G[1][j] + m[2] * G[2][j]));
+  const S = [new Float64Array(P), new Float64Array(P), new Float64Array(P)]; // solve G S = Sh (forward substitution)
+  for (let p = 0; p < P; p++) for (let i = 0; i < 3; i++) { let s = Sh[i][p]; for (let k = 0; k < i; k++) s -= G[i][k] * S[k][p]; S[i][p] = s / G[i][i]; }
+  const norm = A => A.map(m => Math.hypot(m[0], m[1], m[2]));
+  return { t, Wc, sv, Mh, Sh, L, G, M, S, resid, clipped, before: norm(Mh), after: norm(M) };
+}
+function procrustes(S, T, P, allowMirror) { // find orthogonal R minimizing ‖R S − T‖; S,T are 3×P and centered
+  const H = [[0, 0, 0], [0, 0, 0], [0, 0, 0]]; for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) { let s = 0; for (let p = 0; p < P; p++) s += T[i][p] * S[j][p]; H[i][j] = s; }
+  const HtH = matMul(H[0].map((_, j) => H.map(r => r[j])), H); const e = jacobi(HtH, 3);
+  const inv = [0, 1, 2].map(i => [0, 1, 2].map(j => e.vals.reduce((s, v, k) => s + (v > 1e-12 * e.vals[0] ? e.vecs[k][i] * e.vecs[k][j] / Math.sqrt(v) : 0), 0)));
+  let R = matMul(H, inv); const mirrored = det3(R) < 0;
+  if (mirrored && !allowMirror) { const v = e.vecs[2]; const Fl = [0, 1, 2].map(i => [0, 1, 2].map(j => (i === j ? 1 : 0) - 2 * v[i] * v[j])); R = matMul(R, Fl); }
+  let err = 0, rad = 0; const A = [new Float64Array(P), new Float64Array(P), new Float64Array(P)];
+  for (let p = 0; p < P; p++) { let d2 = 0; for (let i = 0; i < 3; i++) { A[i][p] = R[i][0] * S[0][p] + R[i][1] * S[1][p] + R[i][2] * S[2][p]; d2 += (A[i][p] - T[i][p]) ** 2; rad += T[i][p] ** 2; } err += d2; }
+  return { R, A, rms: Math.sqrt(err / P), rel: Math.sqrt(err / Math.max(rad, 1e-12)), mirrored: mirrored && allowMirror, wasMirror: mirrored };
+}
+/*CORE-END*/
+
+/* ---------- scenes ---------- */
+const SHAPES = {
+  house: { pts: [[-40, 40, -30], [40, 40, -30], [40, 40, 30], [-40, 40, 30], [-40, -10, -30], [40, -10, -30], [40, -10, 30], [-40, -10, 30], [-40, -45, 0], [40, -45, 0], [-12, 40, 30], [12, 40, 30], [12, 8, 30], [-12, 8, 30]],
+    edges: [[0, 1], [1, 2], [2, 3], [3, 0], [4, 5], [5, 6], [6, 7], [7, 4], [0, 4], [1, 5], [2, 6], [3, 7], [4, 8], [7, 8], [5, 9], [6, 9], [8, 9], [10, 11], [11, 12], [12, 13], [13, 10]],
+    note: "<b>House:</b> 14 points. Walls, a gable roof and a door on the front face." },
+  cube: { pts: (() => { const c = []; for (const x of [-40, 40]) for (const y of [-40, 40]) for (const z of [-40, 40]) c.push([x, y, z]); const m = []; for (const a of [-40, 40]) for (const b of [-40, 40]) m.push([0, a, b], [a, 0, b], [a, b, 0]); return c.concat(m); })(),
+    edges: (() => { const e = []; for (let i = 0; i < 8; i++) for (let j = i + 1; j < 8; j++) { const d = (i ^ j); if (d === 1 || d === 2 || d === 4) e.push([i, j]); } return e; })(),
+    note: "<b>Cube:</b> 8 corners and 12 edge midpoints, 20 points. A cube is highly symmetric, so wrong guesses about depth show up quickly." },
+};
+let randSeed = 5;
+function randomShape() { const r = rng(randSeed), pts = []; for (let i = 0; i < 36; i++) pts.push([(r() - 0.5) * 110, (r() - 0.5) * 90, (r() - 0.5) * 90]); return { pts, edges: [], note: "<b>Random points:</b> 36 points scattered in a box. There is no outline, so only the tracks tell the story." }; }
+const NZ = (() => { const r = rng(77), g = () => Math.sqrt(-2 * Math.log(r() || 1e-9)) * Math.cos(2 * Math.PI * r()); return Array.from({ length: 80 }, () => Array.from({ length: 40 }, g)); })();
+
+const st = { shape: SHAPES.house, F: 16, sigma: 0, cams: null, X: null, W: null, fac: null, al: null, T: null, sel: 8, cur: 0, rot: [0.7, 0.28], playing: false, tmr: 0 };
+
+/* ---------- pipeline ---------- */
+function compute() {
+  const F = st.F = +$("nF").value; st.sigma = +$("nz").value; $("nFO").value = F; $("nzO").value = st.sigma.toFixed(1) + " px";
+  const key = segVal("shape"); st.shape = key === "random" ? randomShape() : SHAPES[key]; $("reseed").hidden = key !== "random"; $("sceneNote").innerHTML = st.shape.note;
+  st.X = st.shape.pts; const P = st.X.length; st.cams = cameraRows(F);
+  st.W = measure(st.X, st.cams, st.sigma, NZ);
+  st.fac = factor(st.W, F, P);
+  const c = [0, 1, 2].map(i => st.X.reduce((s, p) => s + p[i], 0) / P);
+  st.T = [0, 1, 2].map(i => Float64Array.from(st.X, p => p[i] - c[i]));
+  align();
+  if (st.sel >= P) st.sel = 0; st.cur = Math.min(st.cur, F - 1);
+  const fr = $("frame"); fr.max = F - 1; fr.value = st.cur;
+}
+function align() { st.al = procrustes(st.fac.S, st.T, st.X.length, segVal("mirror") === "any"); }
+function render() { drawVideo(); drawW(); drawSV(); drawQ(); drawRowN(); drawShape(); detail(); }
+
+/* ---------- video ---------- */
+function obs(f, p) { return [st.W[f][p], st.W[st.F + f][p]]; }
+function drawVideo() {
+  const cv = $("vid"); const { ctx, W, H } = hiDPI(cv, Math.round(cv.clientWidth * 0.75)); const k = W / 320; const P = st.X.length, f = st.cur;
+  ctx.clearRect(0, 0, W, H); ctx.fillStyle = cssVar("--stage"); ctx.fillRect(0, 0, W, H);
+  ctx.strokeStyle = "rgba(255,255,255,.12)"; ctx.lineWidth = 1; for (let x = 0; x < 320; x += 40) { ctx.beginPath(); ctx.moveTo(x * k, 0); ctx.lineTo(x * k, H); ctx.stroke(); } for (let y = 0; y < 240; y += 40) { ctx.beginPath(); ctx.moveTo(0, y * k); ctx.lineTo(W, y * k); ctx.stroke(); }
+  ctx.lineWidth = 1; ctx.strokeStyle = "rgba(150,170,205,.55)";
+  for (const [a, b] of st.shape.edges) { const A = obs(f, a), B = obs(f, b); ctx.beginPath(); ctx.moveTo(A[0] * k, A[1] * k); ctx.lineTo(B[0] * k, B[1] * k); ctx.stroke(); }
+  ctx.strokeStyle = "rgba(126,166,255,.28)";
+  for (let p = 0; p < P; p++) { if (p === st.sel) continue; ctx.beginPath(); for (let g = 0; g <= f; g++) { const o = obs(g, p); g ? ctx.lineTo(o[0] * k, o[1] * k) : ctx.moveTo(o[0] * k, o[1] * k); } ctx.stroke(); }
+  ctx.strokeStyle = "#f59e0b"; ctx.lineWidth = 1.5; ctx.beginPath(); for (let g = 0; g < st.F; g++) { const o = obs(g, st.sel); g ? ctx.lineTo(o[0] * k, o[1] * k) : ctx.moveTo(o[0] * k, o[1] * k); } ctx.stroke();
+  ctx.fillStyle = "rgba(245,158,11,.55)"; for (let g = 0; g < st.F; g++) { const o = obs(g, st.sel); ctx.beginPath(); ctx.arc(o[0] * k, o[1] * k, 1.8, 0, 7); ctx.fill(); }
+  for (let p = 0; p < P; p++) { const o = obs(f, p); ctx.beginPath(); ctx.arc(o[0] * k, o[1] * k, p === st.sel ? 6 : 3.6, 0, 7); ctx.fillStyle = p === st.sel ? "#f59e0b" : "#8fb4ff"; ctx.fill(); if (p === st.sel) { ctx.strokeStyle = "#fff"; ctx.lineWidth = 1.5; ctx.stroke(); } }
+  ctx.fillStyle = "rgba(255,255,255,.7)"; ctx.font = "11px " + cssVar("--mono"); ctx.fillText("frame " + (f + 1) + " / " + st.F, 8, 16);
+  $("frameLbl").textContent = "frame " + (f + 1) + " of " + st.F; $("frame").value = f;
+}
+function pickVideo(e) {
+  const cv = $("vid"), r = cv.getBoundingClientRect(); const x = (e.clientX - r.left) / r.width * 320, y = (e.clientY - r.top) / r.height * 240; let best = -1, bd = 14;
+  for (let p = 0; p < st.X.length; p++) { const o = obs(st.cur, p); const d = Math.hypot(o[0] - x, o[1] - y); if (d < bd) { bd = d; best = p; } }
+  if (best >= 0) { st.sel = best; render(); }
+}
+$("vid").addEventListener("click", pickVideo);
+function setPlay(on) { st.playing = on; clearInterval(st.tmr); $("play").textContent = on ? "Pause" : "Play"; if (on) st.tmr = setInterval(() => { st.cur = (st.cur + 1) % st.F; drawVideo(); detail(); }, 110); }
+$("play").addEventListener("click", () => setPlay(!st.playing));
+$("stepB").addEventListener("click", () => { setPlay(false); st.cur = (st.cur + 1) % st.F; drawVideo(); detail(); });
+$("frame").addEventListener("input", e => { setPlay(false); st.cur = +e.target.value; drawVideo(); detail(); });
+
+/* ---------- plots ---------- */
+const ff = () => cssVar("--mono") || "monospace";
+function drawW() {
+  const cv = $("wmat"); const { ctx, W, H } = hiDPI(cv, 300); ctx.clearRect(0, 0, W, H); const R = 2 * st.F, P = st.X.length; const f = st.fac;
+  let mx = 1e-9; for (const r of f.Wc) for (const v of r) mx = Math.max(mx, Math.abs(v));
+  const ox = 36, oy = 8, cw = (W - ox - 8) / P, ch = (H - oy - 22) / R;
+  for (let r = 0; r < R; r++) for (let p = 0; p < P; p++) { const t = f.Wc[r][p] / mx; const a = Math.abs(t); const c = t >= 0 ? [232, 131, 58] : [59, 111, 216]; const base = 36; ctx.fillStyle = `rgb(${base + (c[0] - base) * a | 0},${base + (c[1] - base) * a | 0},${base + (c[2] - base) * a | 0})`; ctx.fillRect(ox + p * cw, oy + r * ch, cw + 0.5, ch + 0.5); }
+  ctx.strokeStyle = cssVar("--ink"); ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(ox, oy + st.F * ch); ctx.lineTo(ox + P * cw, oy + st.F * ch); ctx.stroke();
+  if (st.sel < P) { ctx.strokeStyle = "#f59e0b"; ctx.lineWidth = 2; ctx.strokeRect(ox + st.sel * cw, oy, cw, R * ch); }
+  ctx.fillStyle = cssVar("--muted"); ctx.font = "11px " + ff(); ctx.fillText("u", 14, oy + st.F * ch / 2); ctx.fillText("v", 14, oy + st.F * ch * 1.5); ctx.fillText("points → (" + P + ")", ox, H - 6); ctx.fillText("±" + fmt(mx, 0) + " px", W - 64, H - 6);
+}
+function drawSV() {
+  const cv = $("svs"); const { ctx, W, H } = hiDPI(cv, 300); ctx.clearRect(0, 0, W, H); const sv = st.fac.sv.slice(0, Math.min(10, st.fac.sv.length)); const mx = sv[0] || 1;
+  const ox = 10, oy = 24, bw = (W - 20) / sv.length, bh = H - oy - 34;
+  sv.forEach((v, i) => { const h = v / mx * bh; ctx.fillStyle = i < 3 ? cssVar("--accent") : cssVar("--muted"); ctx.globalAlpha = i < 3 ? 1 : 0.7; ctx.fillRect(ox + i * bw + bw * 0.15, oy + bh - h, bw * 0.7, Math.max(h, 1)); ctx.globalAlpha = 1;
+    ctx.fillStyle = cssVar("--ink"); ctx.font = "11px " + ff(); ctx.textAlign = "center"; ctx.fillText(v >= 100 ? fmt(v, 0) : v >= 0.01 ? fmt(v, 2) : v.toExponential(0), ox + i * bw + bw / 2, oy + bh - h - 5); ctx.fillStyle = cssVar("--muted"); ctx.fillText("σ" + (i + 1), ox + i * bw + bw / 2, H - 12); });
+  ctx.textAlign = "left"; ctx.strokeStyle = cssVar("--line"); ctx.beginPath(); ctx.moveTo(ox, oy + bh + 0.5); ctx.lineTo(W - 10, oy + bh + 0.5); ctx.stroke();
+  const s = st.fac.sv, tot = s.reduce((a, b) => a + b * b, 0), top = s[0] ** 2 + s[1] ** 2 + s[2] ** 2;
+  $("svStats").innerHTML = `<span class="chip">σ₃ <b>${fmt(s[2], 2)}</b></span><span class="chip">σ₄ <b>${s[3] !== undefined ? (s[3] < 0.01 ? s[3].toExponential(1) : fmt(s[3], 2)) : "–"}</b></span><span class="chip">Energy in top 3 <b>${fmt(100 * top / Math.max(tot, 1e-12), 3)}%</b></span> ${s[3] !== undefined && s[3] < 1e-3 * s[2] ? '<span class="tag good">rank 3</span>' : '<span class="tag warn">noise lifts σ₄</span>'}`;
+}
+function m3(M, d = 3) { return `<table class="calc">${M.map(r => "<tr>" + r.map(v => `<td>${fmt(v, d)}</td>`).join("") + "</tr>").join("")}</table>`; }
+function drawQ() {
+  const f = st.fac; const G = f.G;
+  $("qRead").innerHTML = `<h3>Solving for L</h3><p>${3 * st.F} equations, 6 unknowns, solved by linear least squares. RMS constraint residual: <b class="mono">${f.resid.toExponential(1)}</b>${f.clipped ? ' <span class="tag warn">L was not positive definite; eigenvalues clipped</span>' : ' <span class="tag good">L positive definite</span>'}</p>
+  <div class="pair"><div><p class="note">L = Q Qᵀ</p>${m3(f.L)}</div><div><p class="note">Q (Cholesky factor)</p>${m3(G)}</div></div>
+  <p class="note">M = M̂Q has orthonormal camera axes. S = Q⁻¹Ŝ is the 3D shape in an unknown orientation. The shape matrix S has ${st.X.length} columns, one per point.</p>`;
+}
+function drawRowN() {
+  const cv = $("rown"); const { ctx, W, H } = hiDPI(cv, 300); ctx.clearRect(0, 0, W, H); const f = st.fac, F = st.F;
+  const all = f.before.concat(f.after); const mx = Math.max(1.3, ...all) * 1.08; const ox = 36, oy = 12, pw = W - ox - 12, ph = H - oy - 30; const X = i => ox + (F > 1 ? i / (F - 1) : 0.5) * pw, Y = v => oy + ph - v / mx * ph;
+  ctx.strokeStyle = cssVar("--line"); ctx.fillStyle = cssVar("--muted"); ctx.font = "11px " + ff(); ctx.lineWidth = 1; ctx.strokeRect(ox, oy, pw, ph);
+  for (const v of [0, 1, Math.round(mx)]) { ctx.beginPath(); ctx.moveTo(ox, Y(v)); ctx.lineTo(ox + pw, Y(v)); ctx.stroke(); ctx.fillText(String(v), 14, Y(v) + 4); }
+  ctx.fillText("frame →", ox, H - 8);
+  const line = (arr, col, dash, off) => { ctx.strokeStyle = col; ctx.lineWidth = 2; ctx.setLineDash(dash); for (const o of [0, F]) { ctx.beginPath(); for (let i = 0; i < F; i++) { const y = Y(arr[o + i]); i ? ctx.lineTo(X(i), y) : ctx.moveTo(X(i), y); } ctx.stroke(); } ctx.setLineDash([]); };
+  line(f.before, cssVar("--muted"), [5, 4]); line(f.after, cssVar("--accent"), []);
+  ctx.fillStyle = cssVar("--muted"); ctx.fillText("Two curves each: i-axis rows, then j-axis rows", ox + 6, oy + 14);
+}
+
+/* ---------- recovered shape ---------- */
+function project(p) { const [ry, rx] = st.rot; const x1 = Math.cos(ry) * p[0] + Math.sin(ry) * p[2], z1 = -Math.sin(ry) * p[0] + Math.cos(ry) * p[2]; const y2 = Math.cos(rx) * p[1] - Math.sin(rx) * z1, z2 = Math.sin(rx) * p[1] + Math.cos(rx) * z1; return [x1, y2, z2]; }
+let proj3 = [];
+function drawShape() {
+  const cv = $("view3d"); const { ctx, W, H } = hiDPI(cv, 440); ctx.clearRect(0, 0, W, H); const P = st.X.length; const al = st.al; const sc = Math.min(W, H) / 190;
+  const tp = [], rp = []; for (let p = 0; p < P; p++) { tp.push(project([st.T[0][p], st.T[1][p], st.T[2][p]])); rp.push(project([al.A[0][p], al.A[1][p], al.A[2][p]])); }
+  const X = q => W / 2 + q[0] * sc, Y = q => H / 2 + q[1] * sc;
+  // floor axes cue
+  ctx.strokeStyle = cssVar("--line"); ctx.lineWidth = 1; const ax = [[[-70, 0, 0], [70, 0, 0]], [[0, -70, 0], [0, 70, 0]], [[0, 0, -70], [0, 0, 70]]]; for (const [a, b] of ax) { const A = project(a), B = project(b); ctx.beginPath(); ctx.moveTo(X(A), Y(A)); ctx.lineTo(X(B), Y(B)); ctx.stroke(); }
+  const edges = (pts, col, dash, lw) => { ctx.strokeStyle = col; ctx.setLineDash(dash); ctx.lineWidth = lw; for (const [a, b] of st.shape.edges) { ctx.beginPath(); ctx.moveTo(X(pts[a]), Y(pts[a])); ctx.lineTo(X(pts[b]), Y(pts[b])); ctx.stroke(); } ctx.setLineDash([]); };
+  edges(tp, cssVar("--muted"), [4, 3], 1.2); edges(rp, cssVar("--accent"), [], 1.8);
+  if (segVal("errl") === "on") { ctx.strokeStyle = "#e11d48"; ctx.lineWidth = 1.5; for (let p = 0; p < P; p++) { ctx.beginPath(); ctx.moveTo(X(tp[p]), Y(tp[p])); ctx.lineTo(X(rp[p]), Y(rp[p])); ctx.stroke(); } }
+  const order = [...Array(P).keys()].sort((a, b) => rp[a][2] - rp[b][2]);
+  for (const p of order) { const dz = 0.75 + 0.25 * (rp[p][2] / 70); const s = p === st.sel;
+    ctx.beginPath(); ctx.arc(X(tp[p]), Y(tp[p]), s ? 7 : 5, 0, 7); ctx.strokeStyle = s ? "#f59e0b" : cssVar("--muted"); ctx.lineWidth = s ? 2.2 : 1.4; ctx.stroke();
+    ctx.beginPath(); ctx.arc(X(rp[p]), Y(rp[p]), s ? 5 : 3.4 * dz + 0.6, 0, 7); ctx.fillStyle = s ? "#f59e0b" : cssVar("--accent"); ctx.fill(); }
+  proj3 = rp.map(q => [X(q), Y(q)]);
+  ctx.fillStyle = cssVar("--muted"); ctx.font = "11px " + ff(); ctx.fillText("drag to rotate · click a point", 10, H - 10);
+  const sizeRMS = Math.sqrt(Array.from({ length: P }, (_, p) => st.T[0][p] ** 2 + st.T[1][p] ** 2 + st.T[2][p] ** 2).reduce((a, b) => a + b, 0) / P);
+  const good = al.rel < 0.01;
+  $("shStats").innerHTML = `<span class="chip">RMS error <b>${al.rms < 0.01 ? al.rms.toExponential(1) : fmt(al.rms, 2)} px</b></span><span class="chip">Relative to object size <b>${fmt(100 * al.rel, 2)}%</b></span><span class="chip">Object RMS radius <b>${fmt(sizeRMS, 1)} px</b></span><span class="chip">Alignment <b>${al.mirrored ? "rotation + mirror" : "rotation"}</b></span> ${good ? '<span class="tag good">shape recovered</span>' : al.rel < 0.08 ? '<span class="tag warn">noisy but close</span>' : '<span class="tag bad">large error</span>'}`;
+  $("mirNote").innerHTML = al.wasMirror ? (al.mirrored ? "The best fit needs a <b>mirror</b>. Under orthographic projection the mirror image of a scene (depth flipped) produces the same images, so the factorization cannot tell them apart. Switch to <b>As computed</b> to see the large error you get if you insist on a proper rotation." : "With rotation only, the fit is worse than the mirrored one because the depth ambiguity went the other way. Try <b>Best of shape or mirror</b>.") : "The recovered orientation happened to match without a mirror. The depth flip ambiguity of orthographic cameras is always present, so the algorithm cannot choose between a shape and its mirror image.";
+}
+(() => { const cv = $("view3d"); let last = null, moved = 0; cv.addEventListener("pointerdown", e => { last = [e.clientX, e.clientY]; moved = 0; cv.setPointerCapture(e.pointerId); cv.style.cursor = "grabbing"; });
+  cv.addEventListener("pointermove", e => { if (!last) return; const dx = e.clientX - last[0], dy = e.clientY - last[1]; moved += Math.abs(dx) + Math.abs(dy); st.rot[0] += dx * 0.01; st.rot[1] = Math.max(-1.5, Math.min(1.5, st.rot[1] + dy * 0.01)); last = [e.clientX, e.clientY]; drawShape(); });
+  cv.addEventListener("pointerup", e => { if (moved < 5) { const r = cv.getBoundingClientRect(); const x = e.clientX - r.left, y = e.clientY - r.top; let b = -1, bd = 14; proj3.forEach((q, p) => { const d = Math.hypot(q[0] - x, q[1] - y); if (d < bd) { bd = d; b = p; } }); if (b >= 0) { st.sel = b; render(); } } last = null; cv.style.cursor = "grab"; }); })();
+
+/* ---------- selected point ---------- */
+function detail() {
+  const p = st.sel, f = st.cur, F = st.F, fa = st.fac, al = st.al; const o = obs(f, p);
+  const R = al.R; const mrow = r => [0, 1, 2].map(k => fa.M[r][0] * R[k][0] + fa.M[r][1] * R[k][1] + fa.M[r][2] * R[k][2]);
+  const mu = mrow(f), s = [al.A[0][p], al.A[1][p], al.A[2][p]], dot = mu[0] * s[0] + mu[1] * s[1] + mu[2] * s[2];
+  const t = [st.T[0][p], st.T[1][p], st.T[2][p]]; const e = Math.hypot(s[0] - t[0], s[1] - t[1], s[2] - t[2]); const cu = fa.Wc[f][p];
+  const v = a => "(" + a.map(x => fmt(x, 1)).join(", ") + ")";
+  $("ptRead").innerHTML = `<h3>Point ${p + 1} of ${st.X.length}, frame ${f + 1}</h3>
+  <dl><dt>Image position (u, v)</dt><dd>(${fmt(o[0], 1)}, ${fmt(o[1], 1)}) px</dd>
+  <dt>Track length</dt><dd>${F} positions</dd>
+  <dt>Recovered (X, Y, Z)</dt><dd>${v(s)}</dd>
+  <dt>True (X, Y, Z)</dt><dd>${v(t)}</dd>
+  <dt>3D error</dt><dd>${fmt(e, 2)} px</dd></dl>
+  <p class="eq">u − ū = i · s</p>
+  <p class="eq">${fmt(cu, 2)} ≈ ${v(mu)} · ${v(s)}</p>
+  <p class="eq">   = ${fmt(dot, 2)}</p>
+  <p class="note">The camera axis i for this frame comes from the recovered motion matrix, rotated into the same frame as the aligned shape. The two sides match to within the noise.</p>`;
+}
+
+/* ---------- start ---------- */
+let raf = 0; const run = () => { if (!raf) raf = requestAnimationFrame(() => { raf = 0; compute(); render(); }); };
+seg("shape", run); seg("mirror", () => { align(); render(); }); seg("errl", drawShape);
+$("nF").addEventListener("input", run); $("nz").addEventListener("input", run);
+$("reseed").addEventListener("click", () => { randSeed = (randSeed * 7 + 3) % 1000; run(); });
+onTheme(() => { if (st.fac) render(); });
+compute(); render();
+setPlay(!window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+})();
+</script>
+</body>
+</html>

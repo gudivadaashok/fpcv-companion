@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Shape from Shading, Interactively</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,500;8..60,600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="site.css">
+<style>
+#dial { width: 190px; height: 190px; touch-action: none; cursor: grab; border-radius: 50%; display: block; }
+#pq { height: 420px; }
+canvas.view { max-width: 100%; }
+.v3 { cursor: grab; touch-action: none; height: 330px; }
+#hist { height: 150px; cursor: default; }
+.lightbox { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 20px; align-items: center; }
+@media (max-width: 760px) { .lightbox { grid-template-columns: 1fr; justify-items: center; } }
+.calc-lines { display: grid; gap: 5px; font-family: var(--mono); font-size: 0.82rem; }
+.calc-lines p { margin: 0; overflow-wrap: anywhere; }
+.calc-lines .hl { color: var(--accent); }
+</style>
+</head>
+<body>
+<header class="site"></header>
+<main class="wrap">
+  <div class="intro">
+    <h1>Shape from Shading, Interactively</h1>
+    <p class="lead">One photograph, one light. Each pixel's brightness limits the surface slope there to a curve of possibilities, and a smooth, connected surface has to pick one point from every curve.</p>
+    <p>Everything is Lambertian with a known light direction and albedo 1, and the true shape is known so you can measure the error. Follows the Shape from Shading lecture of First Principles of Computer Vision.</p>
+  </div>
+
+  <section class="stage" aria-labelledby="h0">
+    <div class="stage-head"><span class="num">00</span><div><h2 id="h0">Render a surface under a light</h2><p>Choose a shape, or upload a photo to use as a height map (brighter pixels are higher). Drag the light in the dial. The image is <i>I</i> = R(<i>p</i>, <i>q</i>), where (<i>p</i>, <i>q</i>) is the surface slope at that pixel.</p></div></div>
+    <div id="pick"></div>
+    <p class="note" id="pickNote"></p>
+    <div class="lightbox">
+      <canvas id="dial" aria-label="Light direction. Drag the dot."></canvas>
+      <div style="display:grid;gap:12px">
+        <figure style="max-width:340px"><canvas class="view click" id="img0" aria-label="Rendered image. Click a pixel."></canvas><figcaption>The input image. Click any pixel.</figcaption></figure>
+        <div class="controls"><button type="button" class="btn" id="flip">Flip the light to the opposite side</button><span class="note">Watch bumps turn into dents.</span></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="stage" aria-labelledby="h1">
+    <div class="stage-head"><span class="num">01</span><div><h2 id="h1">One pixel gives a curve, not a point</h2><p>The plot is gradient space: every point (<i>p</i>, <i>q</i>) is one surface slope. The curves are iso-brightness contours of the reflectance map R(<i>p</i>, <i>q</i>). Click a pixel in the image: the thick curve holds every slope that would give that brightness. The true slope is one point on it.</p></div></div>
+    <div class="main-side">
+      <figure><canvas class="plot" id="pq" aria-label="Reflectance map contours in gradient space"></canvas><figcaption><span class="legend"><span><i style="background:var(--muted)"></i>Contours of R at 0.1 steps</span><span><i style="background:var(--accent)"></i>Contour of the clicked pixel</span><span><i style="background:var(--ink)"></i>True (p, q)</span><span><i style="background:#ca8a04"></i>Brightest slope</span></span></figcaption></figure>
+      <div style="display:grid;gap:14px">
+        <figure><canvas class="view click" id="img1"></canvas><figcaption>Click here or on the first image.</figcaption></figure>
+        <div class="math detail"><h3 id="pxTitle"></h3><div class="calc-lines" id="calc"></div></div>
+      </div>
+    </div>
+    <div class="math"><h3>The reflectance map</h3><p class="eq">R(p, q) = (s_z − p s_x − q s_y) / √(1 + p² + q²)</p><p>For a Lambertian surface, the contours are conic sections (ellipses, parabolas or hyperbolas). Gray shading marks slopes that face away from the light, where R is 0 and the pixel is in shadow. A single image therefore gives one equation for two unknowns at every pixel. The solver needs extra assumptions: the surface is smooth, and its edges are known.</p></div>
+  </section>
+
+  <section class="stage" aria-labelledby="h2">
+    <div class="stage-head"><span class="num">02</span><div><h2 id="h2">The bump and the crater look the same</h2><p>Turn a bump into a crater by negating its height. That negates every slope, and flipping the light direction in the image plane negates the matching terms in R. The two pictures below use the same light as above, mirrored for the crater.</p></div></div>
+    <div class="three">
+      <figure><canvas class="view" id="aB"></canvas><figcaption>Bump, lit from your light</figcaption></figure>
+      <figure><canvas class="view" id="aC"></canvas><figcaption>Crater (the same shape negated), lit from the opposite side</figcaption></figure>
+      <figure><canvas class="view" id="aD"></canvas><figcaption>Absolute difference, scaled up 255 times</figcaption></figure>
+    </div>
+    <div class="stats" id="ambStats"></div>
+    <p class="note">The images match to rounding error. Your visual system resolves this by assuming light comes from above. A solver has no such assumption, so it needs a prior or known boundary values to choose.</p>
+  </section>
+
+  <section class="stage" aria-labelledby="h3">
+    <div class="stage-head"><span class="num">03</span><div><h2 id="h3">Recover the shape iteratively</h2><p>This is a Horn-style variational method. It lowers an energy made of the image error plus a smoothness penalty on the surface, by momentum gradient descent, with the boundary condition <i>Z</i> = 0 on the image border. It starts coarse (24 × 24), then refines to 48 and 96 pixels. The page starts after 300 iterations. On the default dome the solver often returns a dent instead of a dome, which is the ambiguity from stage 02. Try the Bumps or Crater surface for a close match. Press Reset to start from a flat surface, then Run.</p></div></div>
+    <div class="controls">
+      <button type="button" class="btn primary" id="run">Run</button>
+      <button type="button" class="btn" id="step">Step 1 iteration</button>
+      <button type="button" class="btn" id="reset">Reset to flat</button>
+      <div class="ctl"><label for="spd">Iterations per frame</label><input type="range" id="spd" min="1" max="30" value="6"><output id="spdO">6</output></div>
+      <div class="ctl"><label for="lam">Smoothness weight λ</label><input type="range" id="lam" min="0.005" max="0.1" step="0.005" value="0.02"><output id="lamO">0.02</output></div>
+    </div>
+    <div class="stats" id="sStats"></div>
+    <div class="two">
+      <figure><canvas class="plot v3" id="v3r" aria-label="Recovered surface, drag to rotate"></canvas><figcaption>Recovered height (drag to rotate both views)</figcaption></figure>
+      <figure><canvas class="plot v3" id="v3t" aria-label="True surface, drag to rotate"></canvas><figcaption>True height</figcaption></figure>
+    </div>
+    <div class="three">
+      <figure><canvas class="view" id="hR"></canvas><figcaption>Recovered height, bright = high</figcaption></figure>
+      <figure><canvas class="view" id="hE"></canvas><figcaption>Absolute height error (white = at least 20% of the height range)</figcaption></figure>
+      <figure><canvas class="view" id="hI"></canvas><figcaption>Image re-rendered from the recovered surface</figcaption></figure>
+    </div>
+    <figure><canvas class="plot" id="hist" aria-label="Error versus iteration"></canvas><figcaption>RMS height error against iteration</figcaption></figure>
+    <div class="math"><h3>The energy</h3>
+      <p class="eq">E(Z) = Σ [ I − R(p, q) ]² + λ Σ ‖∇Z‖²,   p = (Z(x+1,y) − Z(x−1,y))/2,  q = (Z(x,y+1) − Z(x,y−1))/2</p>
+      <p class="eq">Z ← Z + v,   v ← 0.9 v − η ∂E/∂Z,   Z = 0 on the border</p>
+      <p>The first term asks the surface to reproduce the image. The second asks for smoothness, which supplies the missing equation at each pixel. A large λ flattens the result, and a small λ lets noise and the bump/crater ambiguity through. Honest limits: one light and no known interior heights make the problem under-determined, so the answer depends on the boundary and on λ. The dome is the hardest shape here: its shading is nearly the same for several surfaces, and the solver settles on one of them. Pixels in shadow (R = 0) give no data and are filled by smoothness only. Other methods, such as Tsai–Shah's linear approximation, make different trade-offs and need more care to stay stable.</p></div>
+  </section>
+</main>
+<footer class="wrap site"></footer>
+
+<script src="common.js"></script>
+<script>
+(() => {
+"use strict";
+const { $, nav, footer, picker, toGray, show, showRGB, gaussBlur, imgXY, hiDPI, onTheme, cssVar, fmt } = VB;
+nav("shape-from-shading.html"); footer();
+const N = 96, N2 = N * N, mono = () => cssVar("--mono") || "monospace", f2 = (v, d = 3) => fmt(v, d);
+const st = { z: null, I: null, L: [-0.45, -0.4], sel: [30, 30], Z: null, it: 0, hist: [], run: false, rot: [0.5, -0.9], kind: "bumps" };
+const lightVec = () => { const [x, y] = st.L, z = Math.sqrt(Math.max(0.02, 1 - x * x - y * y)); return [x, y, z]; };
+const Rmap = (p, q, s) => Math.max(0, (s[2] - p * s[0] - q * s[1]) / Math.sqrt(1 + p * p + q * q));
+
+/* ---------- surfaces ---------- */
+const taper = (x, y) => { const e = Math.min(x, y, N - 1 - x, N - 1 - y), t = Math.min(1, e / 6); return t * t * (3 - 2 * t); };
+function makeSurface(kind) {
+  const z = new Float32Array(N2), c = N / 2;
+  for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+    const dx = x - c + 0.5, dy = y - c + 0.5, r2 = dx * dx + dy * dy, i = y * N + x;
+    if (kind === "dome") { const R = 36; z[i] = r2 < R * R ? 26 * Math.sqrt(1 - r2 / (R * R)) : 0; }
+    else if (kind === "bumps") for (const [bx, by, A, s] of [[30, 30, 20, 10], [68, 28, 14, 8], [48, 66, 24, 12], [20, 72, -10, 7], [76, 70, 14, 8]]) z[i] += A * Math.exp(-((x - bx) ** 2 + (y - by) ** 2) / (2 * s * s));
+    else if (kind === "crater") { const r = Math.sqrt(r2); z[i] = -24 * Math.exp(-r2 / (2 * 14 * 14)) + 9 * Math.exp(-((r - 26) ** 2) / (2 * 6 * 6)); }
+    z[i] *= taper(x, y);
+  }
+  return z;
+}
+function renderI(z, s) {
+  const I = new Float32Array(N2);
+  for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) { const i = y * N + x, xm = Math.max(0, x - 1), xp = Math.min(N - 1, x + 1), ym = Math.max(0, y - 1), yp = Math.min(N - 1, y + 1); const p = (z[y * N + xp] - z[y * N + xm]) / (xp - xm), q = (z[yp * N + x] - z[ym * N + x]) / (yp - ym); I[i] = Rmap(p, q, s); }
+  return I;
+}
+function preview(kind) { const z = makeSurface(kind), I = renderI(z, [-0.45, -0.4, 0.8]), cv = document.createElement("canvas"); cv.width = cv.height = N; show(cv, N, N, I.map(v => v * 255)); return cv; }
+const KINDS = [["dome", "Sphere (flattened)", "A dome 26 pixels high with radius 36. It is flattened because a true sphere has infinite slope at its rim."], ["bumps", "Bumps", "Four hills and one dip on a flat plane."], ["crater", "Crater", "A bowl with a raised rim."]];
+const samples = KINDS.map(([k, name, note]) => ({ key: k, name, canvas: preview(k), note: `<b>${name}:</b> ${note}` }));
+function setSurface(kind, src, sw, sh) {
+  if (kind) { st.z = makeSurface(kind); st.kind = kind; }
+  else { const { g } = toGray(src, sw, sh, 0, N, N); const b = gaussBlur(g, N, N, 1.2); st.z = b.map((v, i) => v / 255 * 34 * taper(i % N, Math.floor(i / N))); st.kind = "upload"; }
+  rerender();
+}
+
+/* ---------- light dial ---------- */
+function drawDial() {
+  const cv = $("dial"); const { ctx, W } = hiDPI(cv, 190); const c = W / 2, R = W / 2 - 12; ctx.clearRect(0, 0, W, W);
+  ctx.fillStyle = cssVar("--bg"); ctx.beginPath(); ctx.arc(c, c, R, 0, 7); ctx.fill(); ctx.strokeStyle = cssVar("--line"); ctx.lineWidth = 1;
+  for (const f of [1, Math.cos(Math.PI / 6), Math.cos(Math.PI / 3)]) { ctx.beginPath(); ctx.arc(c, c, R * f, 0, 7); ctx.stroke(); }
+  ctx.beginPath(); ctx.moveTo(c - R, c); ctx.lineTo(c + R, c); ctx.moveTo(c, c - R); ctx.lineTo(c, c + R); ctx.stroke();
+  ctx.fillStyle = cssVar("--muted"); ctx.font = "10px " + mono(); ctx.textAlign = "center"; ctx.fillText("camera", c, c + 14); ctx.textAlign = "start";
+  const [x, y] = st.L; ctx.beginPath(); ctx.arc(c + x * R, c + y * R, 10, 0, 7); ctx.fillStyle = "#facc15"; ctx.fill(); ctx.strokeStyle = "#a16207"; ctx.lineWidth = 2; ctx.stroke();
+}
+(() => {
+  const cv = $("dial"); let down = false;
+  const mv = e => { const r = cv.getBoundingClientRect(), R = r.width / 2 - 12; let x = (e.clientX - r.left - r.width / 2) / R, y = (e.clientY - r.top - r.height / 2) / R; const l = Math.hypot(x, y); if (l > 0.95) { x *= 0.95 / l; y *= 0.95 / l; } st.L = [x, y]; sched(); };
+  cv.addEventListener("pointerdown", e => { down = true; cv.setPointerCapture(e.pointerId); cv.style.cursor = "grabbing"; mv(e); });
+  cv.addEventListener("pointermove", e => { if (down) mv(e); });
+  cv.addEventListener("pointerup", () => { down = false; cv.style.cursor = "grab"; });
+})();
+$("flip").addEventListener("click", () => { st.L = [-st.L[0], -st.L[1]]; rerender(); });
+let raf = 0; const sched = () => { if (!raf) raf = requestAnimationFrame(() => { raf = 0; rerender(); }); };
+
+/* ---------- pipeline ---------- */
+function rerender() {
+  stop(); const s = lightVec(); st.I = renderI(st.z, s);
+  drawDial(); drawImages(); drawPQ(); drawAmb(); resetSolver(true);
+}
+function drawImages() {
+  const [x, y] = st.sel;
+  for (const id of ["img0", "img1"]) { const ctx = show(id, N, N, st.I.map(v => v * 255)); ctx.strokeStyle = "#ff3b30"; ctx.lineWidth = 1; ctx.strokeRect(x - 3.5, y - 3.5, 7, 7); }
+}
+for (const id of ["img0", "img1"]) $(id).addEventListener("click", e => { st.sel = imgXY(e, e.currentTarget, N, N); drawImages(); drawPQ(); });
+
+/* ---------- gradient space ---------- */
+function trueSlope(x, y) { const z = st.z, xm = Math.max(0, x - 1), xp = Math.min(N - 1, x + 1), ym = Math.max(0, y - 1), yp = Math.min(N - 1, y + 1); return [(z[y * N + xp] - z[y * N + xm]) / (xp - xm), (z[yp * N + x] - z[ym * N + x]) / (yp - ym)]; }
+function contour(ctx, G, E, ox, oy, sz, s, level, lw, color, label) {
+  const f = new Float32Array((G + 1) * (G + 1));
+  for (let b = 0; b <= G; b++) for (let a = 0; a <= G; a++) { const p = -E + a / G * 2 * E, q = -E + b / G * 2 * E; f[b * (G + 1) + a] = (s[2] - p * s[0] - q * s[1]) / Math.hypot(1, p, q) - level; }
+  const stp = sz / G; ctx.strokeStyle = color; ctx.lineWidth = lw; ctx.beginPath(); let lab = null;
+  const ed = [[0, 1, 0], [1, 2, 1], [3, 2, 2], [0, 3, 3]];
+  for (let b = 0; b < G; b++) for (let a = 0; a < G; a++) {
+    const v = [f[b * (G + 1) + a], f[b * (G + 1) + a + 1], f[(b + 1) * (G + 1) + a + 1], f[(b + 1) * (G + 1) + a]]; const pts = [];
+    for (const [i0, i1, k] of ed) if ((v[i0] > 0) !== (v[i1] > 0)) { const t = v[i0] / (v[i0] - v[i1]); let px, py; if (k === 0) { px = a + t; py = b; } else if (k === 2) { px = a + t; py = b + 1; } else if (k === 1) { px = a + 1; py = b + t; } else { px = a; py = b + t; } pts.push([ox + px * stp, oy + py * stp]); }
+    for (let k = 0; k + 1 < pts.length; k += 2) { ctx.moveTo(pts[k][0], pts[k][1]); ctx.lineTo(pts[k + 1][0], pts[k + 1][1]); if (!lab || (pts[k][1] > lab[1] && pts[k][0] > ox + sz * 0.5)) lab = pts[k]; }
+  }
+  ctx.stroke();
+  if (label) { const bp = -s[0] / s[2], bq = -s[1] / s[2]; let lo = 0, hi = 12; const Rr = t => { const p = bp + t, q = bq + t * 0.35; return (s[2] - p * s[0] - q * s[1]) / Math.hypot(1, p, q); };
+    if (Rr(hi) < level && Rr(0) > level) { for (let k = 0; k < 30; k++) { const m = (lo + hi) / 2; if (Rr(m) > level) lo = m; else hi = m; } const p = bp + lo, q = bq + lo * 0.35; if (Math.abs(p) < E - 0.2 && Math.abs(q) < E - 0.1) { ctx.fillStyle = cssVar("--ink"); ctx.font = "10px " + mono(); ctx.fillText(label, ox + (p + E) / (2 * E) * sz + 3, oy + (q + E) / (2 * E) * sz - 3); } } }
+}
+function drawPQ() {
+  const cv = $("pq"); const { ctx, W, H } = hiDPI(cv, 420); ctx.clearRect(0, 0, W, H);
+  const s = lightVec(), E = 3, sz = Math.min(W, H) - 30, ox = (W - sz) / 2, oy = 15, G = 90, step = sz / G;
+  const P = p => ox + (p + E) / (2 * E) * sz, Q = q => oy + (q + E) / (2 * E) * sz;
+  ctx.fillStyle = cssVar("--surface"); ctx.fillRect(ox, oy, sz, sz);
+  ctx.fillStyle = "rgba(128,128,128,0.22)"; for (let b = 0; b < G; b++) for (let a = 0; a < G; a++) { const p = -E + (a + 0.5) / G * 2 * E, q = -E + (b + 0.5) / G * 2 * E; if (s[2] - p * s[0] - q * s[1] <= 0) ctx.fillRect(ox + a * step, oy + b * step, step + 0.5, step + 0.5); }
+  ctx.strokeStyle = cssVar("--line"); ctx.lineWidth = 1; ctx.strokeRect(ox, oy, sz, sz); ctx.beginPath(); ctx.moveTo(P(0), oy); ctx.lineTo(P(0), oy + sz); ctx.moveTo(ox, Q(0)); ctx.lineTo(ox + sz, Q(0)); ctx.stroke();
+  ctx.fillStyle = cssVar("--muted"); ctx.font = "11px " + mono(); ctx.fillText("p →", ox + sz - 28, Q(0) - 5); ctx.fillText("q ↓", P(0) + 5, oy + sz - 6);
+  for (let k = 1; k <= 9; k++) contour(ctx, 150, E, ox, oy, sz, s, k / 10, 1, cssVar("--muted"), (k / 10).toFixed(1));
+  const [x, y] = st.sel, i = y * N + x, I = st.I[i], [tp, tq] = trueSlope(x, y);
+  contour(ctx, 240, E, ox, oy, sz, s, Math.max(I, 0.003), 3, cssVar("--accent"), null);
+  const bp = -s[0] / s[2], bq = -s[1] / s[2]; if (Math.abs(bp) < E && Math.abs(bq) < E) { ctx.fillStyle = "#ca8a04"; ctx.beginPath(); ctx.arc(P(bp), Q(bq), 5, 0, 7); ctx.fill(); ctx.fillText("R = 1", P(bp) + 8, Q(bq) + 4); }
+  if (Math.abs(tp) < E && Math.abs(tq) < E) { ctx.strokeStyle = cssVar("--ink"); ctx.lineWidth = 2.5; ctx.beginPath(); ctx.arc(P(tp), Q(tq), 7, 0, 7); ctx.stroke(); }
+  const h = [];
+  $("pxTitle").textContent = `Pixel (${x}, ${y})`;
+  h.push(`<p>Light s = (${f2(s[0], 2)}, ${f2(s[1], 2)}, ${f2(s[2], 2)})</p><p>Measured brightness I = <b>${f2(I)}</b></p>`);
+  h.push(`<p>Contour: (${f2(s[2], 2)} − ${f2(s[0], 2)}p − ${f2(s[1], 2)}q) / √(1 + p² + q²) = ${f2(I)}</p>`);
+  h.push(`<p>True slope (p, q) = (${f2(tp, 2)}, ${f2(tq, 2)})</p><p class="hl">R(p, q) = (${f2(s[2], 2)} − ${f2(tp * s[0], 2)} − ${f2(tq * s[1], 2)}) / √${f2(1 + tp * tp + tq * tq, 2)} = <b>${f2(Rmap(tp, tq, s))}</b></p>`);
+  h.push(I < 0.003 ? `<p class="note" style="font-family:var(--body)">This pixel is in shadow. Any slope in the gray region gives 0, so the solution set is an area, not even a curve.</p>` : `<p class="note" style="font-family:var(--body)">Every point on the thick curve reproduces this brightness. Only the smoothness of neighboring pixels can pick one.</p>`);
+  $("calc").innerHTML = h.join("");
+}
+
+/* ---------- ambiguity ---------- */
+function drawAmb() {
+  const z = new Float32Array(N2), zn = new Float32Array(N2);
+  for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) { const v = 24 * Math.exp(-((x - 48) ** 2 + (y - 48) ** 2) / (2 * 15 * 15)) + 12 * Math.exp(-((x - 30) ** 2 + (y - 66) ** 2) / (2 * 8 * 8)); z[y * N + x] = v; zn[y * N + x] = -v; }
+  const s = lightVec(), s2 = [-s[0], -s[1], s[2]], A = renderI(z, s), B = renderI(zn, s2); let mx = 0; const D = new Float32Array(N2); for (let i = 0; i < N2; i++) { D[i] = Math.abs(A[i] - B[i]); mx = Math.max(mx, D[i]); }
+  show("aB", N, N, A.map(v => v * 255)); show("aC", N, N, B.map(v => v * 255)); show("aD", N, N, D.map(v => Math.min(255, v * 255 * 255)));
+  $("ambStats").innerHTML = `<span class="chip">Largest pixel difference <b>${mx.toExponential(1)}</b> (on a 0 to 1 scale)</span><span class="chip">Bump height <b>+24</b>, crater depth <b>−24</b></span>`;
+}
+
+/* ---------- variational solver (Horn-style: data term + smoothness), coarse to fine ---------- */
+const SIZES = [24, 48, 96], SWITCH = [100, 200];
+function down(a, n) { const m = n / 2, o = new Float32Array(m * m); for (let y = 0; y < m; y++) for (let x = 0; x < m; x++) o[y * m + x] = (a[2 * y * n + 2 * x] + a[2 * y * n + 2 * x + 1] + a[(2 * y + 1) * n + 2 * x] + a[(2 * y + 1) * n + 2 * x + 1]) / 4; return o; }
+function up(a, n) { const m = n * 2, o = new Float32Array(m * m); for (let y = 0; y < m; y++) for (let x = 0; x < m; x++) { const fx = Math.max(0, Math.min(n - 1, (x - 0.5) / 2)), fy = Math.max(0, Math.min(n - 1, (y - 0.5) / 2)), x0 = Math.floor(fx), y0 = Math.floor(fy), x1 = Math.min(n - 1, x0 + 1), y1 = Math.min(n - 1, y0 + 1), ax = fx - x0, ay = fy - y0; o[y * m + x] = 2 * ((a[y0 * n + x0] * (1 - ax) + a[y0 * n + x1] * ax) * (1 - ay) + (a[y1 * n + x0] * (1 - ax) + a[y1 * n + x1] * ax) * ay); } return o; }
+function resetSolver(quick) {
+  const I24 = down(down(st.I, 96), 48); st.Is = [I24, down(st.I, 96), st.I]; st.lv = 0; st.Zc = new Float32Array(576); st.V = new Float32Array(576); st.Z = new Float32Array(N2); st.it = 0; st.hist = []; st.dirty = true; pushHist();
+  if (quick) { for (let k = 0; k < 300; k++) { iterate(); if (k % 10 === 9) pushHist(); } }
+  drawSolver();
+}
+function sync() { if (!st.dirty) return; st.Z = st.lv === 0 ? up(up(st.Zc, 24), 48) : st.lv === 1 ? up(st.Zc, 48) : st.Zc; st.dirty = false; }
+function iterate() {
+  const n = SIZES[st.lv], Z = st.Zc, V = st.V, I = st.Is[st.lv], s = lightVec(), lam = +$("lam").value, G = new Float32Array(n * n);
+  for (let y = 1; y < n - 1; y++) for (let x = 1; x < n - 1; x++) {
+    const i = y * n + x, p = (Z[i + 1] - Z[i - 1]) / 2, q = (Z[i + n] - Z[i - n]) / 2, g = Math.sqrt(1 + p * p + q * q), r0 = (s[2] - p * s[0] - q * s[1]) / g; if (r0 <= 0) continue;
+    const res = I[i] - r0, ep = res * (s[0] / g + r0 * p / (g * g)), eq = res * (s[1] / g + r0 * q / (g * g));
+    G[i + 1] += ep / 2; G[i - 1] -= ep / 2; G[i + n] += eq / 2; G[i - n] -= eq / 2;
+  }
+  for (let y = 1; y < n - 1; y++) for (let x = 1; x < n - 1; x++) { const i = y * n + x; G[i] -= lam * (Z[i - 1] + Z[i + 1] + Z[i - n] + Z[i + n] - 4 * Z[i]); }
+  for (let y = 1; y < n - 1; y++) for (let x = 1; x < n - 1; x++) { const i = y * n + x; V[i] = 0.9 * V[i] - 3 * G[i]; Z[i] = Math.max(-80, Math.min(80, Z[i] + V[i])); }
+  st.it++; st.dirty = true;
+  if (st.lv < 2 && st.it >= SWITCH[st.lv]) { sync(); st.Zc = st.lv === 0 ? up(st.Zc, 24) : up(st.Zc, 48); st.lv++; st.V = new Float32Array(SIZES[st.lv] ** 2); st.dirty = true; }
+}
+function metrics() {
+  sync(); let se = 0, lo = Infinity, hi = -Infinity, ie = 0, ae = 0; const Ir = renderI(st.Z, lightVec());
+  for (let i = 0; i < N2; i++) { const d = st.Z[i] - st.z[i]; se += d * d; ae += Math.abs(d); lo = Math.min(lo, st.z[i]); hi = Math.max(hi, st.z[i]); ie += (Ir[i] - st.I[i]) ** 2; }
+  return { rms: Math.sqrt(se / N2), mae: ae / N2, range: Math.max(1e-6, hi - lo), irms: Math.sqrt(ie / N2), Ir };
+}
+function pushHist() { st.hist.push(metrics().rms); }
+function drawSolver() {
+  const m = metrics(), Z = st.Z; let lo = Infinity, hi = -Infinity; for (const v of st.z) { lo = Math.min(lo, v); hi = Math.max(hi, v); } for (const v of Z) { lo = Math.min(lo, v); hi = Math.max(hi, v); } if (hi - lo < 1e-6) hi = lo + 1;
+  showRGB("hR", N, N, i => { const v = 20 + (Z[i] - lo) / (hi - lo) * 235; return [v, v, v]; });
+  showRGB("hE", N, N, i => { const v = Math.min(255, Math.abs(Z[i] - st.z[i]) / (0.2 * m.range) * 255); return [v, v, v]; });
+  show("hI", N, N, m.Ir.map(v => v * 255));
+  const r = m.rms / m.range, tag = r < 0.06 ? '<span class="tag good">close</span>' : r < 0.2 ? '<span class="tag warn">rough</span>' : '<span class="tag bad">far off</span>';
+  $("sStats").innerHTML = `<span class="chip">Iteration <b>${st.it}</b> at <b>${SIZES[st.lv]}×${SIZES[st.lv]}</b></span><span class="chip">RMS height error <b>${fmt(m.rms, 2)}</b> px (${fmt(100 * r, 1)}% of the ${fmt(m.range, 0)} px range)</span><span class="chip">Mean abs error <b>${fmt(m.mae, 2)}</b></span><span class="chip">Image residual (RMS) <b>${fmt(m.irms, 3)}</b></span>${tag}`;
+  drawViews(lo, hi); drawHist();
+}
+function drawHist() {
+  const cv = $("hist"); const { ctx, W, H } = hiDPI(cv, 150); ctx.clearRect(0, 0, W, H); const h = st.hist; if (!h.length) return;
+  const L = 44, T = 10, B = 22, pw = W - L - 10, ph = H - T - B, mx = Math.max(...h, 1e-6), nx = Math.max(10, h.length - 1);
+  ctx.strokeStyle = cssVar("--line"); ctx.fillStyle = cssVar("--muted"); ctx.font = "11px " + mono(); ctx.lineWidth = 1; ctx.strokeRect(L, T, pw, ph); ctx.fillText(fmt(mx, 1), 4, T + 10); ctx.fillText("0", 28, T + ph); ctx.fillText("history: " + (h.length - 1) + " samples", L, H - 5);
+  ctx.strokeStyle = cssVar("--accent"); ctx.lineWidth = 2; ctx.beginPath(); h.forEach((v, i) => { const x = L + i / nx * pw, y = T + ph - v / mx * ph; i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }); ctx.stroke();
+}
+let timer = 0;
+function loop() { if (!st.run) return; const k = +$("spd").value; for (let j = 0; j < k; j++) iterate(); pushHist(); drawSolver(); if (st.it >= 1200) { stop(); return; } timer = requestAnimationFrame(loop); }
+function stop() { st.run = false; $("run").textContent = "Run"; cancelAnimationFrame(timer); }
+$("run").addEventListener("click", () => { if (st.run) { stop(); return; } st.run = true; $("run").textContent = "Pause"; loop(); });
+$("step").addEventListener("click", () => { stop(); iterate(); pushHist(); drawSolver(); });
+$("reset").addEventListener("click", () => { stop(); resetSolver(false); });
+$("spd").addEventListener("input", e => { $("spdO").value = e.target.value; });
+$("lam").addEventListener("input", e => { $("lamO").value = e.target.value; stop(); resetSolver(true); });
+
+/* ---------- 3D ---------- */
+function draw3d(cv, z, lo, hi) {
+  const { ctx, W, H } = hiDPI(cv, 330); ctx.clearRect(0, 0, W, H);
+  const [yaw, pitch] = st.rot, cy = Math.cos(yaw), sy = Math.sin(yaw), cp = Math.cos(pitch), sp = Math.sin(pitch), sc = Math.min(W, H) / (N * 1.25), step = 2, G = N / step, mid = (lo + hi) / 2, V = new Float32Array((G + 1) * (G + 1) * 3);
+  for (let b = 0; b <= G; b++) for (let a = 0; a <= G; a++) { const x = Math.min(N - 1, a * step), y = Math.min(N - 1, b * step), X = x - N / 2, Y = y - N / 2, Z = z[y * N + x] - mid; const x1 = X * cy - Y * sy, y1 = X * sy + Y * cy, y2 = y1 * cp - Z * sp, z2 = y1 * sp + Z * cp, k = 3 * (b * (G + 1) + a); V[k] = x1; V[k + 1] = y2; V[k + 2] = z2; }
+  const quads = []; for (let b = 0; b < G; b++) for (let a = 0; a < G; a++) { const ids = [b * (G + 1) + a, b * (G + 1) + a + 1, (b + 1) * (G + 1) + a + 1, (b + 1) * (G + 1) + a]; let d = 0; for (const t of ids) d += V[3 * t + 2]; quads.push([d, ids]); }
+  quads.sort((p, q) => q[0] - p[0]); const Ld = [-0.35, -0.55, -0.76], ln = Math.hypot(...Ld);
+  for (const [, ids] of quads) {
+    const p = ids.map(t => [V[3 * t], V[3 * t + 1], V[3 * t + 2]]); const ux = p[2][0] - p[0][0], uy = p[2][1] - p[0][1], uz = p[2][2] - p[0][2], vx = p[3][0] - p[1][0], vy = p[3][1] - p[1][1], vz = p[3][2] - p[1][2];
+    const nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx, nl = Math.hypot(nx, ny, nz) || 1; const sh = Math.abs(nx * Ld[0] + ny * Ld[1] + nz * Ld[2]) / nl / ln, v = Math.round((0.2 + 0.8 * sh) * 225);
+    ctx.fillStyle = `rgb(${v},${v},${Math.min(255, v + 12)})`; ctx.strokeStyle = ctx.fillStyle; ctx.lineWidth = 0.6; ctx.beginPath(); p.forEach(([x, y], j) => j ? ctx.lineTo(W / 2 + x * sc, H / 2 + y * sc) : ctx.moveTo(W / 2 + x * sc, H / 2 + y * sc)); ctx.closePath(); ctx.fill(); ctx.stroke();
+  }
+}
+function drawViews(lo, hi) {
+  if (lo === undefined) { lo = Infinity; hi = -Infinity; for (const v of st.z) { lo = Math.min(lo, v); hi = Math.max(hi, v); } for (const v of st.Z) { lo = Math.min(lo, v); hi = Math.max(hi, v); } }
+  draw3d($("v3r"), st.Z, lo, hi); draw3d($("v3t"), st.z, lo, hi);
+}
+for (const id of ["v3r", "v3t"]) { const cv = $(id); let last = null; cv.addEventListener("pointerdown", e => { last = [e.clientX, e.clientY]; cv.setPointerCapture(e.pointerId); cv.style.cursor = "grabbing"; }); cv.addEventListener("pointermove", e => { if (!last) return; st.rot[0] += (e.clientX - last[0]) * 0.01; st.rot[1] = Math.max(-1.5, Math.min(0, st.rot[1] + (e.clientY - last[1]) * 0.01)); last = [e.clientX, e.clientY]; drawViews(); }); cv.addEventListener("pointerup", () => { last = null; cv.style.cursor = "grab"; }); }
+
+/* ---------- start ---------- */
+const pk = picker({ el: "pick", samples, noteEl: "pickNote", onImage: (src, sw, sh, info) => {
+  if (info.sample) setSurface(info.sample.key); else { setSurface(null, src, sw, sh); $("pickNote").innerHTML = `<b>${VB.esc(info.name)}</b> is used as a height map: smoothed slightly, tapered to zero at the border, white is 34 pixels high.`; }
+} });
+onTheme(() => { if (st.I) { drawDial(); drawPQ(); drawSolver(); } });
+pk.pick(samples[1]);
+window.__metrics = metrics; window.__pick = pk.pick; window.__samples = samples;
+})();
+</script>
+</body>
+</html>
